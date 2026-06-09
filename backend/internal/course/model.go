@@ -19,6 +19,7 @@ type Course struct {
 	Language      string   `yaml:"language"`
 	TrackSlugs    []string `yaml:"tracks"`
 
+	Dir    string   `yaml:"-"` // path relative to coursesDir, set by LoadAll
 	Tracks []*Track `yaml:"-"` // populated in TrackSlugs order
 }
 
