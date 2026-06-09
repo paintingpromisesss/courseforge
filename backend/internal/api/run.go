@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -175,6 +177,8 @@ func (h *Handler) patchRunner(w http.ResponseWriter, r *http.Request) {
 // @Success 204
 // @Router /runners/{lang} [delete]
 func (h *Handler) deleteRunner(w http.ResponseWriter, r *http.Request) {
-	h.runner.RemoveDriver(chi.URLParam(r, "lang"))
+	lang := chi.URLParam(r, "lang")
+	h.runner.RemoveDriver(lang)
+	_ = os.RemoveAll(filepath.Join(h.runnersDir, lang))
 	w.WriteHeader(http.StatusNoContent)
 }

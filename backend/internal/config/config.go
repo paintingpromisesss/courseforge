@@ -1,16 +1,28 @@
 package config
 
-import "os"
+import (
+	"os"
+	"path/filepath"
+)
 
 type Config struct {
-	CoursesDir string
-	Addr       string
+	DataDir     string
+	CoursesDir  string
+	RunnersDir  string
+	RunnersJSON string
+	Addr        string
+	DBPath      string
 }
 
 func Load() *Config {
+	dataDir := getenv("COURSEFORGE_DATA_DIR", "./data")
 	return &Config{
-		CoursesDir: getenv("COURSEFORGE_COURSES_DIR", "./courses"),
-		Addr:       getenv("COURSEFORGE_ADDR", ":8080"),
+		DataDir:     dataDir,
+		CoursesDir:  getenv("COURSEFORGE_COURSES_DIR", "./courses"),
+		RunnersDir:  filepath.Join(dataDir, "runners", "bin"),
+		RunnersJSON: filepath.Join(dataDir, "runners.json"),
+		Addr:        getenv("COURSEFORGE_ADDR", ":8080"),
+		DBPath:      getenv("COURSEFORGE_DB_PATH", filepath.Join(dataDir, "courseforge.db")),
 	}
 }
 

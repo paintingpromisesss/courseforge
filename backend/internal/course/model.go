@@ -75,3 +75,39 @@ type Limits struct {
 	TimeoutSec int `yaml:"timeout_sec"`
 	MemoryMB   int `yaml:"memory_mb"`
 }
+
+func (c *Course) FindTrack(slug string) *Track {
+	for _, t := range c.Tracks {
+		if t.Slug == slug {
+			return t
+		}
+	}
+	return nil
+}
+
+func (t *Track) FindTopic(slug string) *Topic {
+	for _, p := range t.Topics {
+		if p.Slug == slug {
+			return p
+		}
+	}
+	return nil
+}
+
+func (tp *Topic) FindUnit(slug string) *Unit {
+	for _, u := range tp.Units {
+		if u.Slug == slug {
+			return u
+		}
+	}
+	return nil
+}
+
+func (u *Unit) FindTask(slug string) *Task {
+	for _, t := range u.Tasks {
+		if t.Slug == slug {
+			return t
+		}
+	}
+	return nil
+}

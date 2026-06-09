@@ -6,6 +6,18 @@ import (
 	"os"
 )
 
+// LoadOne parses a single course by its directory name inside dir.
+func LoadOne(dir, slug string) (*Course, error) {
+	fsys := os.DirFS(dir)
+	parser := NewParser(fsys)
+	c, err := parser.ParseCourse(slug)
+	if err != nil {
+		return nil, fmt.Errorf("parse course %q: %w", slug, err)
+	}
+	c.Dir = slug
+	return c, nil
+}
+
 // LoadAll scans dir for courses and catalogs and returns all courses keyed by slug.
 func LoadAll(dir string) (map[string]*Course, error) {
 	fsys := os.DirFS(dir)

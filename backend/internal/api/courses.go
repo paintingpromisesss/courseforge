@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -56,6 +57,7 @@ type TaskItem struct {
 // @Success 200 {array} CourseItem
 // @Router /courses [get]
 func (h *Handler) listCourses(w http.ResponseWriter, r *http.Request) {
+	h.mu.RLock()
 	items := make([]CourseItem, 0, len(h.courses))
 	for _, c := range h.courses {
 		items = append(items, CourseItem{
@@ -63,6 +65,7 @@ func (h *Handler) listCourses(w http.ResponseWriter, r *http.Request) {
 			Description: c.Description, Language: c.Language,
 		})
 	}
+	h.mu.RUnlock()
 	sort.Slice(items, func(i, j int) bool { return items[i].Slug < items[j].Slug })
 	h.writeJSON(w, http.StatusOK, items)
 }
@@ -75,7 +78,7 @@ func (h *Handler) listCourses(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} map[string]string
 // @Router /courses/{courseSlug} [get]
 func (h *Handler) getCourse(w http.ResponseWriter, r *http.Request) {
-	c := h.courses[chi.URLParam(r, "courseSlug")]
+	c := h.getCourseBySlug(chi.URLParam(r, "courseSlug"))
 	if c == nil {
 		h.writeError(w, http.StatusNotFound, "course not found")
 		return
@@ -190,4 +193,55 @@ func (h *Handler) getTests(w http.ResponseWriter, r *http.Request) {
 	}
 	path := filepath.Join(h.coursesDir, c.Dir, track.Slug, topic.Slug, unit.Slug, task.Slug, lang, ld.Tests)
 	serveTextFile(w, path)
+}
+
+// @Summary Get unit asset (image/svg/etc)
+// @Tags content
+// @Produce octet-stream
+// @Param courseSlug path string true "Course slug"
+// @Param trackSlug path string true "Track slug"
+// @Param topicSlug path string true "Topic slug"
+// @Param unitSlug path string true "Unit slug"
+// @Param filename path string true "Asset filename"
+// @Success 200
+// @Failure 404 {object} map[string]string
+// @Router /courses/{courseSlug}/tracks/{trackSlug}/topics/{topicSlug}/units/{unitSlug}/assets/{filename} [get]
+func (h *Handler) getUnitAsset(w http.ResponseWriter, r *http.Request) {
+	c, track, topic, unit, ok := h.lookupUnit(w, r)
+	if !ok {
+		return
+	}
+	filename := filepath.Base(chi.URLParam(r, "filename"))
+	if strings.Contains(filename, "..") {
+		h.writeError(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+	path := filepath.Join(h.coursesDir, c.Dir, track.Slug, topic.Slug, unit.Slug, "assets", filename)
+	http.ServeFile(w, r, path)
+}
+
+// @Summary Get task asset (image/svg/etc)
+// @Tags content
+// @Produce octet-stream
+// @Param courseSlug path string true "Course slug"
+// @Param trackSlug path string true "Track slug"
+// @Param topicSlug path string true "Topic slug"
+// @Param unitSlug path string true "Unit slug"
+// @Param taskSlug path string true "Task slug"
+// @Param filename path string true "Asset filename"
+// @Success 200
+// @Failure 404 {object} map[string]string
+// @Router /courses/{courseSlug}/tracks/{trackSlug}/topics/{topicSlug}/units/{unitSlug}/tasks/{taskSlug}/assets/{filename} [get]
+func (h *Handler) getTaskAsset(w http.ResponseWriter, r *http.Request) {
+	c, track, topic, unit, task, ok := h.lookupTask(w, r)
+	if !ok {
+		return
+	}
+	filename := filepath.Base(chi.URLParam(r, "filename"))
+	if strings.Contains(filename, "..") {
+		h.writeError(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+	path := filepath.Join(h.coursesDir, c.Dir, track.Slug, topic.Slug, unit.Slug, task.Slug, "assets", filename)
+	http.ServeFile(w, r, path)
 }

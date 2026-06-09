@@ -19,32 +19,13 @@ import (
 // LangDriver defines how to run and test code for a specific language.
 // Placeholders in command slices: {file}, {testfile}, {dir}.
 type LangDriver struct {
-	RunCmd  []string `json:"run_cmd"`  // e.g. ["go", "run", "{file}"]
-	TestCmd []string `json:"test_cmd"` // e.g. ["go", "test", "{file}", "{testfile}"]
-	Ext     string   `json:"ext"`      // source file extension, e.g. ".go"
-	TestExt string   `json:"test_ext"` // test file name suffix, e.g. "_test.go"
+	RunCmd    []string          `json:"run_cmd"`    // e.g. ["go", "run", "{file}"]
+	TestCmd   []string          `json:"test_cmd"`   // e.g. ["go", "test", "{dir}"]
+	Ext       string            `json:"ext"`        // source file extension, e.g. ".go"
+	TestExt   string            `json:"test_ext"`   // test file name suffix, e.g. "_test.go"
+	InitFiles map[string]string `json:"init_files"` // files written to temp dir before execution, e.g. {"go.mod": "module main\n\ngo 1.26\n"}
 }
 
-var defaultDrivers = map[string]LangDriver{
-	"go": {
-		RunCmd:  []string{"go", "run", "{file}"},
-		TestCmd: []string{"go", "test", "{file}", "{testfile}"},
-		Ext:     ".go",
-		TestExt: "_test.go",
-	},
-	"python": {
-		RunCmd:  []string{"python3", "{file}"},
-		TestCmd: []string{"python3", "-m", "pytest", "{testfile}", "-q"},
-		Ext:     ".py",
-		TestExt: "_test.py",
-	},
-	"javascript": {
-		RunCmd:  []string{"node", "{file}"},
-		TestCmd: []string{"node", "--test", "{testfile}"},
-		Ext:     ".js",
-		TestExt: ".test.js",
-	},
-}
 
 const (
 	defaultTimeout = 10 * time.Second
@@ -74,11 +55,9 @@ type Runner struct {
 	file    string // path to runners.json, empty if not set
 }
 
-// New creates a Runner with default language drivers.
+// New creates a Runner with no pre-loaded drivers.
 func New() *Runner {
-	drivers := make(map[string]LangDriver, len(defaultDrivers))
-	maps.Copy(drivers, defaultDrivers)
-	return &Runner{drivers: drivers}
+	return &Runner{drivers: make(map[string]LangDriver)}
 }
 
 // UseFile loads drivers from path (if it exists) and persists future changes there.
@@ -168,6 +147,13 @@ func (r *Runner) Run(req RunRequest) (RunResult, error) {
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
+	for name, content := range driver.InitFiles {
+		path := filepath.Join(dir, filepath.Base(name))
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			return RunResult{}, fmt.Errorf("write init file %s: %w", name, err)
+		}
+	}
+
 	codeFile := filepath.Join(dir, "main"+driver.Ext)
 	if err := os.WriteFile(codeFile, []byte(req.Code), 0600); err != nil {
 		return RunResult{}, fmt.Errorf("write code: %w", err)
@@ -187,6 +173,14 @@ func (r *Runner) Run(req RunRequest) (RunResult, error) {
 	}
 
 	args := expand(cmdTemplate, codeFile, testFile, dir)
+
+	// Resolve relative executable path against the server's CWD before
+	// setting cmd.Dir, because Go resolves relative paths relative to cmd.Dir.
+	if !filepath.IsAbs(args[0]) {
+		if abs, err := filepath.Abs(args[0]); err == nil {
+			args[0] = abs
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
