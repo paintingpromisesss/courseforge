@@ -151,6 +151,7 @@ export function TaskPage() {
   const [code, setCode] = useState<string>('');
   const [leftTab, setLeftTab] = useState<LeftTab | null>(null);
   const initialTabSet = useRef(false);
+  const prevTaskSlug = useRef<string | undefined>(undefined);
   const [showSolutionDialog, setShowSolutionDialog] = useState(false);
   const [solutionUnlocked, setSolutionUnlocked] = useState(false);
   const [running, setRunning] = useState(false);
@@ -207,7 +208,7 @@ export function TaskPage() {
     enabled: !!courseSlug,
   });
 
-  const { data: submissions } = useQuery({
+  const {} = useQuery({
     queryKey: ['submissions', courseSlug, taskSlug],
     queryFn: () => api.listSubmissions(courseSlug!, taskSlug!),
     enabled: !!(courseSlug && taskSlug),
@@ -216,16 +217,15 @@ export function TaskPage() {
   const theoryDone = !!(unitSlug && progress?.completed_tasks?.[unitSlug]);
 
   useEffect(() => {
-    if (initialTabSet.current || submissions === undefined || !unit) return;
+    if (!unit || progress === undefined) return;
+    if (prevTaskSlug.current !== taskSlug) {
+      prevTaskSlug.current = taskSlug;
+      initialTabSet.current = false;
+    }
+    if (initialTabSet.current) return;
     initialTabSet.current = true;
-    const hasSubmissions = submissions.length > 0;
-    setLeftTab(!hasSubmissions && unit.has_theory ? 'theory' : 'statement');
-  }, [submissions, unit]);
-
-  useEffect(() => {
-    initialTabSet.current = false;
-    setLeftTab(null);
-  }, [taskSlug]);
+    setLeftTab(unit.has_theory && !theoryDone ? 'theory' : 'statement');
+  }, [taskSlug, unit, progress, theoryDone]);
 
   const activeTab = leftTab ?? 'statement';
 
@@ -346,24 +346,6 @@ export function TaskPage() {
               const assetBase = `${BASE}/courses/${courseSlug}/tracks/${trackSlug}/topics/${topicSlug}/units/${unitSlug}`;
               return theory
                 ? <>
-                    <div className="hidden">
-                      <p className="text-sm text-tx-2">
-                        {theoryDone ? 'Тема отмечена как пройденная.' : 'Когда закончишь, можно отметить тему как пройденную.'}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => void markTheoryDone().catch(() => {})}
-                        disabled={theoryDone || markingTheoryDone}
-                        className={clsx(
-                          'shrink-0 rounded px-3 py-1.5 text-sm transition-colors',
-                          theoryDone
-                            ? 'bg-bg-4 text-ok'
-                            : 'bg-brand text-white hover:bg-brand-hover disabled:opacity-70',
-                        )}
-                      >
-                        {theoryDone ? 'Тема пройдена' : markingTheoryDone ? 'Сохраняю...' : 'Отметить пройденной'}
-                      </button>
-                    </div>
                     <Markdown content={theory} assetBase={assetBase} />
                     <div className="mt-8 flex justify-end">
                       <button
