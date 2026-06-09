@@ -2,12 +2,10 @@ package api
 
 import (
 	"net/http"
-	"os"
 	"path/filepath"
 	"sort"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/paintingpromisesss/courseforge/internal/course"
 )
 
 type CourseItem struct {
@@ -159,41 +157,37 @@ func (h *Handler) getTemplate(w http.ResponseWriter, r *http.Request) {
 	serveTextFile(w, path)
 }
 
-func serveTextFile(w http.ResponseWriter, path string) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			http.Error(w, "file not found", http.StatusNotFound)
-		} else {
-			http.Error(w, "failed to read file", http.StatusInternalServerError)
-		}
+// @Summary Get task test file
+// @Tags content
+// @Produce plain
+// @Param courseSlug path string true "Course slug"
+// @Param trackSlug path string true "Track slug"
+// @Param topicSlug path string true "Topic slug"
+// @Param unitSlug path string true "Unit slug"
+// @Param taskSlug path string true "Task slug"
+// @Param lang query string true "Language (e.g. go, python)"
+// @Success 200 {string} string
+// @Failure 404 {object} map[string]string
+// @Router /courses/{courseSlug}/tracks/{trackSlug}/topics/{topicSlug}/units/{unitSlug}/tasks/{taskSlug}/tests [get]
+func (h *Handler) getTests(w http.ResponseWriter, r *http.Request) {
+	c, track, topic, unit, task, ok := h.lookupTask(w, r)
+	if !ok {
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write(data)
-}
-
-func toCourseDetail(c *course.Course) CourseDetail {
-	tracks := make([]TrackItem, len(c.Tracks))
-	for i, t := range c.Tracks {
-		topics := make([]TopicItem, len(t.Topics))
-		for j, p := range t.Topics {
-			units := make([]UnitItem, len(p.Units))
-			for k, u := range p.Units {
-				tasks := make([]TaskItem, len(u.Tasks))
-				for l, task := range u.Tasks {
-					langs := make([]string, 0, len(task.Languages))
-					for lang := range task.Languages {
-						langs = append(langs, lang)
-					}
-					sort.Strings(langs)
-					tasks[l] = TaskItem{Slug: task.Slug, Title: task.Title, Languages: langs}
-				}
-				units[k] = UnitItem{Slug: u.Slug, Title: u.Title, HasTheory: u.Theory != "", Tasks: tasks}
-			}
-			topics[j] = TopicItem{Slug: p.Slug, Title: p.Title, Description: p.Description, Units: units}
-		}
-		tracks[i] = TrackItem{Slug: t.Slug, Title: t.Title, Description: t.Description, Topics: topics}
+	lang := r.URL.Query().Get("lang")
+	if lang == "" {
+		h.writeError(w, http.StatusBadRequest, "lang query param required")
+		return
 	}
-	return CourseDetail{Slug: c.Slug, Title: c.Title, Description: c.Description, Language: c.Language, Tracks: tracks}
+	ld, exists := task.Languages[lang]
+	if !exists {
+		h.writeError(w, http.StatusNotFound, "language not available for this task")
+		return
+	}
+	if ld.Tests == "" {
+		h.writeError(w, http.StatusNotFound, "no tests for this language")
+		return
+	}
+	path := filepath.Join(h.coursesDir, c.Dir, track.Slug, topic.Slug, unit.Slug, task.Slug, lang, ld.Tests)
+	serveTextFile(w, path)
 }

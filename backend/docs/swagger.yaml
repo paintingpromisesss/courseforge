@@ -300,6 +300,55 @@ paths:
       summary: Get task code template
       tags:
       - content
+  /courses/{courseSlug}/tracks/{trackSlug}/topics/{topicSlug}/units/{unitSlug}/tasks/{taskSlug}/tests:
+    get:
+      parameters:
+      - description: Course slug
+        in: path
+        name: courseSlug
+        required: true
+        type: string
+      - description: Track slug
+        in: path
+        name: trackSlug
+        required: true
+        type: string
+      - description: Topic slug
+        in: path
+        name: topicSlug
+        required: true
+        type: string
+      - description: Unit slug
+        in: path
+        name: unitSlug
+        required: true
+        type: string
+      - description: Task slug
+        in: path
+        name: taskSlug
+        required: true
+        type: string
+      - description: Language (e.g. go, python)
+        in: query
+        name: lang
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get task test file
+      tags:
+      - content
   /courses/{courseSlug}/tracks/{trackSlug}/topics/{topicSlug}/units/{unitSlug}/theory:
     get:
       parameters:

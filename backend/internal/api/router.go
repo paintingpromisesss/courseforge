@@ -24,6 +24,7 @@ func NewRouter(h *Handler) http.Handler {
 		r.Get("/courses/{courseSlug}/tracks/{trackSlug}/topics/{topicSlug}/units/{unitSlug}/theory", h.getTheory)
 		r.Get("/courses/{courseSlug}/tracks/{trackSlug}/topics/{topicSlug}/units/{unitSlug}/tasks/{taskSlug}/statement", h.getStatement)
 		r.Get("/courses/{courseSlug}/tracks/{trackSlug}/topics/{topicSlug}/units/{unitSlug}/tasks/{taskSlug}/template", h.getTemplate)
+		r.Get("/courses/{courseSlug}/tracks/{trackSlug}/topics/{topicSlug}/units/{unitSlug}/tasks/{taskSlug}/tests", h.getTests)
 
 		r.Get("/progress/{courseSlug}", h.getProgress)
 		r.Put("/progress/{courseSlug}/tasks/{taskSlug}", h.updateProgress)
