@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -25,20 +26,20 @@ func (h *Handler) uploadCourse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// derive slug from first file path component
-	firstPath := filepath.ToSlash(files[0].Filename)
+	relPaths, err := uploadedRelativePaths(files, r.MultipartForm.Value["paths"])
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// derive the uploaded root folder from the first relative path component
+	firstPath := relPaths[0]
 	parts := strings.SplitN(firstPath, "/", 2)
 	if len(parts) < 2 {
 		h.writeError(w, http.StatusBadRequest, "expected files with relative paths (use webkitdirectory input)")
 		return
 	}
-	slug := parts[0]
-
-	destDir := filepath.Join(h.coursesDir, slug)
-	if _, err := os.Stat(destDir); err == nil {
-		h.writeError(w, http.StatusConflict, fmt.Sprintf("course %q already exists", slug))
-		return
-	}
+	rootDir := parts[0]
 
 	// write to temp dir first for atomicity
 	tmpDir, err := os.MkdirTemp("", "cf-import-*")
@@ -48,10 +49,10 @@ func (h *Handler) uploadCourse(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	for _, fh := range files {
-		rel := filepath.ToSlash(fh.Filename)
+	for i, fh := range files {
+		rel := relPaths[i]
 		if strings.Contains(rel, "..") || strings.HasPrefix(rel, "/") {
-			h.writeError(w, http.StatusBadRequest, "invalid file path: "+fh.Filename)
+			h.writeError(w, http.StatusBadRequest, "invalid file path: "+rel)
 			return
 		}
 		target := filepath.Join(tmpDir, filepath.FromSlash(rel))
@@ -80,13 +81,21 @@ func (h *Handler) uploadCourse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// validate: course.yaml must exist
-	courseYAML := filepath.Join(tmpDir, slug, "course.yaml")
+	sourceDir := filepath.Join(tmpDir, rootDir)
+	courseYAML := filepath.Join(sourceDir, "course.yaml")
 	if _, err := os.Stat(courseYAML); err != nil {
 		h.writeError(w, http.StatusBadRequest, "course.yaml not found in uploaded folder")
 		return
 	}
 
-	if err := os.Rename(filepath.Join(tmpDir, slug), destDir); err != nil {
+	slug, status, msg := h.inspectImportedCourse(sourceDir)
+	if status != 0 {
+		h.writeError(w, status, msg)
+		return
+	}
+
+	destDir := filepath.Join(h.coursesDir, slug)
+	if err := os.Rename(sourceDir, destDir); err != nil {
 		h.writeError(w, http.StatusInternalServerError, "failed to install course")
 		return
 	}
@@ -100,6 +109,37 @@ func (h *Handler) uploadCourse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.writeJSON(w, http.StatusCreated, map[string]string{"slug": c.Slug})
+}
+
+func uploadedRelativePaths(files []*multipart.FileHeader, paths []string) ([]string, error) {
+	if len(paths) > 0 && len(paths) != len(files) {
+		return nil, fmt.Errorf("files and paths count mismatch")
+	}
+
+	relPaths := make([]string, 0, len(files))
+	root := ""
+
+	for i, fh := range files {
+		rel := filepath.ToSlash(fh.Filename)
+		if len(paths) == len(files) {
+			rel = filepath.ToSlash(paths[i])
+		}
+		rel = strings.TrimPrefix(rel, "./")
+
+		parts := strings.SplitN(rel, "/", 2)
+		if len(parts) < 2 {
+			return nil, fmt.Errorf("expected files with relative paths (use webkitdirectory input)")
+		}
+		if root == "" {
+			root = parts[0]
+		} else if parts[0] != root {
+			return nil, fmt.Errorf("all uploaded files must come from the same root folder")
+		}
+
+		relPaths = append(relPaths, rel)
+	}
+
+	return relPaths, nil
 }
 
 func (h *Handler) importCourse(w http.ResponseWriter, r *http.Request) {
@@ -127,13 +167,13 @@ func (h *Handler) importCourse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slug := filepath.Base(req.Path)
-	destDir := filepath.Join(h.coursesDir, slug)
-	if _, err := os.Stat(destDir); err == nil {
-		h.writeError(w, http.StatusConflict, fmt.Sprintf("course %q already exists", slug))
+	slug, status, msg := h.inspectImportedCourse(req.Path)
+	if status != 0 {
+		h.writeError(w, status, msg)
 		return
 	}
 
+	destDir := filepath.Join(h.coursesDir, slug)
 	if err := copyDir(req.Path, destDir); err != nil {
 		h.writeError(w, http.StatusInternalServerError, "failed to copy course: "+err.Error())
 		return
@@ -147,6 +187,26 @@ func (h *Handler) importCourse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.writeJSON(w, http.StatusCreated, map[string]string{"slug": c.Slug})
+}
+
+func (h *Handler) inspectImportedCourse(dir string) (string, int, string) {
+	c, err := course.LoadOne(filepath.Dir(dir), filepath.Base(dir))
+	if err != nil {
+		return "", http.StatusBadRequest, "invalid course: " + err.Error()
+	}
+
+	if h.getCourseBySlug(c.Slug) != nil {
+		return "", http.StatusConflict, fmt.Sprintf("course slug %q already exists", c.Slug)
+	}
+
+	destDir := filepath.Join(h.coursesDir, c.Slug)
+	if _, err := os.Stat(destDir); err == nil {
+		return "", http.StatusConflict, fmt.Sprintf("course slug %q already exists", c.Slug)
+	} else if !os.IsNotExist(err) {
+		return "", http.StatusInternalServerError, "failed to check course destination"
+	}
+
+	return c.Slug, 0, ""
 }
 
 func (h *Handler) loadAndRegisterCourse(slug string) (*course.Course, error) {

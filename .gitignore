@@ -1,2 +1,8 @@
 .claude/
 .codegraph/
+.cache/
+bin/
+frontend/dist/
+frontend/node_modules/
+/courses
+/data

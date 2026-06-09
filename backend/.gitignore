@@ -2,3 +2,4 @@ docs/
 courses/
 *.db*
 data/
+.gocache

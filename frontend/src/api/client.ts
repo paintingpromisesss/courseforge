@@ -1,6 +1,6 @@
 import type { CourseItem, CourseDetail, InstallReq, InstallStatus, LangDriver, Progress, RunResp, Submission } from './types';
 
-const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8080/api';
+const BASE = import.meta.env.VITE_API_URL ?? '/api';
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
@@ -86,7 +86,9 @@ export const api = {
   uploadCourse: async (files: FileList): Promise<{ slug: string }> => {
     const fd = new FormData();
     for (const f of Array.from(files)) {
-      fd.append('files', f, f.webkitRelativePath || f.name);
+      const relativePath = f.webkitRelativePath || f.name;
+      fd.append('files', f);
+      fd.append('paths', relativePath);
     }
     const res = await fetch(`${BASE}/courses/upload`, { method: 'POST', body: fd });
     if (!res.ok) {

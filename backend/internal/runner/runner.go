@@ -2,7 +2,6 @@ package runner
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -25,7 +23,6 @@ type LangDriver struct {
 	TestExt   string            `json:"test_ext"`   // test file name suffix, e.g. "_test.go"
 	InitFiles map[string]string `json:"init_files"` // files written to temp dir before execution, e.g. {"go.mod": "module main\n\ngo 1.26\n"}
 }
-
 
 const (
 	defaultTimeout = 10 * time.Second
@@ -57,7 +54,11 @@ type Runner struct {
 
 // New creates a Runner with no pre-loaded drivers.
 func New() *Runner {
-	return &Runner{drivers: make(map[string]LangDriver)}
+	return &Runner{
+		drivers: map[string]LangDriver{
+			"go": defaultGoDriver(),
+		},
+	}
 }
 
 // UseFile loads drivers from path (if it exists) and persists future changes there.
@@ -176,41 +177,58 @@ func (r *Runner) Run(req RunRequest) (RunResult, error) {
 
 	// Resolve relative executable path against the server's CWD before
 	// setting cmd.Dir, because Go resolves relative paths relative to cmd.Dir.
-	if !filepath.IsAbs(args[0]) {
+	if !filepath.IsAbs(args[0]) && filepath.Base(args[0]) != args[0] {
 		if abs, err := filepath.Abs(args[0]); err == nil {
 			args[0] = abs
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = dir
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-
-	var cancelCalled bool
-	cmd.Cancel = func() error {
-		cancelCalled = true
-		if cmd.Process == nil {
-			return nil
-		}
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	}
+	configureCommand(cmd)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	start := time.Now()
-	runErr := cmd.Run()
+	if err := cmd.Start(); err != nil {
+		return RunResult{}, fmt.Errorf("exec: %w", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	var (
+		runErr   error
+		timedOut bool
+	)
+	select {
+	case runErr = <-done:
+	case <-time.After(timeout):
+		timedOut = true
+		_ = stopCommand(cmd)
+		if err, exited := waitAfterStop(cmd, done); exited {
+			runErr = err
+		} else {
+			return RunResult{
+				Stdout:   stdout.String(),
+				Stderr:   stderr.String(),
+				Duration: time.Since(start),
+				TimedOut: true,
+			}, nil
+		}
+	}
+
 	duration := time.Since(start)
 
 	result := RunResult{
 		Stdout:   stdout.String(),
 		Stderr:   stderr.String(),
 		Duration: duration,
-		TimedOut: cancelCalled,
+		TimedOut: timedOut,
 	}
 
 	if runErr != nil {

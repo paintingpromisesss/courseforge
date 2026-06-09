@@ -10,6 +10,7 @@ type Config struct {
 	CoursesDir  string
 	RunnersDir  string
 	RunnersJSON string
+	FrontendDir string
 	Addr        string
 	DBPath      string
 }
@@ -21,6 +22,7 @@ func Load() *Config {
 		CoursesDir:  getenv("COURSEFORGE_COURSES_DIR", "./courses"),
 		RunnersDir:  filepath.Join(dataDir, "runners", "bin"),
 		RunnersJSON: filepath.Join(dataDir, "runners.json"),
+		FrontendDir: getenv("COURSEFORGE_FRONTEND_DIR", ""),
 		Addr:        getenv("COURSEFORGE_ADDR", ":8080"),
 		DBPath:      getenv("COURSEFORGE_DB_PATH", filepath.Join(dataDir, "courseforge.db")),
 	}

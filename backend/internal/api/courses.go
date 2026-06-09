@@ -156,7 +156,15 @@ func (h *Handler) getTemplate(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusNotFound, "language not available for this task")
 		return
 	}
-	path := filepath.Join(h.coursesDir, c.Dir, track.Slug, topic.Slug, unit.Slug, task.Slug, lang, ld.Template)
+	filename := ld.Template
+	if solution := r.URL.Query().Get("solution"); solution == "1" || strings.EqualFold(solution, "true") {
+		if ld.Solution == "" {
+			h.writeError(w, http.StatusNotFound, "no solution for this language")
+			return
+		}
+		filename = ld.Solution
+	}
+	path := filepath.Join(h.coursesDir, c.Dir, track.Slug, topic.Slug, unit.Slug, task.Slug, lang, filename)
 	serveTextFile(w, path)
 }
 

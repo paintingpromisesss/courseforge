@@ -12,7 +12,6 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Badge } from '../components/ui/Badge';
 import { loadCode, saveCode } from '../lib/editorStorage';
 import { parseGoTestOutput, type ParsedResults } from '../lib/parseTests';
-import { useReadOnScroll } from '../hooks/useReadOnScroll';
 import { useTheme } from '../context/ThemeContext';
 import type { Submission } from '../api/types';
 
@@ -156,6 +155,7 @@ export function TaskPage() {
   const [solutionUnlocked, setSolutionUnlocked] = useState(false);
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<{ parsed: ParsedResults; durationMs: number; timedOut: boolean } | null>(null);
+  const [markingTheoryDone, setMarkingTheoryDone] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollPanelRef = useRef<HTMLDivElement>(null);
 
@@ -201,11 +201,19 @@ export function TaskPage() {
     enabled: solutionUnlocked && !!(courseSlug && trackSlug && topicSlug && unitSlug && taskSlug && lang),
   });
 
+  const { data: progress } = useQuery({
+    queryKey: ['progress', courseSlug],
+    queryFn: () => api.getProgress(courseSlug!),
+    enabled: !!courseSlug,
+  });
+
   const { data: submissions } = useQuery({
     queryKey: ['submissions', courseSlug, taskSlug],
     queryFn: () => api.listSubmissions(courseSlug!, taskSlug!),
     enabled: !!(courseSlug && taskSlug),
   });
+
+  const theoryDone = !!(unitSlug && progress?.completed_tasks?.[unitSlug]);
 
   useEffect(() => {
     if (initialTabSet.current || submissions === undefined || !unit) return;
@@ -221,26 +229,20 @@ export function TaskPage() {
 
   const activeTab = leftTab ?? 'statement';
 
-  const handleTheoryRead = useCallback(() => {
-    if (!courseSlug || !unitSlug) return;
-    api.markDone(courseSlug, unitSlug, true)
-      .then(() => qc.invalidateQueries({ queryKey: ['progress', courseSlug] }))
-      .catch(() => {});
-  }, [courseSlug, unitSlug, qc]);
-
-  const { reset: resetTheoryRead } = useReadOnScroll(
-    handleTheoryRead,
-    scrollPanelRef,
-    activeTab === 'theory',
-  );
+  const markTheoryDone = useCallback(async () => {
+    if (!courseSlug || !unitSlug || theoryDone) return;
+    setMarkingTheoryDone(true);
+    try {
+      await api.markDone(courseSlug, unitSlug, true);
+      await qc.invalidateQueries({ queryKey: ['progress', courseSlug] });
+    } finally {
+      setMarkingTheoryDone(false);
+    }
+  }, [courseSlug, unitSlug, theoryDone, qc]);
 
   useLayoutEffect(() => {
     if (scrollPanelRef.current) scrollPanelRef.current.scrollTop = 0;
   }, [taskSlug]);
-
-  useEffect(() => {
-    resetTheoryRead();
-  }, [taskSlug, resetTheoryRead]);
 
   const handleCodeChange = useCallback((val: string | undefined) => {
     const v = val ?? '';
@@ -340,14 +342,49 @@ export function TaskPage() {
           <Tabs tabs={leftTabs} active={activeTab} onChange={handleTabChange} />
           <div ref={scrollPanelRef} className="flex-1 overflow-y-auto p-4">
             {activeTab === 'theory' && (() => {
-              const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8080/api';
+              const BASE = import.meta.env.VITE_API_URL ?? '/api';
               const assetBase = `${BASE}/courses/${courseSlug}/tracks/${trackSlug}/topics/${topicSlug}/units/${unitSlug}`;
               return theory
-                ? <Markdown content={theory} assetBase={assetBase} />
+                ? <>
+                    <div className="hidden">
+                      <p className="text-sm text-tx-2">
+                        {theoryDone ? 'Тема отмечена как пройденная.' : 'Когда закончишь, можно отметить тему как пройденную.'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void markTheoryDone().catch(() => {})}
+                        disabled={theoryDone || markingTheoryDone}
+                        className={clsx(
+                          'shrink-0 rounded px-3 py-1.5 text-sm transition-colors',
+                          theoryDone
+                            ? 'bg-bg-4 text-ok'
+                            : 'bg-brand text-white hover:bg-brand-hover disabled:opacity-70',
+                        )}
+                      >
+                        {theoryDone ? 'Тема пройдена' : markingTheoryDone ? 'Сохраняю...' : 'Отметить пройденной'}
+                      </button>
+                    </div>
+                    <Markdown content={theory} assetBase={assetBase} />
+                    <div className="mt-8 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void markTheoryDone().catch(() => {})}
+                        disabled={theoryDone || markingTheoryDone}
+                        className={clsx(
+                          'rounded px-3 py-1.5 text-sm transition-colors',
+                          theoryDone
+                            ? 'bg-bg-4 text-ok'
+                            : 'bg-brand text-white hover:bg-brand-hover disabled:opacity-70',
+                        )}
+                      >
+                        {theoryDone ? 'Тема пройдена' : markingTheoryDone ? 'Сохраняю...' : 'Отметить тему пройденной'}
+                      </button>
+                    </div>
+                  </>
                 : <div className="text-tx-3 text-sm">Нет теории</div>;
             })()}
             {activeTab === 'statement' && (() => {
-              const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8080/api';
+              const BASE = import.meta.env.VITE_API_URL ?? '/api';
               const assetBase = `${BASE}/courses/${courseSlug}/tracks/${trackSlug}/topics/${topicSlug}/units/${unitSlug}/tasks/${taskSlug}`;
               return statement
                 ? <Markdown content={statement} assetBase={assetBase} />
