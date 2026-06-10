@@ -1,21 +1,21 @@
-package progress
+package repo
 
 import (
 	"os"
 	"testing"
 )
 
-func newTestStore(t *testing.T) (*Store, string) {
+func newTestFileProgressRepository(t *testing.T) (*FileProgressRepository, string) {
 	t.Helper()
 	dir := t.TempDir()
 	if err := os.MkdirAll(dir+"/go-basics", 0755); err != nil {
 		t.Fatal(err)
 	}
-	return NewStore(dir), dir
+	return NewFileProgressRepository(dir), dir
 }
 
 func TestLoad_Empty(t *testing.T) {
-	s, _ := newTestStore(t)
+	s, _ := newTestFileProgressRepository(t)
 	p, err := s.Load("go-basics", "go-basics")
 	if err != nil {
 		t.Fatal(err)
@@ -29,7 +29,7 @@ func TestLoad_Empty(t *testing.T) {
 }
 
 func TestMarkDone_Persist(t *testing.T) {
-	s, _ := newTestStore(t)
+	s, _ := newTestFileProgressRepository(t)
 
 	if err := s.MarkDone("go-basics", "go-basics", "task-1"); err != nil {
 		t.Fatal(err)
@@ -45,7 +45,7 @@ func TestMarkDone_Persist(t *testing.T) {
 }
 
 func TestMarkUndone(t *testing.T) {
-	s, _ := newTestStore(t)
+	s, _ := newTestFileProgressRepository(t)
 
 	_ = s.MarkDone("go-basics", "go-basics", "task-1")
 	_ = s.MarkDone("go-basics", "go-basics", "task-2")
@@ -67,7 +67,7 @@ func TestMarkUndone(t *testing.T) {
 }
 
 func TestSave_Atomic(t *testing.T) {
-	s, dir := newTestStore(t)
+	s, dir := newTestFileProgressRepository(t)
 
 	_ = s.MarkDone("go-basics", "go-basics", "task-1")
 

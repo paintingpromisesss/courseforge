@@ -9,13 +9,12 @@ package main
 import (
 	"log"
 
-	"github.com/paintingpromisesss/courseforge/internal/app"
-	"github.com/paintingpromisesss/courseforge/internal/config"
+	"github.com/paintingpromisesss/courseforge/internal/di"
 )
 
 func main() {
-	cfg := config.Load()
-	if err := app.Run(cfg); err != nil {
+	cfg := di.Load()
+	if err := di.Run(cfg); err != nil {
 		log.Fatal(err)
 	}
 }

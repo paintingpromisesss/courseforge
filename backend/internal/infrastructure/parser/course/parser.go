@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"path"
 
+	"github.com/paintingpromisesss/courseforge/internal/domain"
 	"gopkg.in/yaml.v3"
 )
 
@@ -22,15 +23,15 @@ func NewParser(fsys fs.FS) *Parser {
 }
 
 // Parse is shorthand for NewParser(fsys).ParseCourse(root).
-func Parse(fsys fs.FS, root string) (*Course, error) {
+func Parse(fsys fs.FS, root string) (*domain.Course, error) {
 	return NewParser(fsys).ParseCourse(root)
 }
 
 // ParseCourse reads and validates the course tree rooted at root.
 // Errors are *Error values joined into a single error.
-func (p *Parser) ParseCourse(root string) (*Course, error) {
+func (p *Parser) ParseCourse(root string) (*domain.Course, error) {
 	fsys := p.fsys
-	c := &Course{}
+	c := &domain.Course{}
 	if err := readManifest(fsys, path.Join(root, "course.yaml"), c); err != nil {
 		return nil, err
 	}
@@ -62,8 +63,8 @@ func (p *Parser) ParseCourse(root string) (*Course, error) {
 	return c, nil
 }
 
-func parseTrack(fsys fs.FS, dir, slug string) (*Track, error) {
-	t := &Track{}
+func parseTrack(fsys fs.FS, dir, slug string) (*domain.Track, error) {
+	t := &domain.Track{}
 	manifest := path.Join(dir, "track.yaml")
 	if err := readManifest(fsys, manifest, t); err != nil {
 		return nil, err
@@ -96,8 +97,8 @@ func parseTrack(fsys fs.FS, dir, slug string) (*Track, error) {
 	return t, nil
 }
 
-func parseTopic(fsys fs.FS, dir, slug string) (*Topic, error) {
-	tp := &Topic{}
+func parseTopic(fsys fs.FS, dir, slug string) (*domain.Topic, error) {
+	tp := &domain.Topic{}
 	manifest := path.Join(dir, "topic.yaml")
 	if err := readManifest(fsys, manifest, tp); err != nil {
 		return nil, err
@@ -130,8 +131,8 @@ func parseTopic(fsys fs.FS, dir, slug string) (*Topic, error) {
 	return tp, nil
 }
 
-func parseUnit(fsys fs.FS, dir, slug string) (*Unit, error) {
-	u := &Unit{}
+func parseUnit(fsys fs.FS, dir, slug string) (*domain.Unit, error) {
+	u := &domain.Unit{}
 	manifest := path.Join(dir, "unit.yaml")
 	if err := readManifest(fsys, manifest, u); err != nil {
 		return nil, err
@@ -164,8 +165,8 @@ func parseUnit(fsys fs.FS, dir, slug string) (*Unit, error) {
 	return u, nil
 }
 
-func parseTask(fsys fs.FS, dir, slug string) (*Task, error) {
-	tk := &Task{}
+func parseTask(fsys fs.FS, dir, slug string) (*domain.Task, error) {
+	tk := &domain.Task{}
 	manifest := path.Join(dir, "task.yaml")
 	if err := readManifest(fsys, manifest, tk); err != nil {
 		return nil, err
@@ -194,9 +195,9 @@ func readManifest(fsys fs.FS, name string, dst any) error {
 }
 
 // ParseCatalog reads and validates the catalog at root, including all listed courses.
-func (p *Parser) ParseCatalog(root string) (*Catalog, error) {
+func (p *Parser) ParseCatalog(root string) (*domain.Catalog, error) {
 	fsys := p.fsys
-	c := &Catalog{}
+	c := &domain.Catalog{}
 	manifest := path.Join(root, "catalog.yaml")
 	if err := readManifest(fsys, manifest, c); err != nil {
 		return nil, err
@@ -237,18 +238,18 @@ func (p *Parser) ParseCatalog(root string) (*Catalog, error) {
 	return c, nil
 }
 
-func (p *Parser) ParseTrack(dir string) (*Track, error) {
+func (p *Parser) ParseTrack(dir string) (*domain.Track, error) {
 	return parseTrack(p.fsys, dir, path.Base(dir))
 }
 
-func (p *Parser) ParseTopic(dir string) (*Topic, error) {
+func (p *Parser) ParseTopic(dir string) (*domain.Topic, error) {
 	return parseTopic(p.fsys, dir, path.Base(dir))
 }
 
-func (p *Parser) ParseUnit(dir string) (*Unit, error) {
+func (p *Parser) ParseUnit(dir string) (*domain.Unit, error) {
 	return parseUnit(p.fsys, dir, path.Base(dir))
 }
 
-func (p *Parser) ParseTask(dir string) (*Task, error) {
+func (p *Parser) ParseTask(dir string) (*domain.Task, error) {
 	return parseTask(p.fsys, dir, path.Base(dir))
 }

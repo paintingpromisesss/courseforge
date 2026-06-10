@@ -1,4 +1,4 @@
-package app
+package di
 
 import (
 	"fmt"
@@ -9,19 +9,23 @@ import (
 
 	_ "github.com/paintingpromisesss/courseforge/docs"
 	"github.com/paintingpromisesss/courseforge/internal/api"
-	"github.com/paintingpromisesss/courseforge/internal/config"
-	"github.com/paintingpromisesss/courseforge/internal/course"
-	"github.com/paintingpromisesss/courseforge/internal/progress"
-	"github.com/paintingpromisesss/courseforge/internal/runner"
-	"github.com/paintingpromisesss/courseforge/internal/submission"
+	"github.com/paintingpromisesss/courseforge/internal/api/handlers"
+	"github.com/paintingpromisesss/courseforge/internal/application/service"
+
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/parser/course"
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
+	"github.com/paintingpromisesss/courseforge/logger"
 )
 
-func Run(cfg *config.Config) error {
+func Run(cfg *Config) error {
 	for _, dir := range []string{cfg.DataDir, cfg.CoursesDir, cfg.RunnersDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("create dir %s: %w", dir, err)
 		}
 	}
+
+	logger := logger.New()
 
 	courses, err := course.LoadAll(cfg.CoursesDir)
 	if err != nil {
@@ -33,15 +37,19 @@ func Run(cfg *config.Config) error {
 	if err := r.UseFile(cfg.RunnersJSON); err != nil {
 		return fmt.Errorf("load runners: %w", err)
 	}
-	ps := progress.NewStore(cfg.CoursesDir)
+	pr := repo.NewFileProgressRepository(cfg.CoursesDir)
 
-	ss, err := submission.New(cfg.DBPath)
+	ps := service.NewProgressService(pr, logger)
+
+	sr, err := repo.NewSubmissionRepository(cfg.DBPath)
 	if err != nil {
 		return fmt.Errorf("open submissions db: %w", err)
 	}
-	defer ss.Close()
+	defer sr.Close()
 
-	h := api.New(cfg.CoursesDir, cfg.RunnersDir, courses, r, ps, ss)
+	ss := service.NewSubmissionService(sr, logger)
+
+	h := handlers.New(cfg.CoursesDir, cfg.RunnersDir, courses, r, ps, ss)
 
 	router, err := api.NewRouter(h, api.RouterOptions{FrontendDir: cfg.FrontendDir})
 	if err != nil {

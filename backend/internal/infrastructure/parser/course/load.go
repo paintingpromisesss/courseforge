@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+
+	"github.com/paintingpromisesss/courseforge/internal/domain"
 )
 
 // LoadOne parses a single course by its directory name inside dir.
-func LoadOne(dir, slug string) (*Course, error) {
+func LoadOne(dir, slug string) (*domain.Course, error) {
 	fsys := os.DirFS(dir)
 	parser := NewParser(fsys)
 	c, err := parser.ParseCourse(slug)
@@ -19,7 +21,7 @@ func LoadOne(dir, slug string) (*Course, error) {
 }
 
 // LoadAll scans dir for courses and catalogs and returns all courses keyed by slug.
-func LoadAll(dir string) (map[string]*Course, error) {
+func LoadAll(dir string) (map[string]*domain.Course, error) {
 	fsys := os.DirFS(dir)
 	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
@@ -27,7 +29,7 @@ func LoadAll(dir string) (map[string]*Course, error) {
 	}
 
 	parser := NewParser(fsys)
-	courses := make(map[string]*Course)
+	courses := make(map[string]*domain.Course)
 
 	for _, e := range entries {
 		if !e.IsDir() {

@@ -1,26 +1,23 @@
-package api
+package handlers
 
 import (
 	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/paintingpromisesss/courseforge/internal/api/dto"
 )
-
-type ProgressUpdate struct {
-	Done bool `json:"done" example:"true"`
-}
 
 // @Summary Get course progress
 // @Tags progress
 // @Produce json
 // @Param courseSlug path string true "Course slug"
-// @Success 200 {object} progress.Progress
+// @Success 200 {object} dto.ProgressResp
 // @Failure 404 {object} map[string]string
 // @Router /progress/{courseSlug} [get]
 func (h *Handler) getProgress(w http.ResponseWriter, r *http.Request) {
 	courseSlug := chi.URLParam(r, "courseSlug")
-	c := h.courses[courseSlug]
+	c := h.getCourseBySlug(courseSlug)
 	if c == nil {
 		h.writeError(w, http.StatusNotFound, "course not found")
 		return
@@ -30,7 +27,7 @@ func (h *Handler) getProgress(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "failed to load progress")
 		return
 	}
-	h.writeJSON(w, http.StatusOK, p)
+	h.writeJSON(w, http.StatusOK, dto.ToProgressResp(p))
 }
 
 // @Summary Mark task done or undone
@@ -38,7 +35,7 @@ func (h *Handler) getProgress(w http.ResponseWriter, r *http.Request) {
 // @Accept json
 // @Param courseSlug path string true "Course slug"
 // @Param taskSlug path string true "Task slug"
-// @Param request body ProgressUpdate true "Update"
+// @Param request body dto.ProgressUpdate true "Update"
 // @Success 204
 // @Failure 400 {object} map[string]string
 // @Router /progress/{courseSlug}/tasks/{taskSlug} [put]
@@ -46,13 +43,13 @@ func (h *Handler) updateProgress(w http.ResponseWriter, r *http.Request) {
 	courseSlug := chi.URLParam(r, "courseSlug")
 	taskSlug := chi.URLParam(r, "taskSlug")
 
-	c := h.courses[courseSlug]
+	c := h.getCourseBySlug(courseSlug)
 	if c == nil {
 		h.writeError(w, http.StatusNotFound, "course not found")
 		return
 	}
 
-	var req ProgressUpdate
+	var req dto.ProgressUpdate
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid request body")
 		return

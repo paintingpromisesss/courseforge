@@ -1,4 +1,4 @@
-package api
+package handlers
 
 import (
 	"encoding/json"
@@ -6,31 +6,30 @@ import (
 	"sync"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/paintingpromisesss/courseforge/internal/course"
-	"github.com/paintingpromisesss/courseforge/internal/progress"
-	"github.com/paintingpromisesss/courseforge/internal/runner"
-	"github.com/paintingpromisesss/courseforge/internal/submission"
+	"github.com/paintingpromisesss/courseforge/internal/application/service"
+	"github.com/paintingpromisesss/courseforge/internal/domain"
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
 )
 
 type Handler struct {
-	mu          sync.RWMutex
-	coursesDir  string
-	runnersDir  string
-	courses     map[string]*course.Course
-	runner      *runner.Runner
-	progress    *progress.Store
-	submissions *submission.Store
-	installJobs sync.Map // presetID → *installProgress
+	mu                 sync.RWMutex
+	coursesDir         string
+	runnersDir         string
+	courses            map[string]*domain.Course
+	runner             *runner.Runner
+	progress           *service.ProgressService
+	submissionsService *service.SubmissionService
+	installJobs        sync.Map // presetID → *installProgress
 }
 
-func New(coursesDir, runnersDir string, courses map[string]*course.Course, r *runner.Runner, ps *progress.Store, ss *submission.Store) *Handler {
+func New(coursesDir, runnersDir string, courses map[string]*domain.Course, r *runner.Runner, ps *service.ProgressService, ss *service.SubmissionService) *Handler {
 	return &Handler{
-		coursesDir:  coursesDir,
-		runnersDir:  runnersDir,
-		courses:     courses,
-		runner:      r,
-		progress:    ps,
-		submissions: ss,
+		coursesDir:         coursesDir,
+		runnersDir:         runnersDir,
+		courses:            courses,
+		runner:             r,
+		progress:           ps,
+		submissionsService: ss,
 	}
 }
 
@@ -44,13 +43,13 @@ func (h *Handler) writeError(w http.ResponseWriter, status int, msg string) {
 	h.writeJSON(w, status, map[string]string{"error": msg})
 }
 
-func (h *Handler) getCourseBySlug(slug string) *course.Course {
+func (h *Handler) getCourseBySlug(slug string) *domain.Course {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.courses[slug]
 }
 
-func (h *Handler) lookupUnit(w http.ResponseWriter, r *http.Request) (*course.Course, *course.Track, *course.Topic, *course.Unit, bool) {
+func (h *Handler) lookupUnit(w http.ResponseWriter, r *http.Request) (*domain.Course, *domain.Track, *domain.Topic, *domain.Unit, bool) {
 	c := h.getCourseBySlug(chi.URLParam(r, "courseSlug"))
 	if c == nil {
 		h.writeError(w, http.StatusNotFound, "course not found")
@@ -74,7 +73,7 @@ func (h *Handler) lookupUnit(w http.ResponseWriter, r *http.Request) (*course.Co
 	return c, track, topic, unit, true
 }
 
-func (h *Handler) lookupTask(w http.ResponseWriter, r *http.Request) (*course.Course, *course.Track, *course.Topic, *course.Unit, *course.Task, bool) {
+func (h *Handler) lookupTask(w http.ResponseWriter, r *http.Request) (*domain.Course, *domain.Track, *domain.Topic, *domain.Unit, *domain.Task, bool) {
 	c, track, topic, unit, ok := h.lookupUnit(w, r)
 	if !ok {
 		return nil, nil, nil, nil, nil, false

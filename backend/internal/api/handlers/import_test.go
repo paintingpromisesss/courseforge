@@ -1,4 +1,4 @@
-package api
+package handlers
 
 import (
 	"bytes"
@@ -10,7 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paintingpromisesss/courseforge/internal/course"
+	"github.com/paintingpromisesss/courseforge/internal/api/dto"
+	"github.com/paintingpromisesss/courseforge/internal/domain"
 )
 
 func TestImportCourseUsesDeclaredSlugDestination(t *testing.T) {
@@ -20,10 +21,10 @@ func TestImportCourseUsesDeclaredSlugDestination(t *testing.T) {
 	coursesDir := t.TempDir()
 	h := &Handler{
 		coursesDir: coursesDir,
-		courses:    map[string]*course.Course{},
+		courses:    map[string]*domain.Course{},
 	}
 
-	body, err := json.Marshal(map[string]string{"path": sourceDir})
+	body, err := json.Marshal(dto.ImportCourseReq{Path: sourceDir})
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)
 	}
@@ -37,12 +38,12 @@ func TestImportCourseUsesDeclaredSlugDestination(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 
-	var resp map[string]string
+	var resp dto.SlugResp
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if resp["slug"] != "real-course" {
-		t.Fatalf("slug = %q, want %q", resp["slug"], "real-course")
+	if resp.Slug != "real-course" {
+		t.Fatalf("slug = %q, want %q", resp.Slug, "real-course")
 	}
 
 	if _, err := os.Stat(filepath.Join(coursesDir, "real-course")); err != nil {
@@ -63,12 +64,12 @@ func TestImportCourseRejectsExistingDeclaredSlug(t *testing.T) {
 	coursesDir := t.TempDir()
 	h := &Handler{
 		coursesDir: coursesDir,
-		courses: map[string]*course.Course{
+		courses: map[string]*domain.Course{
 			"real-course": {Slug: "real-course"},
 		},
 	}
 
-	body, err := json.Marshal(map[string]string{"path": sourceDir})
+	body, err := json.Marshal(dto.ImportCourseReq{Path: sourceDir})
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)
 	}

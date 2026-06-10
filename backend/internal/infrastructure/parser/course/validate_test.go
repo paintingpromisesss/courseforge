@@ -3,6 +3,8 @@ package course
 import (
 	"strings"
 	"testing"
+
+	"github.com/paintingpromisesss/courseforge/internal/domain"
 )
 
 type validatable interface{ Validate() error }
@@ -15,30 +17,30 @@ func TestValidateInMemory(t *testing.T) {
 	}{
 		{
 			name:    "valid unit (theory only)",
-			entity:  &Unit{Slug: "u", Title: "T", Theory: "theory.md"},
+			entity:  &domain.Unit{Slug: "u", Title: "T", Theory: "theory.md"},
 			wantSub: "",
 		},
 		{
 			name:    "empty unit",
-			entity:  &Unit{Slug: "u", Title: "T"},
+			entity:  &domain.Unit{Slug: "u", Title: "T"},
 			wantSub: "unit is empty",
 		},
 		{
 			name:    "task without languages",
-			entity:  &Task{Slug: "k", Title: "T", Statement: "statement.md"},
+			entity:  &domain.Task{Slug: "k", Title: "T", Statement: "statement.md"},
 			wantSub: "at least one language",
 		},
 		{
 			name: "task language missing template",
-			entity: &Task{
+			entity: &domain.Task{
 				Slug: "k", Title: "T", Statement: "s.md",
-				Languages: map[string]Language{"go": {Tests: "x_test.go"}},
+				Languages: map[string]domain.Language{"go": {Tests: "x_test.go"}},
 			},
 			wantSub: "languages.go.template",
 		},
 		{
 			name:    "topic without units",
-			entity:  &Topic{Slug: "t", Title: "T"},
+			entity:  &domain.Topic{Slug: "t", Title: "T"},
 			wantSub: "at least one unit",
 		},
 	}
@@ -60,7 +62,7 @@ func TestValidateInMemory(t *testing.T) {
 }
 
 func TestValidateInMemoryNoDiskAccess(t *testing.T) {
-	u := &Unit{Slug: "u", Title: "T", Theory: "missing-on-disk.md"}
+	u := &domain.Unit{Slug: "u", Title: "T", Theory: "missing-on-disk.md"}
 	if err := u.Validate(); err != nil {
 		t.Fatalf("in-memory Validate should ignore file existence, got: %v", err)
 	}

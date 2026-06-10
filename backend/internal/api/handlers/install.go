@@ -1,12 +1,7 @@
-package api
+package handlers
 
 import (
-	"archive/tar"
-	"archive/zip"
-	"compress/bzip2"
-	"compress/gzip"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -16,7 +11,8 @@ import (
 	"sync"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/paintingpromisesss/courseforge/internal/runner"
+	"github.com/paintingpromisesss/courseforge/internal/api/dto"
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
 )
 
 // ── progress ─────────────────────────────────────────────────────────────────
@@ -42,21 +38,10 @@ func (p *installProgress) snapshot() (status string, progress int, message strin
 	return p.Status, p.Progress, p.Message
 }
 
-// ── handlers ─────────────────────────────────────────────────────────────────
-
-type InstallReq struct {
-	Lang    string   `json:"lang"`
-	Pkg     string   `json:"pkg,omitempty"`     // apt package name; mutually exclusive with URL
-	URL     string   `json:"url,omitempty"`     // archive URL; mutually exclusive with Pkg
-	BinPath string   `json:"bin_path"`          // binary name (apt) or relative path in archive
-	RunCmd  []string `json:"run_cmd"`           // may use {bin} placeholder
-	TestCmd []string `json:"test_cmd"`
-	Ext     string   `json:"ext"`
-	TestExt string   `json:"test_ext"`
-}
+// ── handlers ───────────────────────────────────────────────────────────────
 
 func (h *Handler) installRunner(w http.ResponseWriter, r *http.Request) {
-	var req InstallReq
+	var req dto.InstallReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -84,7 +69,7 @@ func (h *Handler) installRunner(w http.ResponseWriter, r *http.Request) {
 
 	go h.runInstall(req, prog)
 
-	h.writeJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
+	h.writeJSON(w, http.StatusAccepted, dto.StatusResp{Status: "started"})
 }
 
 func (h *Handler) getInstallStatus(w http.ResponseWriter, r *http.Request) {
@@ -96,16 +81,16 @@ func (h *Handler) getInstallStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	prog := val.(*installProgress)
 	status, progress, msg := prog.snapshot()
-	h.writeJSON(w, http.StatusOK, map[string]any{
-		"status":   status,
-		"progress": progress,
-		"message":  msg,
+	h.writeJSON(w, http.StatusOK, dto.InstallStatusResp{
+		Status:   status,
+		Progress: progress,
+		Message:  msg,
 	})
 }
 
 // ── install goroutine ─────────────────────────────────────────────────────────
 
-func (h *Handler) runInstall(req InstallReq, prog *installProgress) {
+func (h *Handler) runInstall(req dto.InstallReq, prog *installProgress) {
 	if req.Pkg != "" {
 		h.runAptInstall(req, prog)
 		return
@@ -113,7 +98,7 @@ func (h *Handler) runInstall(req InstallReq, prog *installProgress) {
 	h.runArchiveInstall(req, prog)
 }
 
-func (h *Handler) runAptInstall(req InstallReq, prog *installProgress) {
+func (h *Handler) runAptInstall(req dto.InstallReq, prog *installProgress) {
 	prog.set("installing", 10, "apt-get install -y "+req.Pkg)
 
 	cmd := exec.Command("apt-get", "install", "-y", req.Pkg)
@@ -151,7 +136,7 @@ func (h *Handler) runAptInstall(req InstallReq, prog *installProgress) {
 	prog.set("done", 100, "")
 }
 
-func (h *Handler) runArchiveInstall(req InstallReq, prog *installProgress) {
+func (h *Handler) runArchiveInstall(req dto.InstallReq, prog *installProgress) {
 	destDir := filepath.Join(h.runnersDir, req.Lang)
 	format := archiveFormat(req.URL)
 
@@ -264,106 +249,4 @@ func (h *Handler) runArchiveInstall(req InstallReq, prog *installProgress) {
 		TestExt: req.TestExt,
 	})
 	prog.set("done", 100, "")
-}
-
-// ── archive helpers ───────────────────────────────────────────────────────────
-
-func archiveFormat(url string) string {
-	u := strings.ToLower(url)
-	switch {
-	case strings.HasSuffix(u, ".tar.gz") || strings.HasSuffix(u, ".tgz"):
-		return "tar.gz"
-	case strings.HasSuffix(u, ".tar.bz2") || strings.HasSuffix(u, ".tbz2"):
-		return "tar.bz2"
-	case strings.HasSuffix(u, ".zip"):
-		return "zip"
-	default:
-		return ""
-	}
-}
-
-func extractTarGz(r io.Reader, destDir string) error {
-	gz, err := gzip.NewReader(r)
-	if err != nil {
-		return fmt.Errorf("gzip: %w", err)
-	}
-	defer gz.Close()
-	return extractTar(gz, destDir)
-}
-
-func extractTarBz2(r io.Reader, destDir string) error {
-	return extractTar(bzip2.NewReader(r), destDir)
-}
-
-func extractTar(r io.Reader, destDir string) error {
-	tr := tar.NewReader(r)
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("tar: %w", err)
-		}
-		clean := filepath.Join(destDir, filepath.Clean("/"+hdr.Name)[1:])
-		if !strings.HasPrefix(clean, destDir+string(os.PathSeparator)) && clean != destDir {
-			continue
-		}
-		switch hdr.Typeflag {
-		case tar.TypeDir:
-			_ = os.MkdirAll(clean, 0755)
-		case tar.TypeReg:
-			_ = os.MkdirAll(filepath.Dir(clean), 0755)
-			f, err := os.OpenFile(clean, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode))
-			if err != nil {
-				return err
-			}
-			_, err = io.Copy(f, tr)
-			f.Close()
-			if err != nil {
-				return err
-			}
-		case tar.TypeSymlink:
-			_ = os.Symlink(hdr.Linkname, clean)
-		}
-	}
-	return nil
-}
-
-func extractZip(f *os.File, destDir string) error {
-	info, err := f.Stat()
-	if err != nil {
-		return err
-	}
-	zr, err := zip.NewReader(f, info.Size())
-	if err != nil {
-		return fmt.Errorf("zip: %w", err)
-	}
-	for _, zf := range zr.File {
-		clean := filepath.Join(destDir, filepath.Clean("/"+zf.Name)[1:])
-		if !strings.HasPrefix(clean, destDir+string(os.PathSeparator)) && clean != destDir {
-			continue
-		}
-		if zf.FileInfo().IsDir() {
-			_ = os.MkdirAll(clean, 0755)
-			continue
-		}
-		_ = os.MkdirAll(filepath.Dir(clean), 0755)
-		rc, err := zf.Open()
-		if err != nil {
-			return err
-		}
-		out, err := os.OpenFile(clean, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, zf.Mode())
-		if err != nil {
-			rc.Close()
-			return err
-		}
-		_, err = io.Copy(out, rc)
-		out.Close()
-		rc.Close()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }

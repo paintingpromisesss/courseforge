@@ -1,4 +1,4 @@
-package api
+package handlers
 
 import (
 	"encoding/json"
@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/paintingpromisesss/courseforge/internal/course"
+	"github.com/paintingpromisesss/courseforge/internal/api/dto"
+	"github.com/paintingpromisesss/courseforge/internal/domain"
+	courseparser "github.com/paintingpromisesss/courseforge/internal/infrastructure/parser/course"
 )
 
 func (h *Handler) uploadCourse(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +110,7 @@ func (h *Handler) uploadCourse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusCreated, map[string]string{"slug": c.Slug})
+	h.writeJSON(w, http.StatusCreated, dto.SlugResp{Slug: c.Slug})
 }
 
 func uploadedRelativePaths(files []*multipart.FileHeader, paths []string) ([]string, error) {
@@ -143,9 +145,7 @@ func uploadedRelativePaths(files []*multipart.FileHeader, paths []string) ([]str
 }
 
 func (h *Handler) importCourse(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Path string `json:"path"`
-	}
+	var req dto.ImportCourseReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Path == "" {
 		h.writeError(w, http.StatusBadRequest, "JSON body with 'path' required")
 		return
@@ -186,11 +186,11 @@ func (h *Handler) importCourse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusCreated, map[string]string{"slug": c.Slug})
+	h.writeJSON(w, http.StatusCreated, dto.SlugResp{Slug: c.Slug})
 }
 
 func (h *Handler) inspectImportedCourse(dir string) (string, int, string) {
-	c, err := course.LoadOne(filepath.Dir(dir), filepath.Base(dir))
+	c, err := courseparser.LoadOne(filepath.Dir(dir), filepath.Base(dir))
 	if err != nil {
 		return "", http.StatusBadRequest, "invalid course: " + err.Error()
 	}
@@ -209,8 +209,8 @@ func (h *Handler) inspectImportedCourse(dir string) (string, int, string) {
 	return c.Slug, 0, ""
 }
 
-func (h *Handler) loadAndRegisterCourse(slug string) (*course.Course, error) {
-	c, err := course.LoadOne(h.coursesDir, slug)
+func (h *Handler) loadAndRegisterCourse(slug string) (*domain.Course, error) {
+	c, err := courseparser.LoadOne(h.coursesDir, slug)
 	if err != nil {
 		return nil, err
 	}

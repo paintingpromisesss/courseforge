@@ -1,4 +1,4 @@
-package api
+package handlers
 
 import (
 	"encoding/json"
@@ -10,34 +10,20 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/paintingpromisesss/courseforge/internal/runner"
+	"github.com/paintingpromisesss/courseforge/internal/api/dto"
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
 )
-
-type RunReq struct {
-	Language   string `json:"language" example:"go"`
-	Code       string `json:"code"     example:"package main\nfunc main() {}"`
-	TestCode   string `json:"test_code"`
-	TimeoutSec int    `json:"timeout_sec" example:"10"`
-}
-
-type RunResp struct {
-	Stdout     string `json:"stdout"`
-	Stderr     string `json:"stderr"`
-	ExitCode   int    `json:"exit_code"`
-	DurationMs int64  `json:"duration_ms"`
-	TimedOut   bool   `json:"timed_out"`
-}
 
 // @Summary Execute code
 // @Tags run
 // @Accept json
 // @Produce json
-// @Param request body RunReq true "Run request"
-// @Success 200 {object} RunResp
+// @Param request body dto.RunReq true "Run request"
+// @Success 200 {object} dto.RunResp
 // @Failure 400 {object} map[string]string
 // @Router /run [post]
 func (h *Handler) postRun(w http.ResponseWriter, r *http.Request) {
-	var req RunReq
+	var req dto.RunReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -58,7 +44,7 @@ func (h *Handler) postRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, RunResp{
+	h.writeJSON(w, http.StatusOK, dto.RunResp{
 		Stdout:     result.Stdout,
 		Stderr:     result.Stderr,
 		ExitCode:   result.ExitCode,
@@ -70,42 +56,29 @@ func (h *Handler) postRun(w http.ResponseWriter, r *http.Request) {
 // @Summary List registered language drivers
 // @Tags runners
 // @Produce json
-// @Success 200 {object} map[string]runner.LangDriver
+// @Success 200 {object} map[string]dto.RunnerDriver
 // @Router /runners [get]
 func (h *Handler) listRunners(w http.ResponseWriter, r *http.Request) {
-	h.writeJSON(w, http.StatusOK, h.runner.Drivers())
-}
-
-// AddDriverReq is the request body for adding a new language driver.
-type AddDriverReq struct {
-	Lang   string            `json:"lang"   example:"rust"`
-	Driver runner.LangDriver `json:"driver"`
-}
-
-// PatchDriverReq is the request body for partially updating a language driver.
-// Only non-nil fields are applied.
-type PatchDriverReq struct {
-	RunCmd  *[]string `json:"run_cmd"`
-	TestCmd *[]string `json:"test_cmd"`
-	Ext     *string   `json:"ext"`
-	TestExt *string   `json:"test_ext"`
+	h.writeJSON(w, http.StatusOK, dto.ToRunnerDrivers(h.runner.Drivers()))
 }
 
 // @Summary Add a new language driver
 // @Tags runners
 // @Accept json
-// @Param request body AddDriverReq true "Driver config"
+// @Param request body dto.AddRunnerReq true "Driver config"
 // @Success 204
 // @Failure 400 {object} map[string]string
 // @Failure 409 {object} map[string]string
 // @Router /runners [post]
 func (h *Handler) addRunner(w http.ResponseWriter, r *http.Request) {
-	var req AddDriverReq
+	var req dto.AddRunnerReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.Lang == "" || len(req.Driver.RunCmd) == 0 || req.Driver.Ext == "" {
+
+	driver := req.Driver.ToInfra()
+	if req.Lang == "" || len(driver.RunCmd) == 0 || driver.Ext == "" {
 		h.writeError(w, http.StatusBadRequest, "lang, driver.run_cmd and driver.ext are required")
 		return
 	}
@@ -113,12 +86,12 @@ func (h *Handler) addRunner(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusConflict, "driver already exists, use PATCH /runners/{lang} to update")
 		return
 	}
-	bin := req.Driver.RunCmd[0]
+	bin := driver.RunCmd[0]
 	if _, err := exec.LookPath(bin); err != nil {
 		h.writeError(w, http.StatusBadRequest, fmt.Sprintf("binary %q not found in PATH", bin))
 		return
 	}
-	h.runner.AddDriver(req.Lang, req.Driver)
+	h.runner.AddDriver(req.Lang, driver)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -126,7 +99,7 @@ func (h *Handler) addRunner(w http.ResponseWriter, r *http.Request) {
 // @Tags runners
 // @Accept json
 // @Param lang path string true "Language key (e.g. go)"
-// @Param request body PatchDriverReq true "Fields to update"
+// @Param request body dto.PatchRunnerReq true "Fields to update"
 // @Success 204
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
@@ -140,7 +113,7 @@ func (h *Handler) patchRunner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req PatchDriverReq
+	var req dto.PatchRunnerReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid request body")
 		return

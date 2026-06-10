@@ -1,4 +1,4 @@
-package progress
+package repo
 
 import (
 	"encoding/json"
@@ -6,35 +6,31 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/paintingpromisesss/courseforge/internal/domain"
 )
 
-// Progress tracks completed tasks for a single course.
-type Progress struct {
-	CourseSlug     string          `json:"course_slug"`
-	CompletedTasks map[string]bool `json:"completed_tasks"`
-}
-
-// Store reads and writes per-course progress.json files.
+// FileProgressRepository reads and writes per-course progress.json files.
 // Files live at {coursesDir}/{courseSlug}/progress.json.
-type Store struct {
+type FileProgressRepository struct {
 	mu         sync.Mutex
 	coursesDir string
 }
 
-func NewStore(coursesDir string) *Store {
-	return &Store{coursesDir: coursesDir}
+func NewFileProgressRepository(coursesDir string) *FileProgressRepository {
+	return &FileProgressRepository{coursesDir: coursesDir}
 }
 
 // Load returns progress for a course. Returns empty Progress if file doesn't exist yet.
 // courseDir is the path relative to coursesDir (may differ from courseSlug for catalog courses).
-func (s *Store) Load(courseDir, courseSlug string) (*Progress, error) {
+func (s *FileProgressRepository) Load(courseDir, courseSlug string) (*domain.Progress, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.load(courseDir, courseSlug)
 }
 
 // MarkDone marks taskSlug as completed and persists.
-func (s *Store) MarkDone(courseDir, courseSlug, taskSlug string) error {
+func (s *FileProgressRepository) MarkDone(courseDir, courseSlug, taskSlug string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -47,7 +43,7 @@ func (s *Store) MarkDone(courseDir, courseSlug, taskSlug string) error {
 }
 
 // MarkUndone marks taskSlug as not completed and persists.
-func (s *Store) MarkUndone(courseDir, courseSlug, taskSlug string) error {
+func (s *FileProgressRepository) MarkUndone(courseDir, courseSlug, taskSlug string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -60,11 +56,11 @@ func (s *Store) MarkUndone(courseDir, courseSlug, taskSlug string) error {
 }
 
 // load reads progress from disk. Must be called with mu held.
-func (s *Store) load(courseDir, courseSlug string) (*Progress, error) {
+func (s *FileProgressRepository) load(courseDir, courseSlug string) (*domain.Progress, error) {
 	path := s.progressPath(courseDir)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return &Progress{
+		return &domain.Progress{
 			CourseSlug:     courseSlug,
 			CompletedTasks: make(map[string]bool),
 		}, nil
@@ -73,7 +69,7 @@ func (s *Store) load(courseDir, courseSlug string) (*Progress, error) {
 		return nil, err
 	}
 
-	var p Progress
+	var p domain.Progress
 	if err := json.Unmarshal(data, &p); err != nil {
 		return nil, err
 	}
@@ -84,7 +80,7 @@ func (s *Store) load(courseDir, courseSlug string) (*Progress, error) {
 }
 
 // save writes progress atomically via rename. Must be called with mu held.
-func (s *Store) save(courseDir string, p *Progress) error {
+func (s *FileProgressRepository) save(courseDir string, p *domain.Progress) error {
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
 		return err
@@ -99,6 +95,6 @@ func (s *Store) save(courseDir string, p *Progress) error {
 	return os.Rename(tmp, path)
 }
 
-func (s *Store) progressPath(courseDir string) string {
+func (s *FileProgressRepository) progressPath(courseDir string) string {
 	return filepath.Join(s.coursesDir, courseDir, "progress.json")
 }

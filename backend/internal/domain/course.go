@@ -1,4 +1,4 @@
-package course
+package domain
 
 // Catalog groups related courses; identified by catalog.yaml in the folder.
 type Catalog struct {

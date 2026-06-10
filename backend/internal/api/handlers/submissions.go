@@ -1,37 +1,24 @@
-package api
+package handlers
 
 import (
 	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/paintingpromisesss/courseforge/internal/submission"
+	"github.com/paintingpromisesss/courseforge/internal/api/dto"
+	"github.com/paintingpromisesss/courseforge/internal/domain"
 )
-
-type CreateSubmissionReq struct {
-	CourseSlug  string `json:"course_slug"`
-	TaskSlug    string `json:"task_slug"`
-	Language    string `json:"language"`
-	Code        string `json:"code"`
-	Stdout      string `json:"stdout"`
-	Stderr      string `json:"stderr"`
-	ExitCode    int    `json:"exit_code"`
-	PassedTests int    `json:"passed_tests"`
-	TotalTests  int    `json:"total_tests"`
-	DurationMs  int64  `json:"duration_ms"`
-	TimedOut    bool   `json:"timed_out"`
-}
 
 // @Summary Save a submission
 // @Tags submissions
 // @Accept json
 // @Produce json
-// @Param request body CreateSubmissionReq true "Submission"
-// @Success 201 {object} submission.Submission
+// @Param request body dto.CreateSubmissionReq true "Submission"
+// @Success 201 {object} dto.SubmissionResp
 // @Failure 400 {object} map[string]string
 // @Router /submissions [post]
 func (h *Handler) createSubmission(w http.ResponseWriter, r *http.Request) {
-	var req CreateSubmissionReq
+	var req dto.CreateSubmissionReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -41,7 +28,7 @@ func (h *Handler) createSubmission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sub := &submission.Submission{
+	sub := &domain.Submission{
 		CourseSlug:  req.CourseSlug,
 		TaskSlug:    req.TaskSlug,
 		Language:    req.Language,
@@ -56,13 +43,13 @@ func (h *Handler) createSubmission(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:   time.Now().UTC(),
 	}
 
-	id, err := h.submissions.Insert(sub)
+	id, err := h.submissionsService.Create(sub)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "failed to save submission")
 		return
 	}
 	sub.ID = id
-	h.writeJSON(w, http.StatusCreated, sub)
+	h.writeJSON(w, http.StatusCreated, dto.ToSubmissionResp(*sub))
 }
 
 // @Summary List submissions for a task
@@ -70,7 +57,7 @@ func (h *Handler) createSubmission(w http.ResponseWriter, r *http.Request) {
 // @Produce json
 // @Param courseSlug query string true "Course slug"
 // @Param taskSlug   query string true "Task slug"
-// @Success 200 {array} submission.Submission
+// @Success 200 {array} dto.SubmissionResp
 // @Failure 400 {object} map[string]string
 // @Router /submissions [get]
 func (h *Handler) listSubmissions(w http.ResponseWriter, r *http.Request) {
@@ -81,13 +68,10 @@ func (h *Handler) listSubmissions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subs, err := h.submissions.List(courseSlug, taskSlug)
+	subs, err := h.submissionsService.List(courseSlug, taskSlug)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "failed to load submissions")
 		return
 	}
-	if subs == nil {
-		subs = []submission.Submission{}
-	}
-	h.writeJSON(w, http.StatusOK, subs)
+	h.writeJSON(w, http.StatusOK, dto.ToSubmissionResponses(subs))
 }

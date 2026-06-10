@@ -1,36 +1,20 @@
-package submission
+package repo
 
 import (
 	"database/sql"
 	"time"
 
+	"github.com/paintingpromisesss/courseforge/internal/domain"
 	_ "modernc.org/sqlite"
 )
 
-// Submission is a single code run saved by the user.
-type Submission struct {
-	ID          int64     `json:"id"`
-	CourseSlug  string    `json:"course_slug"`
-	TaskSlug    string    `json:"task_slug"`
-	Language    string    `json:"language"`
-	Code        string    `json:"code"`
-	Stdout      string    `json:"stdout"`
-	Stderr      string    `json:"stderr"`
-	ExitCode    int       `json:"exit_code"`
-	PassedTests int       `json:"passed_tests"`
-	TotalTests  int       `json:"total_tests"`
-	DurationMs  int64     `json:"duration_ms"`
-	TimedOut    bool      `json:"timed_out"`
-	CreatedAt   time.Time `json:"created_at"`
-}
-
-// Store persists submissions in a SQLite database.
-type Store struct {
+// submissionRepository persists submissions in a SQLite database.
+type submissionRepository struct {
 	db *sql.DB
 }
 
 // New opens (or creates) the SQLite file at path and migrates the schema.
-func New(path string) (*Store, error) {
+func NewSubmissionRepository(path string) (*submissionRepository, error) {
 	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode=WAL&_pragma=foreign_keys=on")
 	if err != nil {
 		return nil, err
@@ -39,11 +23,11 @@ func New(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Store{db: db}, nil
+	return &submissionRepository{db: db}, nil
 }
 
 // Close releases the database connection.
-func (s *Store) Close() error {
+func (s *submissionRepository) Close() error {
 	return s.db.Close()
 }
 
@@ -73,7 +57,7 @@ func migrate(db *sql.DB) error {
 }
 
 // Insert saves a submission and returns the assigned ID.
-func (s *Store) Insert(sub *Submission) (int64, error) {
+func (s *submissionRepository) Insert(sub *domain.Submission) (int64, error) {
 	res, err := s.db.Exec(`
 		INSERT INTO submissions
 			(course_slug, task_slug, language, code, stdout, stderr,
@@ -91,7 +75,7 @@ func (s *Store) Insert(sub *Submission) (int64, error) {
 }
 
 // List returns submissions for a task ordered by newest first.
-func (s *Store) List(courseSlug, taskSlug string) ([]Submission, error) {
+func (s *submissionRepository) List(courseSlug, taskSlug string) ([]domain.Submission, error) {
 	rows, err := s.db.Query(`
 		SELECT id, course_slug, task_slug, language, code, stdout, stderr,
 		       exit_code, passed_tests, total_tests, duration_ms, timed_out, created_at
@@ -105,9 +89,9 @@ func (s *Store) List(courseSlug, taskSlug string) ([]Submission, error) {
 	}
 	defer rows.Close()
 
-	var subs []Submission
+	var subs []domain.Submission
 	for rows.Next() {
-		var sub Submission
+		var sub domain.Submission
 		var timedOut int
 		var createdAt string
 		if err := rows.Scan(

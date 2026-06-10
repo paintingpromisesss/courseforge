@@ -7,7 +7,8 @@ import (
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
-	"github.com/paintingpromisesss/courseforge/internal/course"
+	"github.com/paintingpromisesss/courseforge/internal/domain"
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/parser/course"
 )
 
 func main() {
@@ -56,7 +57,7 @@ type courseStats struct {
 	tasks  int
 }
 
-func calcStats(c *course.Course) courseStats {
+func calcStats(c *domain.Course) courseStats {
 	s := courseStats{tracks: len(c.Tracks)}
 	for _, tr := range c.Tracks {
 		s.topics += len(tr.Topics)
@@ -73,7 +74,7 @@ func calcStats(c *course.Course) courseStats {
 	return s
 }
 
-func printCatalog(cat *course.Catalog) {
+func printCatalog(cat *domain.Catalog) {
 	fmt.Println()
 	fmt.Printf("  %s  %s\n",
 		text.Bold.Sprint(cat.Title),
@@ -103,7 +104,7 @@ func printCatalog(cat *course.Catalog) {
 	fmt.Println()
 }
 
-func printCourse(c *course.Course) {
+func printCourse(c *domain.Course) {
 	fmt.Println()
 	fmt.Printf("  %s  %s\n",
 		text.Bold.Sprint(c.Title),
