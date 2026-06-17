@@ -1,5 +1,6 @@
 param(
-  [string]$Host = '127.0.0.1',
+  [Alias('Host')]
+  [string]$BindHost = '127.0.0.1',
   [int]$Port = 8080,
   [string]$CoursesDir = '',
   [string]$DataDir = '',
@@ -24,8 +25,10 @@ if ($Build -or -not (Test-Path $BinaryPath) -or -not (Test-Path (Join-Path $Fron
 }
 
 & $BinaryPath `
-  "--host=$Host" `
+  "--host=$BindHost" `
   "--port=$Port" `
   "--courses-dir=$CoursesDir" `
   "--data-dir=$DataDir" `
   "--frontend-dir=$FrontendDir"
+
+exit $LASTEXITCODE

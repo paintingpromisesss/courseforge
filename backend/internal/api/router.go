@@ -12,7 +12,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/paintingpromisesss/courseforge/internal/api/handlers"
-	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 type RouterOptions struct {
@@ -26,9 +25,7 @@ func NewRouter(h *handlers.Handler, opts RouterOptions) (http.Handler, error) {
 	r.Use(middleware.Recoverer)
 	r.Use(corsMiddleware)
 
-	r.Get("/swagger/*", httpSwagger.Handler(
-		httpSwagger.URL("/swagger/doc.json"),
-	))
+	registerSwagger(r)
 
 	r.Route("/api", func(r chi.Router) {
 		h.RegisterRoutes(r)

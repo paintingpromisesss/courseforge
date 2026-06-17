@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	_ "github.com/paintingpromisesss/courseforge/docs"
 	"github.com/paintingpromisesss/courseforge/internal/api"
 	"github.com/paintingpromisesss/courseforge/internal/api/handlers"
 	"github.com/paintingpromisesss/courseforge/internal/application/service"
@@ -59,7 +58,9 @@ func Run(cfg *config.Config) error {
 	}
 
 	log.Printf("listening on http://%s", displayAddr(cfg.Addr))
-	log.Printf("swagger UI: http://%s/swagger/index.html", displayAddr(cfg.Addr))
+	if swaggerEnabled {
+		log.Printf("swagger UI: http://%s/swagger/index.html", displayAddr(cfg.Addr))
+	}
 	if cfg.FrontendDir != "" {
 		log.Printf("frontend dir: %s", cfg.FrontendDir)
 	}

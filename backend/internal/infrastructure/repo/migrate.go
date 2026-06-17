@@ -1,12 +1,12 @@
 package repo
 
 import (
+	"database/sql"
 	"embed"
 	"fmt"
-	"path/filepath"
 
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/sqlite3"
+	migratesqlite "github.com/golang-migrate/migrate/v4/database/sqlite"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
 
@@ -19,10 +19,23 @@ func RunMigrations(path string) error {
 		return fmt.Errorf("failed to create source driver: %w", err)
 	}
 
-	databaseURL := fmt.Sprintf("sqlite3://%s", filepath.ToSlash(path))
-
-	migrateInstance, err := migrate.NewWithSourceInstance("iofs", sourceDriver, databaseURL)
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
+		sourceDriver.Close()
+		return fmt.Errorf("failed to open migration database: %w", err)
+	}
+
+	databaseDriver, err := migratesqlite.WithInstance(db, &migratesqlite.Config{})
+	if err != nil {
+		sourceDriver.Close()
+		db.Close()
+		return fmt.Errorf("failed to create migration database driver: %w", err)
+	}
+
+	migrateInstance, err := migrate.NewWithInstance("iofs", sourceDriver, "sqlite", databaseDriver)
+	if err != nil {
+		sourceDriver.Close()
+		databaseDriver.Close()
 		return fmt.Errorf("failed to create migrate instance: %w", err)
 	}
 
@@ -33,5 +46,4 @@ func RunMigrations(path string) error {
 	}
 
 	return nil
-
 }
