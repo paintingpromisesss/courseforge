@@ -9,7 +9,7 @@ browser.
 ### Windows
 
 ```powershell
-.\scripts\run.ps1 -Port 8080
+.\scripts\run.cmd -Port 8080
 ```
 
 ### Linux / WSL
@@ -25,7 +25,7 @@ Open [http://localhost:8080](http://localhost:8080).
 ### Build
 
 ```powershell
-.\scripts\build.ps1
+.\scripts\build.cmd
 ```
 
 ```bash
@@ -35,7 +35,7 @@ Open [http://localhost:8080](http://localhost:8080).
 ### Install
 
 ```powershell
-.\scripts\install.ps1
+.\scripts\install.cmd
 ```
 
 ```bash
