@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/paintingpromisesss/courseforge/internal/config"
 	"github.com/paintingpromisesss/courseforge/internal/di"
 )
 
@@ -19,17 +20,16 @@ func main() {
 	frontendDir := flag.String("frontend-dir", defaultFrontendDir(), "directory with built frontend assets")
 	flag.Parse()
 
-	cfg := &di.Config{
+	cfg := &config.Config{
 		DataDir:     *dataDir,
 		CoursesDir:  *coursesDir,
-		RunnersDir:  filepath.Join(*dataDir, "runners", "bin"),
-		RunnersJSON: filepath.Join(*dataDir, "runners.json"),
+		RunnersJSON: config.DefaultRunnersJSON(*dataDir),
 		FrontendDir: *frontendDir,
 		Addr:        *host + ":" + strconv.Itoa(*port),
 		DBPath:      *dbPath,
 	}
 	if cfg.DBPath == "" {
-		cfg.DBPath = filepath.Join(*dataDir, "courseforge.db")
+		cfg.DBPath = config.DefaultDBPath(*dataDir)
 	}
 
 	if err := di.Run(cfg); err != nil {

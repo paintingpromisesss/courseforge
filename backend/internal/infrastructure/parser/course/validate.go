@@ -1,7 +1,6 @@
 package course
 
 import (
-	"errors"
 	"io/fs"
 	"path"
 
@@ -20,6 +19,23 @@ func validateSlug(manifest, folder, declared string) error {
 			"must equal folder name "+quote(folder)+", got "+quote(declared))
 	}
 	return nil
+}
+
+// validateCatalogMeta checks a catalog manifest's slug (required, equal to the
+// folder name) and title. Course-list rules are left to the caller, since
+// reference-style catalogs may legitimately be empty.
+func validateCatalogMeta(manifest, root string, c *domain.Catalog) []error {
+	var errs []error
+	if c.Slug == "" {
+		errs = append(errs, errField(manifest, "slug", "is required"))
+	} else if base := path.Base(root); c.Slug != base {
+		errs = append(errs, errField(manifest, "slug",
+			"must equal folder name "+quote(base)+", got "+quote(c.Slug)))
+	}
+	if c.Title == "" {
+		errs = append(errs, errField(manifest, "title", "is required"))
+	}
+	return errs
 }
 
 func validateCourse(c *domain.Course) error {
@@ -129,11 +145,4 @@ func validateNoOrphanDirs(fsys fs.FS, dir, manifest string, declared []string, e
 		}
 	}
 	return errs
-}
-
-func join(errs []error) error {
-	if len(errs) == 0 {
-		return nil
-	}
-	return errors.Join(errs...)
 }

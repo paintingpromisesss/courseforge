@@ -1,6 +1,8 @@
 package service
 
 import (
+	"fmt"
+
 	"github.com/paintingpromisesss/courseforge/internal/domain"
 	"go.uber.org/zap"
 )
@@ -26,7 +28,7 @@ func (s *SubmissionService) Create(sub *domain.Submission) (int64, error) {
 	id, err := s.repo.Insert(sub)
 	if err != nil {
 		s.logger.Error("failed to insert submission", zap.Error(err))
-		return 0, err
+		return 0, fmt.Errorf("create submission: %w", err)
 	}
 
 	return id, nil
@@ -41,7 +43,7 @@ func (s *SubmissionService) List(courseSlug, taskSlug string) ([]domain.Submissi
 			zap.String("task_slug", taskSlug),
 			zap.Error(err),
 		)
-		return nil, err
+		return nil, fmt.Errorf("list submissions: %w", err)
 	}
 
 	return submissions, nil

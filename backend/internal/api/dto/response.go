@@ -10,14 +10,11 @@ type SlugResp struct {
 	Slug string `json:"slug"`
 }
 
-type StatusResp struct {
-	Status string `json:"status"`
-}
-
-type InstallStatusResp struct {
-	Status   string `json:"status"`
-	Progress int    `json:"progress"`
-	Message  string `json:"message,omitempty"`
+type DetectResp struct {
+	Status  string `json:"status"` // ok | broken | missing
+	Binary  string `json:"binary"`
+	Version string `json:"version,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 type ProgressResp struct {

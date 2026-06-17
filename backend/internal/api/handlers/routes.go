@@ -4,6 +4,7 @@ import "github.com/go-chi/chi/v5"
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/courses", h.listCourses)
+	r.Get("/catalogs", h.listCatalogs)
 	r.Get("/courses/{courseSlug}", h.getCourse)
 
 	r.Get("/courses/{courseSlug}/tracks/{trackSlug}/topics/{topicSlug}/units/{unitSlug}/theory", h.getTheory)
@@ -20,14 +21,14 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Post("/run", h.postRun)
 
 	r.Post("/courses/upload", h.uploadCourse)
-	r.Post("/courses/import", h.importCourse)
+	r.Delete("/courses/{courseSlug}", h.deleteCourse)
+	r.Post("/catalogs", h.createCatalog)
+	r.Patch("/catalogs/{catalogSlug}", h.patchCatalog)
+	r.Delete("/catalogs/{catalogSlug}", h.deleteCatalog)
 
 	r.Get("/runners", h.listRunners)
-	r.Post("/runners", h.addRunner)
 	r.Patch("/runners/{lang}", h.patchRunner)
-	r.Delete("/runners/{lang}", h.deleteRunner)
-	r.Post("/runners/install", h.installRunner)
-	r.Get("/runners/install/{lang}/status", h.getInstallStatus)
+	r.Post("/runners/{lang}/detect", h.detectRunner)
 
 	r.Get("/submissions", h.listSubmissions)
 	r.Post("/submissions", h.createSubmission)

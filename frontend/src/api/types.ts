@@ -3,6 +3,16 @@ export interface CourseItem {
   title: string;
   description: string;
   language: string;
+  catalog_slug?: string;
+  theory_count: number;
+  task_count: number;
+}
+
+export interface CatalogItem {
+  slug: string;
+  title: string;
+  description: string;
+  courses: CourseItem[];
 }
 
 export interface TaskItem {
@@ -56,20 +66,10 @@ export interface LangDriver {
   test_ext: string;
 }
 
-export interface InstallReq {
-  lang: string;
-  pkg?: string;
-  url?: string;
-  bin_path: string;
-  run_cmd: string[];
-  test_cmd: string[];
-  ext: string;
-  test_ext: string;
-}
-
-export interface InstallStatus {
-  status: 'downloading' | 'extracting' | 'installing' | 'done' | 'error';
-  progress: number;
+export interface RunnerStatus {
+  status: 'ok' | 'broken' | 'missing';
+  binary: string;
+  version?: string;
   message?: string;
 }
 

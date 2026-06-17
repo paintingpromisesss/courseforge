@@ -6,7 +6,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api': 'http://127.0.0.1:8080',
+      '/api': {
+        target: 'http://127.0.0.1:8080',
+        timeout: 300000,
+        proxyTimeout: 300000,
+      },
       '/swagger': 'http://127.0.0.1:8080',
     },
   },

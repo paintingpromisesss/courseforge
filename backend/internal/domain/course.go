@@ -7,6 +7,7 @@ type Catalog struct {
 	Description string   `yaml:"description"`
 	CourseSlugs []string `yaml:"courses"`
 
+	Dir     string    `yaml:"-"` // path relative to coursesDir, set by loaders
 	Courses []*Course `yaml:"-"` // populated in CourseSlugs order
 }
 
@@ -86,9 +87,9 @@ func (c *Course) FindTrack(slug string) *Track {
 }
 
 func (t *Track) FindTopic(slug string) *Topic {
-	for _, p := range t.Topics {
-		if p.Slug == slug {
-			return p
+	for _, tp := range t.Topics {
+		if tp.Slug == slug {
+			return tp
 		}
 	}
 	return nil

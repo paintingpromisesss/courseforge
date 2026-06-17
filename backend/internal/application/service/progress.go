@@ -1,7 +1,6 @@
 package service
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/paintingpromisesss/courseforge/internal/domain"
@@ -27,14 +26,6 @@ func NewProgressService(repo progressRepository, logger *zap.Logger) *ProgressSe
 }
 
 func (s *ProgressService) Load(courseDir, courseSlug string) (*domain.Progress, error) {
-	if courseDir == "" {
-		return nil, errors.New("course dir is required")
-	}
-
-	if courseSlug == "" {
-		return nil, errors.New("course slug is required")
-	}
-
 	progress, err := s.repo.Load(courseDir, courseSlug)
 	if err != nil {
 		s.logger.Error(
@@ -51,21 +42,9 @@ func (s *ProgressService) Load(courseDir, courseSlug string) (*domain.Progress, 
 }
 
 func (s *ProgressService) MarkDone(courseDir, courseSlug, taskSlug string) error {
-	if courseDir == "" {
-		return errors.New("course dir is required")
-	}
-
-	if courseSlug == "" {
-		return errors.New("course slug is required")
-	}
-
-	if taskSlug == "" {
-		return errors.New("task slug is required")
-	}
-
 	if err := s.repo.MarkDone(courseDir, courseSlug, taskSlug); err != nil {
 		s.logger.Error(
-			"failed to mark task as done",
+			"failed to mark task done",
 			zap.String("course_dir", courseDir),
 			zap.String("course_slug", courseSlug),
 			zap.String("task_slug", taskSlug),
@@ -79,21 +58,9 @@ func (s *ProgressService) MarkDone(courseDir, courseSlug, taskSlug string) error
 }
 
 func (s *ProgressService) MarkUndone(courseDir, courseSlug, taskSlug string) error {
-	if courseDir == "" {
-		return errors.New("course dir is required")
-	}
-
-	if courseSlug == "" {
-		return errors.New("course slug is required")
-	}
-
-	if taskSlug == "" {
-		return errors.New("task slug is required")
-	}
-
 	if err := s.repo.MarkUndone(courseDir, courseSlug, taskSlug); err != nil {
 		s.logger.Error(
-			"failed to mark task as undone",
+			"failed to mark task undone",
 			zap.String("course_dir", courseDir),
 			zap.String("course_slug", courseSlug),
 			zap.String("task_slug", taskSlug),

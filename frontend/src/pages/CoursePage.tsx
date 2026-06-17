@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { motion } from 'framer-motion';
 import { useParams, useNavigate, Outlet } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
@@ -187,17 +188,32 @@ export function CoursePage() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      <Sidebar
-        tracks={course.tracks}
-        done={done}
-        activeTaskSlug={taskSlug}
-        activeUnitSlug={unitSlug}
-        onTask={handleTask}
-        onTheory={handleTheory}
-      />
-      <main ref={mainRef} className="flex-1 overflow-auto">
+      <motion.div
+        className="shrink-0 h-full"
+        initial={{ x: -28, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: -28, opacity: 0 }}
+        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <Sidebar
+          tracks={course.tracks}
+          done={done}
+          activeTaskSlug={taskSlug}
+          activeUnitSlug={unitSlug}
+          onTask={handleTask}
+          onTheory={handleTheory}
+        />
+      </motion.div>
+      <motion.main
+        ref={mainRef}
+        className="flex-1 overflow-auto"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 12, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
+        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1], delay: 0.06 }}
+      >
         <Outlet context={{ mainRef } satisfies CoursePageContext} />
-      </main>
+      </motion.main>
     </div>
   );
 }

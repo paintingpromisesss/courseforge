@@ -35,7 +35,7 @@ func (h *Handler) getProgress(w http.ResponseWriter, r *http.Request) {
 // @Accept json
 // @Param courseSlug path string true "Course slug"
 // @Param taskSlug path string true "Task slug"
-// @Param request body dto.ProgressUpdate true "Update"
+// @Param request body dto.ProgressUpdateReq true "Update"
 // @Success 204
 // @Failure 400 {object} map[string]string
 // @Router /progress/{courseSlug}/tasks/{taskSlug} [put]
@@ -49,7 +49,7 @@ func (h *Handler) updateProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req dto.ProgressUpdate
+	var req dto.ProgressUpdateReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid request body")
 		return

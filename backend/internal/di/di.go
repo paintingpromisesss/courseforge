@@ -11,6 +11,7 @@ import (
 	"github.com/paintingpromisesss/courseforge/internal/api"
 	"github.com/paintingpromisesss/courseforge/internal/api/handlers"
 	"github.com/paintingpromisesss/courseforge/internal/application/service"
+	"github.com/paintingpromisesss/courseforge/internal/config"
 
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/parser/course"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
@@ -18,8 +19,8 @@ import (
 	"github.com/paintingpromisesss/courseforge/logger"
 )
 
-func Run(cfg *Config) error {
-	for _, dir := range []string{cfg.DataDir, cfg.CoursesDir, cfg.RunnersDir} {
+func Run(cfg *config.Config) error {
+	for _, dir := range []string{cfg.DataDir, cfg.CoursesDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("create dir %s: %w", dir, err)
 		}
@@ -27,11 +28,11 @@ func Run(cfg *Config) error {
 
 	logger := logger.New()
 
-	courses, err := course.LoadAll(cfg.CoursesDir)
+	courses, catalogs, err := course.LoadAll(cfg.CoursesDir)
 	if err != nil {
 		return fmt.Errorf("load courses: %w", err)
 	}
-	log.Printf("loaded %d course(s)", len(courses))
+	log.Printf("loaded %d course(s) in %d catalog(s)", len(courses), len(catalogs))
 
 	r := runner.New()
 	if err := r.UseFile(cfg.RunnersJSON); err != nil {
@@ -41,15 +42,16 @@ func Run(cfg *Config) error {
 
 	ps := service.NewProgressService(pr, logger)
 
-	sr, err := repo.NewSubmissionRepository(cfg.DBPath)
+	db, err := repo.NewDB(cfg.DBPath)
 	if err != nil {
 		return fmt.Errorf("open submissions db: %w", err)
 	}
+	sr := repo.NewSubmissionRepository(db)
 	defer sr.Close()
 
 	ss := service.NewSubmissionService(sr, logger)
 
-	h := handlers.New(cfg.CoursesDir, cfg.RunnersDir, courses, r, ps, ss)
+	h := handlers.New(cfg.CoursesDir, courses, catalogs, r, ps, ss)
 
 	router, err := api.NewRouter(h, api.RouterOptions{FrontendDir: cfg.FrontendDir})
 	if err != nil {

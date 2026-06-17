@@ -11,6 +11,16 @@ type CourseItem struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Language    string `json:"language"`
+	CatalogSlug string `json:"catalog_slug,omitempty"`
+	TheoryCount int    `json:"theory_count"`
+	TaskCount   int    `json:"task_count"`
+}
+
+type CatalogItem struct {
+	Slug        string       `json:"slug"`
+	Title       string       `json:"title"`
+	Description string       `json:"description"`
+	Courses     []CourseItem `json:"courses"`
 }
 
 type CourseDetail struct {
@@ -49,11 +59,40 @@ type TaskItem struct {
 }
 
 func ToCourseItem(c *domain.Course) CourseItem {
+	theory, tasks := 0, 0
+	for _, t := range c.Tracks {
+		for _, p := range t.Topics {
+			for _, u := range p.Units {
+				if u.Theory != "" {
+					theory++
+				}
+				tasks += len(u.Tasks)
+			}
+		}
+	}
 	return CourseItem{
 		Slug:        c.Slug,
 		Title:       c.Title,
 		Description: c.Description,
 		Language:    c.Language,
+		TheoryCount: theory,
+		TaskCount:   tasks,
+	}
+}
+
+func ToCatalogItem(cat *domain.Catalog) CatalogItem {
+	courses := make([]CourseItem, 0, len(cat.Courses))
+	for _, c := range cat.Courses {
+		item := ToCourseItem(c)
+		item.CatalogSlug = cat.Slug
+		courses = append(courses, item)
+	}
+	sort.Slice(courses, func(i, j int) bool { return courses[i].Slug < courses[j].Slug })
+	return CatalogItem{
+		Slug:        cat.Slug,
+		Title:       cat.Title,
+		Description: cat.Description,
+		Courses:     courses,
 	}
 }
 

@@ -3,129 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { api } from '../api/client';
-import type { LangDriver } from '../api/types';
+import type { LangDriver, RunnerStatus } from '../api/types';
 import { useTheme } from '../context/ThemeContext';
-import { ProgressBar } from './ui/ProgressBar';
-
-// ── templates ─────────────────────────────────────────────────────────────────
-
-interface Template {
-  id: string;
-  name: string;
-  defaultUrl: string;
-  urlHint: string;
-  pkg?: string;      // apt package name for systems without pre-built binary
-  binPath: string;
-  runCmd: string[];
-  testCmd: string[];
-  ext: string;
-  testExt: string;
-}
-
-const TEMPLATES: Template[] = [
-  {
-    id: 'go', name: 'Go',
-    defaultUrl: 'https://go.dev/dl/go1.22.4.linux-amd64.tar.gz',
-    urlHint: 'https://go.dev/dl/',
-    binPath: 'bin/go',
-    runCmd: ['{bin}', 'run', '{file}'],
-    testCmd: ['{bin}', 'test', '-v', '{file}'],
-    ext: '.go', testExt: '_test.go',
-  },
-  {
-    id: 'javascript', name: 'Node.js',
-    defaultUrl: 'https://nodejs.org/dist/v20.13.1/node-v20.13.1-linux-x64.tar.gz',
-    urlHint: 'https://nodejs.org/dist/',
-    binPath: 'bin/node',
-    runCmd: ['{bin}', '{file}'],
-    testCmd: ['{bin}', '--test', '{testfile}'],
-    ext: '.js', testExt: '.test.js',
-  },
-  {
-    id: 'python', name: 'Python (PyPy)',
-    defaultUrl: 'https://downloads.python.org/pypy/pypy3.10-v7.3.16-linux64.tar.bz2',
-    urlHint: 'https://downloads.python.org/pypy/',
-    binPath: 'bin/pypy3',
-    runCmd: ['{bin}', '{file}'],
-    testCmd: ['{bin}', '-m', 'pytest', '{testfile}', '-q'],
-    ext: '.py', testExt: '_test.py',
-  },
-  {
-    id: 'java', name: 'Java (Temurin 21)',
-    defaultUrl: 'https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.3%2B9/OpenJDK21U-jdk_x64_linux_hotspot_21.0.3_9.tar.gz',
-    urlHint: 'https://github.com/adoptium/temurin21-binaries/releases',
-    binPath: 'bin/java',
-    runCmd: ['{bin}', '{file}'],
-    testCmd: [],
-    ext: '.java', testExt: '',
-  },
-  {
-    id: 'kotlin', name: 'Kotlin',
-    defaultUrl: 'https://github.com/JetBrains/kotlin/releases/download/v1.9.23/kotlin-compiler-1.9.23.zip',
-    urlHint: 'https://github.com/JetBrains/kotlin/releases',
-    binPath: 'bin/kotlinc',
-    runCmd: ['{bin}', '-script', '{file}'],
-    testCmd: [],
-    ext: '.kts', testExt: '',
-  },
-  {
-    id: 'typescript', name: 'TypeScript (Deno)',
-    defaultUrl: 'https://github.com/denoland/deno/releases/download/v1.43.6/deno-x86_64-unknown-linux-gnu.zip',
-    urlHint: 'https://github.com/denoland/deno/releases',
-    binPath: 'deno',
-    runCmd: ['{bin}', 'run', '--allow-all', '{file}'],
-    testCmd: ['{bin}', 'test', '--allow-all', '{file}'],
-    ext: '.ts', testExt: '_test.ts',
-  },
-  {
-    id: 'ruby', name: 'Ruby (TruffleRuby)',
-    defaultUrl: 'https://github.com/oracle/truffleruby/releases/download/graal-24.0.1/truffleruby-24.0.1-linux-amd64.tar.gz',
-    urlHint: 'https://github.com/oracle/truffleruby/releases',
-    binPath: 'bin/ruby',
-    runCmd: ['{bin}', '{file}'],
-    testCmd: ['{bin}', '{testfile}'],
-    ext: '.rb', testExt: '_test.rb',
-  },
-  {
-    id: 'csharp', name: 'C# (.NET)',
-    defaultUrl: 'https://dotnetcli.blob.core.windows.net/dotnet/Sdk/8.0.300/dotnet-sdk-8.0.300-linux-x64.tar.gz',
-    urlHint: 'https://dotnet.microsoft.com/download',
-    binPath: 'dotnet',
-    runCmd: ['{bin}', 'csi', '{file}'],
-    testCmd: [],
-    ext: '.csx', testExt: '',
-  },
-  {
-    id: 'rust', name: 'Rust',
-    defaultUrl: '',
-    urlHint: 'https://...',
-    pkg: 'rustc',
-    binPath: 'rustc',
-    runCmd: ['sh', '-c', '{bin} {file} -o /tmp/cf_out_$$ && /tmp/cf_out_$$'],
-    testCmd: [],
-    ext: '.rs', testExt: '',
-  },
-  {
-    id: 'cpp', name: 'C++',
-    defaultUrl: '',
-    urlHint: 'https://...',
-    pkg: 'g++',
-    binPath: 'g++',
-    runCmd: ['sh', '-c', '{bin} {file} -o /tmp/cf_out_$$ && /tmp/cf_out_$$'],
-    testCmd: [],
-    ext: '.cpp', testExt: '',
-  },
-  {
-    id: 'c', name: 'C',
-    defaultUrl: '',
-    urlHint: 'https://...',
-    pkg: 'gcc',
-    binPath: 'gcc',
-    runCmd: ['sh', '-c', '{bin} {file} -o /tmp/cf_out_$$ && /tmp/cf_out_$$'],
-    testCmd: [],
-    ext: '.c', testExt: '',
-  },
-];
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -191,487 +70,498 @@ function ThemeSection() {
 
 // ── courses ───────────────────────────────────────────────────────────────────
 
+type ImportJob = { id: number; name: string; status: 'pending' | 'ok' | 'error'; error?: string };
+// name is known synchronously (for instant UI); files are read lazily on import.
+type ImportSource = { name: string; load: () => Promise<{ file: File; path: string }[]> };
+
+// Recursively read a dropped FileSystemEntry into root-prefixed {file,path} pairs.
+function readEntry(entry: any, prefix: string): Promise<{ file: File; path: string }[]> {
+  if (entry.isFile) {
+    return new Promise((resolve) =>
+      entry.file((f: File) => resolve([{ file: f, path: prefix + entry.name }])),
+    );
+  }
+  const reader = entry.createReader();
+  return new Promise((resolve) => {
+    const collected: any[] = [];
+    const readBatch = () =>
+      // readEntries returns at most ~100 entries per call, so loop until empty
+      reader.readEntries(async (batch: any[]) => {
+        if (!batch.length) {
+          const nested = await Promise.all(collected.map((e) => readEntry(e, prefix + entry.name + '/')));
+          resolve(nested.flat());
+          return;
+        }
+        collected.push(...batch);
+        readBatch();
+      });
+    readBatch();
+  });
+}
+
+// Each dropped directory becomes one import source (a course, or a catalog folder).
+// Entries are captured synchronously (the DataTransfer is neutered after the handler);
+// file contents are read lazily so the UI can show pending jobs immediately.
+function sourcesFromDataTransfer(items: DataTransferItemList): ImportSource[] {
+  return Array.from(items)
+    .map((it) => it.webkitGetAsEntry?.())
+    .filter((e: any) => e && e.isDirectory)
+    .map((e: any) => ({ name: e.name, load: () => readEntry(e, '') }));
+}
+
+// A webkitdirectory picker yields files grouped under their first path segment.
+function sourcesFromInput(list: FileList): ImportSource[] {
+  const byRoot = new Map<string, { file: File; path: string }[]>();
+  for (const file of Array.from(list)) {
+    const path = file.webkitRelativePath || file.name;
+    const root = path.split('/')[0];
+    if (!byRoot.has(root)) byRoot.set(root, []);
+    byRoot.get(root)!.push({ file, path });
+  }
+  return [...byRoot.entries()].map(([name, files]) => ({ name, load: async () => files }));
+}
+
 function CoursesSection() {
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
-  const [serverPath, setServerPath] = useState('');
-  const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [jobs, setJobs] = useState<ImportJob[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const idRef = useRef(0);
 
-  const uploadMut = useMutation({
-    mutationFn: () => api.uploadCourse(selectedFiles!),
-    onSuccess: (data) => {
-      setUploadMsg({ ok: true, text: `Курс «${data.slug}» загружен` });
-      setSelectedFiles(null);
-      qc.invalidateQueries({ queryKey: ['courses'] });
-    },
-    onError: (e: Error) => setUploadMsg({ ok: false, text: e.message }),
-  });
+  const allDone = jobs.length > 0 && jobs.every((j) => j.status !== 'pending');
 
-  const importMut = useMutation({
-    mutationFn: () => api.importCourse(serverPath),
-    onSuccess: (data) => {
-      setImportMsg({ ok: true, text: `Курс «${data.slug}» импортирован` });
-      setServerPath('');
-      qc.invalidateQueries({ queryKey: ['courses'] });
-    },
-    onError: (e: Error) => setImportMsg({ ok: false, text: e.message }),
-  });
+  const runImports = async (sources: ImportSource[]) => {
+    if (!sources.length) return;
+    const start = idRef.current;
+    idRef.current = start + sources.length;
+    // show pending jobs immediately (names are known sync); read files per-job after
+    setJobs(sources.map((s, i) => ({ id: start + i, name: s.name, status: 'pending' })));
 
-  const folderName = selectedFiles?.[0]
-    ? selectedFiles[0].webkitRelativePath.split('/')[0]
-    : null;
+    await Promise.all(
+      sources.map(async (src, i) => {
+        const id = start + i;
+        try {
+          await api.uploadCourseFiles(await src.load());
+          setJobs((js) => js.map((j) => (j.id === id ? { ...j, status: 'ok' } : j)));
+        } catch (e) {
+          setJobs((js) => js.map((j) => (j.id === id ? { ...j, status: 'error', error: (e as Error).message } : j)));
+        }
+      }),
+    );
+    // refresh catalogs first so newly imported catalog members are known before
+    // the courses list updates — otherwise they flash as standalone courses
+    await qc.refetchQueries({ queryKey: ['catalogs'] });
+    qc.invalidateQueries({ queryKey: ['courses'] });
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    runImports(sourcesFromDataTransfer(e.dataTransfer.items));
+  };
 
   return (
     <div>
-      <SectionTitle>Курсы</SectionTitle>
+      <SectionTitle>Импорт Курсов</SectionTitle>
 
-      <p className="text-tx-3 text-xs mb-2">С диска</p>
       <input
         ref={fileInputRef}
         type="file"
         className="hidden"
         // @ts-ignore
         webkitdirectory=""
-        onChange={(e) => { setSelectedFiles(e.target.files); setUploadMsg(null); }}
+        onChange={(e) => {
+          if (e.target.files) runImports(sourcesFromInput(e.target.files));
+          e.target.value = '';
+        }}
       />
-      <div className="flex gap-2 mb-1">
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="shrink-0 px-3 py-1.5 rounded bg-bg-4 border border-bdr text-tx-2 hover:text-tx-1 text-xs transition-colors"
-        >
-          Выбрать папку
-        </button>
-        {folderName && (
-          <span className="flex-1 px-2 py-1.5 rounded bg-bg-3 border border-bdr text-tx-2 text-xs truncate">
-            {folderName}
-          </span>
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+        className={clsx(
+          'w-full flex flex-col items-center justify-center gap-1 px-4 py-7 rounded-lg border border-dashed text-center transition-colors',
+          dragOver
+            ? 'border-brand bg-brand/10 text-brand'
+            : 'border-bdr bg-bg-3 text-tx-3 hover:border-brand/50 hover:text-tx-2',
         )}
-        {selectedFiles && (
-          <button
-            onClick={() => uploadMut.mutate()}
-            disabled={uploadMut.isPending}
-            className="shrink-0 px-3 py-1.5 rounded bg-brand text-white text-xs hover:opacity-90 disabled:opacity-50 transition-opacity"
-          >
-            {uploadMut.isPending ? '...' : 'Загрузить'}
-          </button>
-        )}
-      </div>
-      {uploadMsg && (
-        <p className={clsx('text-xs', uploadMsg.ok ? 'text-ok' : 'text-err')}>{uploadMsg.text}</p>
-      )}
+      >
+        <span className="text-xs">Перетащите курсы сюда</span>
+        <span className="text-[11px] text-tx-3">или нажмите для выбора папки</span>
+      </button>
 
-      <p className="text-tx-3 text-xs mt-4 mb-2">Путь на сервере</p>
-      <div className="flex gap-2 mb-1">
-        <input
-          value={serverPath}
-          onChange={(e) => { setServerPath(e.target.value); setImportMsg(null); }}
-          placeholder="/path/to/course"
-          className="flex-1 px-2 py-1.5 rounded bg-bg-3 border border-bdr text-tx-2 placeholder:text-tx-3 text-xs focus:outline-none focus:border-brand"
-        />
-        <button
-          onClick={() => importMut.mutate()}
-          disabled={!serverPath.trim() || importMut.isPending}
-          className="shrink-0 px-3 py-1.5 rounded bg-brand text-white text-xs hover:opacity-90 disabled:opacity-50 transition-opacity"
-        >
-          {importMut.isPending ? '...' : 'Импорт'}
-        </button>
-      </div>
-      {importMsg && (
-        <p className={clsx('text-xs', importMsg.ok ? 'text-ok' : 'text-err')}>{importMsg.text}</p>
-      )}
+      <AnimatePresence>
+        {jobs.length > 0 && (
+          <ImportModal jobs={jobs} done={allDone} onClose={() => setJobs([])} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-// ── install form ──────────────────────────────────────────────────────────────
-
-interface InstallFormState {
-  lang: string;
-  pkg: string;
-  url: string;
-  binPath: string;
-  run: string;
-  test: string;
-  ext: string;
-  testExt: string;
-}
-
-function toFormState(t: Template): InstallFormState {
-  return {
-    lang: t.id,
-    pkg: t.pkg ?? '',
-    url: t.defaultUrl,
-    binPath: t.binPath,
-    run: t.runCmd.join(' '),
-    test: t.testCmd.join(' '),
-    ext: t.ext,
-    testExt: t.testExt,
-  };
-}
-
-function toEditState(t: Template, driver: LangDriver): InstallFormState {
-  return {
-    lang: t.id,
-    pkg: t.pkg ?? '',
-    url: '',
-    binPath: t.binPath,
-    run: driver.run_cmd.join(' '),
-    test: driver.test_cmd.join(' '),
-    ext: driver.ext,
-    testExt: driver.test_ext,
-  };
-}
-
-interface InstallFormProps {
-  showLangField?: boolean;
-  urlHint: string;
-  initial: InstallFormState;
-  installed?: boolean;
-  onDone: () => void;
-}
-
-function TrashIcon() {
+function ImportModal({ jobs, done, onClose }: { jobs: ImportJob[]; done: boolean; onClose: () => void }) {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="3 6 5 6 21 6" />
-      <path d="M19 6l-1 14H6L5 6" />
-      <path d="M10 11v6M14 11v6" />
-      <path d="M9 6V4h6v2" />
-    </svg>
-  );
-}
-
-function InstallForm({ showLangField, urlHint, initial, installed, onDone }: InstallFormProps) {
-  const qc = useQueryClient();
-  const [form, setForm] = useState<InstallFormState>(initial);
-  const [installing, setInstalling] = useState(false);
-  const [error, setError] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [installMode, setInstallMode] = useState<'apt' | 'url'>(initial.pkg && !initial.url ? 'apt' : 'url');
-
-  useEffect(() => {
-    if (!confirmDelete) return;
-    const t = setTimeout(() => setConfirmDelete(false), 3000);
-    return () => clearTimeout(t);
-  }, [confirmDelete]);
-
-  const field = (key: keyof InstallFormState) => (v: string) =>
-    setForm((f) => ({ ...f, [key]: v }));
-
-  const isPkgInstall = !installed && installMode === 'apt';
-  const isPathInstall = !installed && installMode === 'url' && !form.url.trim();
-
-  const { data: status } = useQuery({
-    queryKey: ['install-status', form.lang],
-    queryFn: () => api.getInstallStatus(form.lang),
-    enabled: installing && !isPathInstall,
-    refetchInterval: (q) => {
-      const s = q.state.data?.status;
-      return s === 'done' || s === 'error' ? false : 1500;
-    },
-  });
-
-  useEffect(() => {
-    if (!status) return;
-    if (status.status === 'done') {
-      qc.invalidateQueries({ queryKey: ['runners'] });
-      setInstalling(false);
-      onDone();
-    } else if (status.status === 'error') {
-      setError(status.message ?? 'Ошибка установки');
-      setInstalling(false);
-    }
-  }, [status?.status]);
-
-  const save = async () => {
-    setError('');
-    const lang = form.lang.trim();
-    if (!lang) { setError('Укажите идентификатор языка'); return; }
-    try {
-      if (installed) {
-        await api.addRunner(lang, {
-          run_cmd: form.run.trim().split(/\s+/),
-          test_cmd: form.test.trim() ? form.test.trim().split(/\s+/) : [],
-          ext: form.ext.trim(),
-          test_ext: form.testExt.trim(),
-        });
-        qc.invalidateQueries({ queryKey: ['runners'] });
-        onDone();
-      } else if (isPathInstall) {
-        const resolve = (s: string) => s.replace(/\{bin\}/g, form.binPath.trim());
-        await api.addRunner(lang, {
-          run_cmd: form.run.trim().split(/\s+/).map(resolve),
-          test_cmd: form.test.trim() ? form.test.trim().split(/\s+/).map(resolve) : [],
-          ext: form.ext.trim(),
-          test_ext: form.testExt.trim(),
-        });
-        qc.invalidateQueries({ queryKey: ['runners'] });
-        onDone();
-      } else if (isPkgInstall) {
-        await api.installRunner({
-          lang,
-          pkg: form.pkg.trim(),
-          bin_path: form.binPath.trim(),
-          run_cmd: form.run.trim().split(/\s+/),
-          test_cmd: form.test.trim() ? form.test.trim().split(/\s+/) : [],
-          ext: form.ext.trim(),
-          test_ext: form.testExt.trim(),
-        });
-        setInstalling(true);
-      } else {
-        await api.installRunner({
-          lang,
-          url: form.url.trim(),
-          bin_path: form.binPath.trim(),
-          run_cmd: form.run.trim().split(/\s+/),
-          test_cmd: form.test.trim() ? form.test.trim().split(/\s+/) : [],
-          ext: form.ext.trim(),
-          test_ext: form.testExt.trim(),
-        });
-        setInstalling(true);
-      }
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!confirmDelete) { setConfirmDelete(true); return; }
-    try {
-      await api.deleteRunner(form.lang.trim());
-      qc.invalidateQueries({ queryKey: ['runners'] });
-      onDone();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  const statusLabel =
-    status?.status === 'downloading' ? `Загрузка ${status.progress}%`
-    : status?.status === 'extracting' ? 'Распаковка...'
-    : status?.status === 'installing' ? 'Установка пакета...'
-    : installing ? 'Запуск...'
-    : '';
-
-  const isDirty = !installed || (
-    form.run !== initial.run ||
-    form.test !== initial.test ||
-    form.ext !== initial.ext ||
-    form.testExt !== initial.testExt
-  );
-  const canSave = Boolean(form.lang.trim() && form.binPath.trim() && form.run.trim() && form.ext.trim() && isDirty);
-  const saveLabel = installing ? 'Установка...'
-    : installed ? 'Изменить'
-    : isPkgInstall ? 'Установить (apt)'
-    : isPathInstall ? 'Добавить из PATH'
-    : 'Установить';
-
-  return (
-    <div className="mt-2 p-3 rounded bg-bg-3 border border-bdr space-y-2">
-      {!installed && (
-        <div className="flex items-center justify-between">
-          <span className="text-tx-3 text-xs">Установка</span>
-          <div className="flex rounded border border-bdr overflow-hidden text-xs">
-            {(['apt', 'url'] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setInstallMode(m)}
-                className={clsx(
-                  'px-2.5 py-0.5 transition-colors',
-                  installMode === m ? 'bg-brand text-white' : 'text-tx-3 hover:text-tx-1',
+    <motion.div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <motion.div
+        className="w-full max-w-sm rounded-xl bg-bg-2 border border-bdr shadow-xl flex flex-col max-h-[80vh]"
+        initial={{ opacity: 0, scale: 0.96, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 8 }}
+      >
+        <h2 className="text-lg font-semibold text-tx-1 px-6 pt-6 pb-4">
+          {done ? 'Импорт завершён' : 'Импорт курсов…'}
+        </h2>
+        <div className="flex-1 overflow-auto px-6 pb-4 space-y-2.5">
+          {jobs.map((j) => (
+            <div key={j.id} className="flex items-center gap-3">
+              <span className="shrink-0 w-5 h-5 flex items-center justify-center">
+                {j.status === 'pending' && (
+                  <span className="text-tx-3 animate-spin inline-flex"><SpinnerIcon /></span>
                 )}
-              >
-                {m === 'apt' ? 'apt' : 'URL'}
-              </button>
-            ))}
-          </div>
+                {j.status === 'ok' && <span className="text-ok"><CheckIcon /></span>}
+                {j.status === 'error' && (
+                  <span className="text-err cursor-help" title={j.error}><AlertIcon /></span>
+                )}
+              </span>
+              <span className="text-tx-2 text-sm truncate">{j.name}</span>
+            </div>
+          ))}
         </div>
-      )}
-      {showLangField && (
-        <FormField label="Идентификатор (lang)" value={form.lang} onChange={field('lang')} placeholder="python" mono />
-      )}
-      {!installed && isPkgInstall && (
-        <FormField label="Пакет (apt)" value={form.pkg} onChange={field('pkg')} placeholder="gcc" mono />
-      )}
-      {!installed && !isPkgInstall && (
-        <FormField
-          label={isPathInstall ? 'URL архива (пусто = из PATH)' : 'Скачать (URL)'}
-          value={form.url}
-          onChange={field('url')}
-          placeholder={urlHint}
-          mono
-        />
-      )}
-      {!installed && (
-        <FormField label={isPkgInstall ? 'Имя бинаря' : 'Путь бинаря в архиве'} value={form.binPath} onChange={field('binPath')} placeholder="gcc" mono />
-      )}
-      <FormField label="Run" value={form.run} onChange={field('run')} placeholder="{bin} run {file}" mono />
-      <FormField label="Test" value={form.test} onChange={field('test')} placeholder="{bin} test {file} {testfile}" mono />
-      <div className="flex gap-2">
-        <div className="flex-1">
-          <FormField label="Расширение" value={form.ext} onChange={field('ext')} placeholder=".go" mono />
-        </div>
-        <div className="flex-1">
-          <FormField label="Суффикс теста" value={form.testExt} onChange={field('testExt')} placeholder="_test.go" mono />
-        </div>
-      </div>
-
-      {installing && status && <ProgressBar value={status.progress} max={100} />}
-      {installing && statusLabel && <p className="text-tx-3 text-xs">{statusLabel}</p>}
-      {error && <p className="text-err text-xs">{error}</p>}
-
-      <div className="flex gap-2">
-        <button
-          onClick={save}
-          disabled={!canSave || installing}
-          className="flex-1 h-8 rounded bg-brand text-white text-xs hover:opacity-90 disabled:opacity-40 transition-opacity"
-        >
-          {saveLabel}
-        </button>
-        {installed && (
-          <motion.button
-            onClick={handleDelete}
-            animate={{ width: confirmDelete ? 82 : 32 }}
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
-            className={clsx(
-              'shrink-0 h-8 rounded border text-xs inline-flex items-center justify-center overflow-hidden transition-colors',
-              confirmDelete
-                ? 'bg-err/15 border-err text-err'
-                : 'bg-bg-4 border-bdr text-tx-3 hover:text-err hover:border-err/50',
-            )}
+        <div className="flex justify-end px-6 py-4 border-t border-bdr">
+          <button
+            onClick={onClose}
+            disabled={!done}
+            className="px-4 h-9 rounded-lg bg-brand text-white text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity"
           >
-            <AnimatePresence mode="wait" initial={false}>
-              {confirmDelete ? (
-                <motion.span
-                  key="confirm"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.12 }}
-                  className="whitespace-nowrap inline-flex items-center"
-                >
-                  Удалить?
-                </motion.span>
-              ) : (
-                <motion.span
-                  key="icon"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.12 }}
-                  className="inline-flex items-center"
-                >
-                  <TrashIcon />
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </motion.button>
-        )}
-      </div>
-    </div>
+            Закрыть
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function SpinnerIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <path d="M12 3a9 9 0 1 0 9 9" />
+    </svg>
   );
 }
 
 // ── runners ───────────────────────────────────────────────────────────────────
 
-function RunnersSection() {
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [customOpen, setCustomOpen] = useState(false);
+interface RunnerDef {
+  id: string;
+  name: string;
+  docsUrl: string;
+  install: { os: string; cmd: string }[];
+}
 
+const RUNNERS: RunnerDef[] = [
+  {
+    id: 'go',
+    name: 'Go',
+    docsUrl: 'https://go.dev/dl/',
+    install: [
+      { os: 'Linux', cmd: 'sudo apt install golang-go\n# либо архив с go.dev/dl/ распаковать в /usr/local' },
+      { os: 'macOS', cmd: 'brew install go' },
+      { os: 'Windows', cmd: 'winget install GoLang.Go' },
+    ],
+  },
+];
+
+// icons
+function PencilIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function BookIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
+    </svg>
+  );
+}
+
+function WrenchIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+function AlertIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+      <circle cx="12" cy="12" r="9" />
+    </svg>
+  );
+}
+
+const STATUS_META = {
+  ok:      { label: 'Установлен',                  color: 'text-ok',         Icon: CheckIcon },
+  broken:  { label: 'Установлен, тест не пройден',  color: 'text-warn',  Icon: AlertIcon },
+  missing: { label: 'Не установлен',               color: 'text-tx-3',       Icon: AlertIcon },
+} as const;
+
+type CardMode = 'edit' | 'docs';
+
+function Instructions({ def, status }: { def: RunnerDef; status?: RunnerStatus }) {
+  return (
+    <div className="space-y-2">
+      {status?.status === 'broken' && status.message && (
+        <pre className="text-err text-[11px] font-mono whitespace-pre-wrap break-words">{status.message}</pre>
+      )}
+      <p className="text-tx-3 text-xs">Установите {def.name} одним из способов:</p>
+      {def.install.map((it) => (
+        <div key={it.os}>
+          <p className="text-tx-3 text-[11px] mb-0.5">{it.os}</p>
+          <pre className="bg-bg-4 border border-bdr rounded px-2 py-1.5 text-tx-2 text-[11px] font-mono whitespace-pre-wrap break-words">{it.cmd}</pre>
+        </div>
+      ))}
+      <a
+        href={def.docsUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-block text-brand text-xs hover:underline"
+      >
+        {def.docsUrl}
+      </a>
+      <p className="text-tx-3 text-[11px]">После установки нажмите «Проверить».</p>
+    </div>
+  );
+}
+
+function StatusBadge({ status, version, fetching }: { status?: RunnerStatus['status']; version?: string; fetching: boolean }) {
+  if (fetching) return <span className="flex items-center h-5 text-tx-3 text-xs whitespace-nowrap">Проверка…</span>;
+  const sm = status ? STATUS_META[status] : null;
+  if (!sm) return <span className="block h-5" />;
+  return (
+    <span className={clsx('flex items-center h-5 gap-1 text-xs whitespace-nowrap', sm.color)}>
+      <span className="inline-flex shrink-0 w-[13px] h-[13px]"><sm.Icon /></span>
+      <span>{sm.label}{version ? ` (${version})` : ''}</span>
+    </span>
+  );
+}
+
+function RunnerCard({ def, driver }: { def: RunnerDef; driver?: LangDriver }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<CardMode>('edit');
+  const settled = useRef(false);
+  const [run, setRun] = useState((driver?.run_cmd ?? []).join(' '));
+  const [test, setTest] = useState((driver?.test_cmd ?? []).join(' '));
+  const [err, setErr] = useState('');
+
+  const detect = useQuery({
+    queryKey: ['runner-detect', def.id],
+    queryFn: () => api.detectRunner(def.id),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+
+  // First time the status is known, expand to the instructions when the runner
+  // needs attention; usable runners stay collapsed on the edit pane.
+  useEffect(() => {
+    if (!detect.data || settled.current) return;
+    settled.current = true;
+    if (detect.data.status !== 'ok') {
+      setMode('docs');
+      setOpen(true);
+    }
+  }, [detect.data?.status]);
+
+  const save = useMutation({
+    mutationFn: () => api.patchRunner(def.id, {
+      run_cmd: run.trim().split(/\s+/),
+      test_cmd: test.trim() ? test.trim().split(/\s+/) : [],
+    }),
+    onSuccess: () => {
+      setErr('');
+      qc.invalidateQueries({ queryKey: ['runners'] });
+      detect.refetch();
+    },
+    onError: (e: Error) => setErr(e.message),
+  });
+
+  const status = detect.data?.status;
+  const version = detect.data?.version;
+  const dirty = driver && (run !== driver.run_cmd.join(' ') || test !== driver.test_cmd.join(' '));
+
+  return (
+    <div className="rounded bg-bg-3 border border-bdr overflow-hidden">
+      {/* header — click to expand/collapse */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={clsx(
+          'w-full flex items-start justify-between gap-2 px-3 pt-2.5 text-left transition-[padding] duration-[220ms] ease-in-out',
+          open ? 'pb-1.5' : 'pb-2.5',
+        )}
+      >
+        <div className="min-w-0">
+          <p className="text-tx-1 text-sm font-medium">{def.name}</p>
+          {/* expanded: status sits under the name (shifted by text) */}
+          <AnimatePresence initial={false}>
+            {open && (
+              <motion.div
+                key="under"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.22, ease: 'easeInOut' }}
+                className="overflow-hidden"
+              >
+                <div className="mt-1.5">
+                  <StatusBadge status={status} version={version} fetching={detect.isFetching} />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* top-right slot: status when collapsed, edit/docs toggle when open */}
+        <div className="shrink-0">
+          <AnimatePresence mode="wait" initial={false}>
+            {open ? (
+              <motion.div
+                key="toggle"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.12 }}
+                className="flex rounded border border-bdr overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {([['edit', PencilIcon], ['docs', BookIcon]] as const).map(([m, Icon]) => (
+                  <span
+                    key={m}
+                    role="button"
+                    onClick={() => setMode(m)}
+                    title={m === 'edit' ? 'Редактирование' : 'Инструкция'}
+                    className={clsx(
+                      'px-2 py-1 transition-colors cursor-pointer',
+                      mode === m ? 'bg-brand text-white' : 'text-tx-3 hover:text-tx-1',
+                    )}
+                  >
+                    <Icon />
+                  </span>
+                ))}
+              </motion.div>
+            ) : (
+              <motion.div
+                key="status"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.12 }}
+              >
+                <StatusBadge status={status} version={version} fetching={detect.isFetching} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </button>
+
+      {/* expandable body */}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div className="px-3 pb-3 space-y-3">
+              {/* animated tab content */}
+              <div className="relative">
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={mode}
+                    initial={{ opacity: 0, x: mode === 'edit' ? -8 : 8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: mode === 'edit' ? 8 : -8 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    {mode === 'edit' ? (
+                      <div className="space-y-2">
+                        <FormField label="Run" value={run} onChange={setRun} placeholder="go run ." mono />
+                        <FormField label="Test" value={test} onChange={setTest} placeholder="go test -v ." mono />
+                        {err && <p className="text-err text-xs">{err}</p>}
+                        <button
+                          onClick={() => save.mutate()}
+                          disabled={!dirty || save.isPending}
+                          className="w-full h-8 rounded bg-brand text-white text-xs hover:opacity-90 disabled:opacity-40 transition-opacity"
+                        >
+                          {save.isPending ? 'Сохранение…' : 'Сохранить'}
+                        </button>
+                      </div>
+                    ) : (
+                      <Instructions def={def} status={detect.data} />
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+
+              {/* footer: detect / test trigger */}
+              <div className="flex items-center gap-2 pt-3 border-t border-bdr">
+                <button
+                  onClick={() => detect.refetch()}
+                  disabled={detect.isFetching}
+                  title="Задетектить и протестировать раннер"
+                  className="flex items-center gap-1.5 text-tx-3 hover:text-tx-1 text-xs leading-4 transition-colors disabled:opacity-50"
+                >
+                  <span className={clsx('inline-flex items-center justify-center shrink-0 w-[13px] h-4', detect.isFetching && 'animate-spin')}><WrenchIcon /></span>
+                  {detect.isFetching ? 'Проверка…' : 'Проверить'}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function RunnersSection() {
   const { data: runners = {} } = useQuery({
     queryKey: ['runners'],
     queryFn: api.listRunners,
   });
 
-  const installedLangs = new Set(Object.keys(runners));
-
-  const sorted = [...TEMPLATES].sort((a, b) => {
-    const ai = installedLangs.has(a.id);
-    const bi = installedLangs.has(b.id);
-    if (ai !== bi) return ai ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
-
-  const toggle = (id: string) => {
-    setOpenId((prev) => (prev === id ? null : id));
-    setCustomOpen(false);
-  };
-
-  const toggleCustom = () => {
-    setCustomOpen((v) => !v);
-    setOpenId(null);
-  };
-
   return (
     <div>
       <SectionTitle>Раннеры</SectionTitle>
-
-      <div className="space-y-1">
-        {sorted.map((t) => {
-          const installed = installedLangs.has(t.id);
-          const isOpen = openId === t.id;
-          return (
-            <motion.div key={t.id} layout transition={{ duration: 0.25, ease: 'easeInOut' }}>
-              <button
-                onClick={() => toggle(t.id)}
-                className="w-full flex items-center justify-between rounded bg-bg-3 border border-bdr px-3 py-2 transition-colors hover:border-bdr-e"
-              >
-                <span className={clsx('text-sm', installed ? 'text-tx-2' : 'text-tx-2')}>{t.name}</span>
-                {installed
-                  ? <span className={clsx('text-xs transition-colors', isOpen ? 'text-tx-3' : 'text-ok')}>{isOpen ? '−' : '✓'}</span>
-                  : <span className="text-brand text-xs">{isOpen ? '−' : '+'}</span>
-                }
-              </button>
-              <AnimatePresence>
-                {isOpen && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.18 }}
-                    className="overflow-hidden"
-                  >
-                    <InstallForm
-                      urlHint={t.urlHint}
-                      installed={installed}
-                      initial={installed && runners[t.id] ? toEditState(t, runners[t.id]) : toFormState(t)}
-                      onDone={() => setOpenId(null)}
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          );
-        })}
+      <div className="space-y-2">
+        {RUNNERS.map((def) => (
+          <RunnerCard key={def.id} def={def} driver={runners[def.id]} />
+        ))}
       </div>
-
-      <button
-        onClick={toggleCustom}
-        className="mt-4 w-full text-left text-tx-3 hover:text-tx-1 text-xs transition-colors flex items-center gap-1"
-      >
-        <span className="text-base leading-none">{customOpen ? '−' : '+'}</span>
-        Свой раннер
-      </button>
-      <AnimatePresence>
-        {customOpen && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="overflow-hidden"
-          >
-            <InstallForm
-              showLangField
-              urlHint="https://example.com/lang.tar.gz"
-              initial={{ lang: '', pkg: '', url: '', binPath: '', run: '', test: '', ext: '', testExt: '' }}
-              onDone={() => setCustomOpen(false)}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

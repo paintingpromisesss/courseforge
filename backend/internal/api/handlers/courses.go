@@ -17,9 +17,33 @@ import (
 // @Router /courses [get]
 func (h *Handler) listCourses(w http.ResponseWriter, r *http.Request) {
 	h.mu.RLock()
+	courseCatalog := make(map[string]string)
+	for catSlug, cat := range h.catalogs {
+		for _, c := range cat.Courses {
+			courseCatalog[c.Slug] = catSlug
+		}
+	}
 	items := make([]dto.CourseItem, 0, len(h.courses))
 	for _, c := range h.courses {
-		items = append(items, dto.ToCourseItem(c))
+		item := dto.ToCourseItem(c)
+		item.CatalogSlug = courseCatalog[c.Slug]
+		items = append(items, item)
+	}
+	h.mu.RUnlock()
+	sort.Slice(items, func(i, j int) bool { return items[i].Slug < items[j].Slug })
+	h.writeJSON(w, http.StatusOK, items)
+}
+
+// @Summary List all catalogs with their courses
+// @Tags courses
+// @Produce json
+// @Success 200 {array} dto.CatalogItem
+// @Router /catalogs [get]
+func (h *Handler) listCatalogs(w http.ResponseWriter, r *http.Request) {
+	h.mu.RLock()
+	items := make([]dto.CatalogItem, 0, len(h.catalogs))
+	for _, cat := range h.catalogs {
+		items = append(items, dto.ToCatalogItem(cat))
 	}
 	h.mu.RUnlock()
 	sort.Slice(items, func(i, j int) bool { return items[i].Slug < items[j].Slug })
@@ -113,7 +137,7 @@ func (h *Handler) getTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filename := ld.Template
-	if solution := r.URL.Query().Get("solution"); solution == "1" || strings.EqualFold(solution, "true") {
+	if queryBool(r, "solution") {
 		if ld.Solution == "" {
 			h.writeError(w, http.StatusNotFound, "no solution for this language")
 			return

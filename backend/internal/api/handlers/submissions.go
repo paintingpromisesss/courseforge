@@ -43,7 +43,7 @@ func (h *Handler) createSubmission(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:   time.Now().UTC(),
 	}
 
-	id, err := h.submissionsService.Create(sub)
+	id, err := h.submissions.Create(sub)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "failed to save submission")
 		return
@@ -68,7 +68,7 @@ func (h *Handler) listSubmissions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subs, err := h.submissionsService.List(courseSlug, taskSlug)
+	subs, err := h.submissions.List(courseSlug, taskSlug)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "failed to load submissions")
 		return

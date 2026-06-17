@@ -52,7 +52,7 @@ type Runner struct {
 	file    string // path to runners.json, empty if not set
 }
 
-// New creates a Runner with no pre-loaded drivers.
+// New creates a Runner preloaded with the built-in Go driver.
 func New() *Runner {
 	return &Runner{
 		drivers: map[string]LangDriver{
@@ -97,14 +97,6 @@ func (r *Runner) AddDriver(lang string, d LangDriver) {
 	_ = r.saveFile()
 }
 
-// RemoveDriver removes a language driver at runtime.
-func (r *Runner) RemoveDriver(lang string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	delete(r.drivers, lang)
-	_ = r.saveFile()
-}
-
 // saveFile writes all current drivers to r.file. Must be called with mu held.
 func (r *Runner) saveFile() error {
 	if r.file == "" {
@@ -142,46 +134,11 @@ func (r *Runner) Run(req RunRequest) (RunResult, error) {
 		timeout = defaultTimeout
 	}
 
-	dir, err := os.MkdirTemp("", "cf-run-*")
+	dir, args, err := r.prepare(driver, req)
 	if err != nil {
-		return RunResult{}, fmt.Errorf("create temp dir: %w", err)
+		return RunResult{}, err
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
-
-	for name, content := range driver.InitFiles {
-		path := filepath.Join(dir, filepath.Base(name))
-		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
-			return RunResult{}, fmt.Errorf("write init file %s: %w", name, err)
-		}
-	}
-
-	codeFile := filepath.Join(dir, "main"+driver.Ext)
-	if err := os.WriteFile(codeFile, []byte(req.Code), 0600); err != nil {
-		return RunResult{}, fmt.Errorf("write code: %w", err)
-	}
-
-	var cmdTemplate []string
-	var testFile string
-
-	if req.TestCode != "" {
-		testFile = filepath.Join(dir, "main"+driver.TestExt)
-		if err := os.WriteFile(testFile, []byte(req.TestCode), 0600); err != nil {
-			return RunResult{}, fmt.Errorf("write test: %w", err)
-		}
-		cmdTemplate = driver.TestCmd
-	} else {
-		cmdTemplate = driver.RunCmd
-	}
-
-	args := expand(cmdTemplate, codeFile, testFile, dir)
-
-	// Resolve relative executable path against the server's CWD before
-	// setting cmd.Dir, because Go resolves relative paths relative to cmd.Dir.
-	if !filepath.IsAbs(args[0]) && filepath.Base(args[0]) != args[0] {
-		if abs, err := filepath.Abs(args[0]); err == nil {
-			args[0] = abs
-		}
-	}
 
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = dir
@@ -240,6 +197,56 @@ func (r *Runner) Run(req RunRequest) (RunResult, error) {
 	}
 
 	return result, nil
+}
+
+// prepare builds an isolated temp workspace for req: it writes the driver's
+// init files, the submitted code, and (in task mode) the test file, then
+// expands the command line. The caller owns dir and must remove it; on any
+// failure prepare cleans up the half-built workspace itself.
+func (r *Runner) prepare(driver LangDriver, req RunRequest) (dir string, args []string, err error) {
+	dir, err = os.MkdirTemp("", "cf-run-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("create temp dir: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(dir)
+			dir = ""
+		}
+	}()
+
+	for name, content := range driver.InitFiles {
+		path := filepath.Join(dir, filepath.Base(name))
+		if err = os.WriteFile(path, []byte(content), 0600); err != nil {
+			return dir, nil, fmt.Errorf("write init file %s: %w", name, err)
+		}
+	}
+
+	codeFile := filepath.Join(dir, "main"+driver.Ext)
+	if err = os.WriteFile(codeFile, []byte(req.Code), 0600); err != nil {
+		return dir, nil, fmt.Errorf("write code: %w", err)
+	}
+
+	cmdTemplate := driver.RunCmd
+	var testFile string
+	if req.TestCode != "" {
+		testFile = filepath.Join(dir, "main"+driver.TestExt)
+		if err = os.WriteFile(testFile, []byte(req.TestCode), 0600); err != nil {
+			return dir, nil, fmt.Errorf("write test: %w", err)
+		}
+		cmdTemplate = driver.TestCmd
+	}
+
+	args = expand(cmdTemplate, codeFile, testFile, dir)
+
+	// Resolve relative executable path against the server's CWD before the
+	// caller sets cmd.Dir, because Go resolves relative paths against cmd.Dir.
+	if !filepath.IsAbs(args[0]) && filepath.Base(args[0]) != args[0] {
+		if abs, e := filepath.Abs(args[0]); e == nil {
+			args[0] = abs
+		}
+	}
+	return dir, args, nil
 }
 
 func expand(tmpl []string, file, testFile, dir string) []string {

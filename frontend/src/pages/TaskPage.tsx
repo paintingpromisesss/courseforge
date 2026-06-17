@@ -2,7 +2,6 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react
 import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import MonacoEditor from '@monaco-editor/react';
 import clsx from 'clsx';
 
 import { api } from '../api/client';
@@ -11,14 +10,11 @@ import { Markdown } from '../components/ui/Markdown';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Badge } from '../components/ui/Badge';
 import { loadCode, saveCode } from '../lib/editorStorage';
+import { CodeMirrorEditor } from '../components/ui/CodeMirrorEditor';
 import { parseGoTestOutput, type ParsedResults } from '../lib/parseTests';
 import { useTheme } from '../context/ThemeContext';
 import type { Submission } from '../api/types';
 
-const LANG_MAP: Record<string, string> = {
-  go: 'go', python: 'python', javascript: 'javascript',
-  typescript: 'typescript', java: 'java', cpp: 'cpp',
-};
 
 function ResultsOverlay({
   results,
@@ -153,7 +149,8 @@ export function TaskPage() {
   const initialTabSet = useRef(false);
   const prevTaskSlug = useRef<string | undefined>(undefined);
   const [showSolutionDialog, setShowSolutionDialog] = useState(false);
-  const [solutionUnlocked, setSolutionUnlocked] = useState(false);
+  // manual peek before solving; reset per task so the lock is unique per task
+  const [solutionRevealed, setSolutionRevealed] = useState(false);
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<{ parsed: ParsedResults; durationMs: number; timedOut: boolean } | null>(null);
   const [markingTheoryDone, setMarkingTheoryDone] = useState(false);
@@ -196,6 +193,21 @@ export function TaskPage() {
     enabled: !!(courseSlug && trackSlug && topicSlug && unitSlug && taskSlug),
   });
 
+  const { data: submissions } = useQuery({
+    queryKey: ['submissions', courseSlug, taskSlug],
+    queryFn: () => api.listSubmissions(courseSlug!, taskSlug!),
+    enabled: !!(courseSlug && taskSlug),
+  });
+
+  // lock auto-removes once this task has a successful submission
+  const solved = !!submissions?.some((s) => s.total_tests > 0 && s.passed_tests === s.total_tests);
+  const solutionUnlocked = solved || solutionRevealed;
+
+  // reset the manual peek when switching tasks
+  useEffect(() => {
+    setSolutionRevealed(false);
+  }, [taskSlug]);
+
   const { data: solution } = useQuery({
     queryKey: ['solution', courseSlug, trackSlug, topicSlug, unitSlug, taskSlug, lang],
     queryFn: () => api.getSolution(courseSlug!, trackSlug!, topicSlug!, unitSlug!, taskSlug!, lang),
@@ -206,12 +218,6 @@ export function TaskPage() {
     queryKey: ['progress', courseSlug],
     queryFn: () => api.getProgress(courseSlug!),
     enabled: !!courseSlug,
-  });
-
-  const {} = useQuery({
-    queryKey: ['submissions', courseSlug, taskSlug],
-    queryFn: () => api.listSubmissions(courseSlug!, taskSlug!),
-    enabled: !!(courseSlug && taskSlug),
   });
 
   const theoryDone = !!(unitSlug && progress?.completed_tasks?.[unitSlug]);
@@ -244,12 +250,11 @@ export function TaskPage() {
     if (scrollPanelRef.current) scrollPanelRef.current.scrollTop = 0;
   }, [taskSlug]);
 
-  const handleCodeChange = useCallback((val: string | undefined) => {
-    const v = val ?? '';
-    setCode(v);
+  const handleCodeChange = useCallback((val: string) => {
+    setCode(val);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      if (taskSlug && lang) saveCode(taskSlug, lang, v);
+      if (taskSlug && lang) saveCode(taskSlug, lang, val);
     }, 1000);
   }, [taskSlug, lang]);
 
@@ -415,22 +420,11 @@ export function TaskPage() {
           </div>
 
           <div className="flex-1 overflow-hidden">
-            <MonacoEditor
-              height="100%"
-              language={LANG_MAP[lang] ?? lang}
+            <CodeMirrorEditor
               value={code}
+              language={lang}
+              isDark={theme === 'dark'}
               onChange={handleCodeChange}
-              theme={theme === 'dark' ? 'vs-dark' : 'vs'}
-              options={{
-                fontSize: 14,
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                suggestOnTriggerCharacters: true,
-                quickSuggestions: true,
-                wordBasedSuggestions: 'off',
-                inlineSuggest: { enabled: false },
-                padding: { top: 12 },
-              }}
             />
           </div>
 
@@ -453,7 +447,7 @@ export function TaskPage() {
         message="Просмотр решения до самостоятельного решения задачи снижает его ценность."
         confirmLabel="Показать"
         onConfirm={() => {
-          setSolutionUnlocked(true);
+          setSolutionRevealed(true);
           setLeftTab('solution');
           setShowSolutionDialog(false);
         }}

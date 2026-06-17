@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -62,37 +60,26 @@ func (h *Handler) listRunners(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, dto.ToRunnerDrivers(h.runner.Drivers()))
 }
 
-// @Summary Add a new language driver
+// @Summary Detect and test a language runner on the host
 // @Tags runners
-// @Accept json
-// @Param request body dto.AddRunnerReq true "Driver config"
-// @Success 204
-// @Failure 400 {object} map[string]string
-// @Failure 409 {object} map[string]string
-// @Router /runners [post]
-func (h *Handler) addRunner(w http.ResponseWriter, r *http.Request) {
-	var req dto.AddRunnerReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid request body")
+// @Produce json
+// @Param lang path string true "Language key (e.g. go)"
+// @Success 200 {object} dto.DetectResp
+// @Failure 404 {object} map[string]string
+// @Router /runners/{lang}/detect [post]
+func (h *Handler) detectRunner(w http.ResponseWriter, r *http.Request) {
+	lang := chi.URLParam(r, "lang")
+	if !h.runner.HasDriver(lang) {
+		h.writeError(w, http.StatusNotFound, "driver not found")
 		return
 	}
-
-	driver := req.Driver.ToInfra()
-	if req.Lang == "" || len(driver.RunCmd) == 0 || driver.Ext == "" {
-		h.writeError(w, http.StatusBadRequest, "lang, driver.run_cmd and driver.ext are required")
-		return
-	}
-	if h.runner.HasDriver(req.Lang) {
-		h.writeError(w, http.StatusConflict, "driver already exists, use PATCH /runners/{lang} to update")
-		return
-	}
-	bin := driver.RunCmd[0]
-	if _, err := exec.LookPath(bin); err != nil {
-		h.writeError(w, http.StatusBadRequest, fmt.Sprintf("binary %q not found in PATH", bin))
-		return
-	}
-	h.runner.AddDriver(req.Lang, driver)
-	w.WriteHeader(http.StatusNoContent)
+	res := h.runner.Detect(lang)
+	h.writeJSON(w, http.StatusOK, dto.DetectResp{
+		Status:  string(res.Status),
+		Binary:  res.Binary,
+		Version: res.Version,
+		Message: res.Message,
+	})
 }
 
 // @Summary Partially update an existing language driver
@@ -133,25 +120,7 @@ func (h *Handler) patchRunner(w http.ResponseWriter, r *http.Request) {
 	if req.TestCmd != nil {
 		d.TestCmd = *req.TestCmd
 	}
-	if req.Ext != nil {
-		d.Ext = *req.Ext
-	}
-	if req.TestExt != nil {
-		d.TestExt = *req.TestExt
-	}
 
 	h.runner.AddDriver(lang, d)
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// @Summary Delete a language driver
-// @Tags runners
-// @Param lang path string true "Language key (e.g. go)"
-// @Success 204
-// @Router /runners/{lang} [delete]
-func (h *Handler) deleteRunner(w http.ResponseWriter, r *http.Request) {
-	lang := chi.URLParam(r, "lang")
-	h.runner.RemoveDriver(lang)
-	_ = os.RemoveAll(filepath.Join(h.runnersDir, lang))
 	w.WriteHeader(http.StatusNoContent)
 }

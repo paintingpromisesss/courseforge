@@ -29,29 +29,26 @@ func Parse(fsys fs.FS, root string) (*domain.Course, error) {
 
 // ParseCourse reads and validates the course tree rooted at root.
 // Errors are *Error values joined into a single error.
+//
+// The parse methods below do the IO and recursion (fsys comes from the
+// receiver); the pure check helpers live in validate.go and take fsys explicitly.
 func (p *Parser) ParseCourse(root string) (*domain.Course, error) {
-	fsys := p.fsys
 	c := &domain.Course{}
-	if err := readManifest(fsys, path.Join(root, "course.yaml"), c); err != nil {
+	manifest := path.Join(root, "course.yaml")
+	if err := p.readManifest(manifest, c); err != nil {
 		return nil, err
 	}
 
 	var errs []error
-	collect := func(err error) {
-		if err != nil {
-			errs = append(errs, err)
-		}
+	if err := validateCourse(c); err != nil {
+		errs = append(errs, err)
 	}
-
-	collect(validateCourse(c))
-	for _, err := range validateNoOrphanDirs(fsys, root, path.Join(root, "course.yaml"), c.TrackSlugs) {
-		collect(err)
-	}
+	errs = append(errs, validateNoOrphanDirs(p.fsys, root, manifest, c.TrackSlugs)...)
 
 	for _, ts := range c.TrackSlugs {
-		t, err := parseTrack(fsys, path.Join(root, ts), ts)
+		t, err := p.parseTrack(path.Join(root, ts), ts)
 		if err != nil {
-			collect(err)
+			errs = append(errs, err)
 			continue
 		}
 		c.Tracks = append(c.Tracks, t)
@@ -63,10 +60,10 @@ func (p *Parser) ParseCourse(root string) (*domain.Course, error) {
 	return c, nil
 }
 
-func parseTrack(fsys fs.FS, dir, slug string) (*domain.Track, error) {
+func (p *Parser) parseTrack(dir, slug string) (*domain.Track, error) {
 	t := &domain.Track{}
 	manifest := path.Join(dir, "track.yaml")
-	if err := readManifest(fsys, manifest, t); err != nil {
+	if err := p.readManifest(manifest, t); err != nil {
 		return nil, err
 	}
 
@@ -80,15 +77,15 @@ func parseTrack(fsys fs.FS, dir, slug string) (*domain.Track, error) {
 	if len(t.TopicSlugs) == 0 {
 		errs = append(errs, errField(manifest, "topics", "must list at least one topic"))
 	}
-	errs = append(errs, validateNoOrphanDirs(fsys, dir, manifest, t.TopicSlugs)...)
+	errs = append(errs, validateNoOrphanDirs(p.fsys, dir, manifest, t.TopicSlugs)...)
 
-	for _, ps := range t.TopicSlugs {
-		p, err := parseTopic(fsys, path.Join(dir, ps), ps)
+	for _, ts := range t.TopicSlugs {
+		tp, err := p.parseTopic(path.Join(dir, ts), ts)
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		t.Topics = append(t.Topics, p)
+		t.Topics = append(t.Topics, tp)
 	}
 
 	if len(errs) > 0 {
@@ -97,10 +94,10 @@ func parseTrack(fsys fs.FS, dir, slug string) (*domain.Track, error) {
 	return t, nil
 }
 
-func parseTopic(fsys fs.FS, dir, slug string) (*domain.Topic, error) {
+func (p *Parser) parseTopic(dir, slug string) (*domain.Topic, error) {
 	tp := &domain.Topic{}
 	manifest := path.Join(dir, "topic.yaml")
-	if err := readManifest(fsys, manifest, tp); err != nil {
+	if err := p.readManifest(manifest, tp); err != nil {
 		return nil, err
 	}
 
@@ -114,10 +111,10 @@ func parseTopic(fsys fs.FS, dir, slug string) (*domain.Topic, error) {
 	if len(tp.UnitSlugs) == 0 {
 		errs = append(errs, errField(manifest, "units", "must list at least one unit"))
 	}
-	errs = append(errs, validateNoOrphanDirs(fsys, dir, manifest, tp.UnitSlugs)...)
+	errs = append(errs, validateNoOrphanDirs(p.fsys, dir, manifest, tp.UnitSlugs)...)
 
 	for _, us := range tp.UnitSlugs {
-		u, err := parseUnit(fsys, path.Join(dir, us), us)
+		u, err := p.parseUnit(path.Join(dir, us), us)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -131,10 +128,10 @@ func parseTopic(fsys fs.FS, dir, slug string) (*domain.Topic, error) {
 	return tp, nil
 }
 
-func parseUnit(fsys fs.FS, dir, slug string) (*domain.Unit, error) {
+func (p *Parser) parseUnit(dir, slug string) (*domain.Unit, error) {
 	u := &domain.Unit{}
 	manifest := path.Join(dir, "unit.yaml")
-	if err := readManifest(fsys, manifest, u); err != nil {
+	if err := p.readManifest(manifest, u); err != nil {
 		return nil, err
 	}
 
@@ -146,12 +143,12 @@ func parseUnit(fsys fs.FS, dir, slug string) (*domain.Unit, error) {
 		errs = append(errs, errField(manifest, "title", "is required"))
 	}
 
-	errs = append(errs, validateUnitContent(fsys, dir, manifest, u)...)
+	errs = append(errs, validateUnitContent(p.fsys, dir, manifest, u)...)
 	// A unit's subfolders are its task folders plus the optional assets folder.
-	errs = append(errs, validateNoOrphanDirs(fsys, dir, manifest, u.TaskSlugs, "assets")...)
+	errs = append(errs, validateNoOrphanDirs(p.fsys, dir, manifest, u.TaskSlugs, "assets")...)
 
 	for _, ks := range u.TaskSlugs {
-		tk, err := parseTask(fsys, path.Join(dir, ks), ks)
+		tk, err := p.parseTask(path.Join(dir, ks), ks)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -165,22 +162,22 @@ func parseUnit(fsys fs.FS, dir, slug string) (*domain.Unit, error) {
 	return u, nil
 }
 
-func parseTask(fsys fs.FS, dir, slug string) (*domain.Task, error) {
+func (p *Parser) parseTask(dir, slug string) (*domain.Task, error) {
 	tk := &domain.Task{}
 	manifest := path.Join(dir, "task.yaml")
-	if err := readManifest(fsys, manifest, tk); err != nil {
+	if err := p.readManifest(manifest, tk); err != nil {
 		return nil, err
 	}
 
-	if errs := validateTask(fsys, dir, manifest, slug, tk); len(errs) > 0 {
+	if errs := validateTask(p.fsys, dir, manifest, slug, tk); len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
 	return tk, nil
 }
 
 // readManifest decodes YAML into dst; unknown fields are rejected.
-func readManifest(fsys fs.FS, name string, dst any) error {
-	data, err := fs.ReadFile(fsys, name)
+func (p *Parser) readManifest(name string, dst any) error {
+	data, err := fs.ReadFile(p.fsys, name)
 	if err != nil {
 		return errAt(name, "cannot read manifest: "+err.Error())
 	}
@@ -196,37 +193,21 @@ func readManifest(fsys fs.FS, name string, dst any) error {
 
 // ParseCatalog reads and validates the catalog at root, including all listed courses.
 func (p *Parser) ParseCatalog(root string) (*domain.Catalog, error) {
-	fsys := p.fsys
 	c := &domain.Catalog{}
 	manifest := path.Join(root, "catalog.yaml")
-	if err := readManifest(fsys, manifest, c); err != nil {
+	if err := p.readManifest(manifest, c); err != nil {
 		return nil, err
 	}
 
-	var errs []error
-	collect := func(err error) {
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	if c.Slug == "" {
-		collect(errField(manifest, "slug", "is required"))
-	} else if slug := path.Base(root); c.Slug != slug {
-		collect(errField(manifest, "slug",
-			"must equal folder name "+quote(slug)+", got "+quote(c.Slug)))
-	}
-	if c.Title == "" {
-		collect(errField(manifest, "title", "is required"))
-	}
+	errs := validateCatalogMeta(manifest, root, c)
 	if len(c.CourseSlugs) == 0 {
-		collect(errField(manifest, "courses", "must list at least one course"))
+		errs = append(errs, errField(manifest, "courses", "must list at least one course"))
 	}
 
 	for _, cs := range c.CourseSlugs {
 		course, err := p.ParseCourse(path.Join(root, cs))
 		if err != nil {
-			collect(err)
+			errs = append(errs, err)
 			continue
 		}
 		c.Courses = append(c.Courses, course)
@@ -238,18 +219,36 @@ func (p *Parser) ParseCatalog(root string) (*domain.Catalog, error) {
 	return c, nil
 }
 
+// ParseCatalogManifest reads and validates only the catalog.yaml at root,
+// without resolving its course references. Reference-style catalogs list course
+// slugs that live elsewhere on disk, so courses are resolved later against the
+// global registry. An empty course list is allowed (a freshly created group).
+func (p *Parser) ParseCatalogManifest(root string) (*domain.Catalog, error) {
+	c := &domain.Catalog{}
+	manifest := path.Join(root, "catalog.yaml")
+	if err := p.readManifest(manifest, c); err != nil {
+		return nil, err
+	}
+
+	errs := validateCatalogMeta(manifest, root, c)
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+	return c, nil
+}
+
 func (p *Parser) ParseTrack(dir string) (*domain.Track, error) {
-	return parseTrack(p.fsys, dir, path.Base(dir))
+	return p.parseTrack(dir, path.Base(dir))
 }
 
 func (p *Parser) ParseTopic(dir string) (*domain.Topic, error) {
-	return parseTopic(p.fsys, dir, path.Base(dir))
+	return p.parseTopic(dir, path.Base(dir))
 }
 
 func (p *Parser) ParseUnit(dir string) (*domain.Unit, error) {
-	return parseUnit(p.fsys, dir, path.Base(dir))
+	return p.parseUnit(dir, path.Base(dir))
 }
 
 func (p *Parser) ParseTask(dir string) (*domain.Task, error) {
-	return parseTask(p.fsys, dir, path.Base(dir))
+	return p.parseTask(dir, path.Base(dir))
 }

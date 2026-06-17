@@ -12,24 +12,23 @@ import (
 )
 
 type Handler struct {
-	mu                 sync.RWMutex
-	coursesDir         string
-	runnersDir         string
-	courses            map[string]*domain.Course
-	runner             *runner.Runner
-	progress           *service.ProgressService
-	submissionsService *service.SubmissionService
-	installJobs        sync.Map // presetID → *installProgress
+	mu          sync.RWMutex
+	coursesDir  string
+	courses     map[string]*domain.Course
+	catalogs    map[string]*domain.Catalog
+	runner      *runner.Runner
+	progress    *service.ProgressService
+	submissions *service.SubmissionService
 }
 
-func New(coursesDir, runnersDir string, courses map[string]*domain.Course, r *runner.Runner, ps *service.ProgressService, ss *service.SubmissionService) *Handler {
+func New(coursesDir string, courses map[string]*domain.Course, catalogs map[string]*domain.Catalog, r *runner.Runner, ps *service.ProgressService, ss *service.SubmissionService) *Handler {
 	return &Handler{
-		coursesDir:         coursesDir,
-		runnersDir:         runnersDir,
-		courses:            courses,
-		runner:             r,
-		progress:           ps,
-		submissionsService: ss,
+		coursesDir:  coursesDir,
+		courses:     courses,
+		catalogs:    catalogs,
+		runner:      r,
+		progress:    ps,
+		submissions: ss,
 	}
 }
 
