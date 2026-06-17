@@ -3,6 +3,7 @@ package repo
 import (
 	"embed"
 	"fmt"
+	"path/filepath"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/sqlite3"
@@ -18,7 +19,7 @@ func RunMigrations(path string) error {
 		return fmt.Errorf("failed to create source driver: %w", err)
 	}
 
-	databaseURL := fmt.Sprintf("sqlite3://%s", path)
+	databaseURL := fmt.Sprintf("sqlite3://%s", filepath.ToSlash(path))
 
 	migrateInstance, err := migrate.NewWithSourceInstance("iofs", sourceDriver, databaseURL)
 	if err != nil {
