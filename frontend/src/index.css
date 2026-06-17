@@ -45,3 +45,94 @@ body {
 ::-webkit-scrollbar-track { @apply bg-bg-2; }
 ::-webkit-scrollbar-thumb { @apply bg-bg-5 rounded-full; }
 ::-webkit-scrollbar-thumb:hover { @apply bg-bg-6; }
+
+@layer components {
+  .markdown-body {
+    @apply text-[15px] leading-7 text-tx-2;
+  }
+
+  .markdown-body :where(*) {
+    @apply tracking-normal;
+  }
+
+  .markdown-body :where(h1, h2, h3, h4) {
+    @apply text-tx-1 font-semibold;
+  }
+
+  .markdown-body :where(h1) {
+    @apply mb-5 mt-0 text-xl leading-8;
+  }
+
+  .markdown-body :where(h2) {
+    @apply mb-4 mt-8 border-b border-bdr pb-2 text-lg leading-7;
+  }
+
+  .markdown-body :where(h3) {
+    @apply mb-3 mt-7 text-base leading-7;
+  }
+
+  .markdown-body :where(h4, h5, h6) {
+    @apply mb-2 mt-6 text-sm leading-6;
+  }
+
+  .markdown-body :where(p) {
+    @apply my-4;
+  }
+
+  .markdown-body :where(strong) {
+    @apply font-semibold text-tx-1;
+  }
+
+  .markdown-body :where(a) {
+    @apply text-brand no-underline underline-offset-4 hover:underline;
+  }
+
+  .markdown-body :where(code):not(:where(pre code)) {
+    @apply rounded-md border border-bdr-s bg-bg-3 px-1.5 py-0.5 font-mono text-[0.86em] font-medium text-tx-1;
+    overflow-wrap: anywhere;
+  }
+
+  .markdown-body :where(pre) {
+    @apply my-5 overflow-x-auto rounded-md border border-bdr bg-bg-2 p-4;
+  }
+
+  .markdown-body :where(pre code) {
+    @apply block bg-transparent p-0 font-mono text-[13px] font-normal leading-6 text-tx-1;
+  }
+
+  .markdown-body :where(ul, ol) {
+    @apply my-4 pl-6;
+  }
+
+  .markdown-body :where(li) {
+    @apply my-1.5 pl-1;
+  }
+
+  .markdown-body :where(li)::marker {
+    color: var(--tx-3);
+  }
+
+  .markdown-body :where(blockquote) {
+    @apply my-5 border-l-2 border-brand bg-bg-2 px-4 py-2 text-tx-2;
+  }
+
+  .markdown-body :where(table) {
+    @apply my-5 w-full border-collapse text-sm;
+  }
+
+  .markdown-body :where(th, td) {
+    @apply border border-bdr px-3 py-2 align-top;
+  }
+
+  .markdown-body :where(th) {
+    @apply bg-bg-2 font-semibold text-tx-1;
+  }
+
+  .markdown-body :where(hr) {
+    @apply my-8 border-bdr;
+  }
+
+  .markdown-body :where(img) {
+    @apply my-5 max-w-full rounded-md border border-bdr;
+  }
+}
