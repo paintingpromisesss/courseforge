@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root, .dark {
+  --bg-1: hsl(240,6%,10%);
+  --bg-2: hsl(240,5%,12%);
+  --bg-3: hsl(240,5%,14%);
+  --bg-4: hsl(240,4%,18%);
+  --bg-5: hsl(240,4%,22%);
+  --bg-6: hsl(240,4%,26%);
+  --tx-1: #FFFFFF;
+  --tx-2: #A1A1AA;
+  --tx-3: #71717A;
+  --bdr-s: hsla(0,0%,100%,0.08);
+  --bdr:   hsla(0,0%,100%,0.12);
+  --bdr-e: hsla(0,0%,100%,0.20);
+}
+
+.light {
+  --bg-1: #ffffff;
+  --bg-2: #f4f4f6;
+  --bg-3: #ebebed;
+  --bg-4: #e0e0e3;
+  --bg-5: #cecece;
+  --bg-6: #bcbcbf;
+  --tx-1: #111113;
+  --tx-2: #48485a;
+  --tx-3: #878799;
+  --bdr-s: rgba(0,0,0,0.06);
+  --bdr:   rgba(0,0,0,0.10);
+  --bdr-e: rgba(0,0,0,0.18);
+}
+
+body {
+  @apply bg-bg-1 text-tx-1 font-sans antialiased;
+  min-height: 100vh;
+}
+
+*:focus-visible {
+  @apply outline-none ring-2 ring-brand ring-offset-2 ring-offset-bg-1;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { @apply bg-bg-2; }
+::-webkit-scrollbar-thumb { @apply bg-bg-5 rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-bg-6; }
