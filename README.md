@@ -6,16 +6,20 @@ browser.
 
 ## Quick Start
 
+Build the project, then run the generated binary.
+
 ### Windows
 
 ```powershell
-.\scripts\run.cmd -Port 8080
+.\scripts\build.ps1
+.\bin\courseforge.exe --port=8080 --courses-dir=.\courses --data-dir=.\data --frontend-dir=.\frontend\dist
 ```
 
 ### Linux / WSL
 
 ```bash
-./scripts/run.sh --port 8080
+./scripts/build.sh
+./bin/courseforge --port=8080 --courses-dir=./courses --data-dir=./data --frontend-dir=./frontend/dist
 ```
 
 Open [http://localhost:8080](http://localhost:8080).
@@ -25,7 +29,7 @@ Open [http://localhost:8080](http://localhost:8080).
 ### Build
 
 ```powershell
-.\scripts\build.cmd
+.\scripts\build.ps1
 ```
 
 ```bash
@@ -35,21 +39,35 @@ Open [http://localhost:8080](http://localhost:8080).
 ### Install
 
 ```powershell
-.\scripts\install.cmd
+.\scripts\install.ps1
 ```
 
 ```bash
 ./scripts/install.sh
 ```
 
-### Run existing build
+Install copies the backend binary to a user bin directory. The frontend build
+stays in `frontend/dist`, so pass `--frontend-dir` when running an installed
+binary outside the repository.
+
+### Run
 
 ```powershell
-.\bin\courseforge.exe --port=8080 --courses-dir=.\courses --data-dir=.\data
+.\bin\courseforge.exe --port=8080 --courses-dir=.\courses --data-dir=.\data --frontend-dir=.\frontend\dist
 ```
 
 ```bash
-./bin/courseforge --port=8080 --courses-dir=./courses --data-dir=./data
+./bin/courseforge --port=8080 --courses-dir=./courses --data-dir=./data --frontend-dir=./frontend/dist
+```
+
+Installed binary example:
+
+```powershell
+courseforge.exe --port=8080 --courses-dir=C:\path\to\courses --data-dir=C:\path\to\data --frontend-dir=C:\path\to\courseforge\frontend\dist
+```
+
+```bash
+courseforge --port=8080 --courses-dir=/path/to/courses --data-dir=/path/to/data --frontend-dir=/path/to/courseforge/frontend/dist
 ```
 
 ## Notes
