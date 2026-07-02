@@ -19,12 +19,14 @@ export interface TaskItem {
   slug: string;
   title: string;
   languages: string[];
+  editorial_url?: string;
 }
 
 export interface UnitItem {
   slug: string;
   title: string;
   has_theory: boolean;
+  video_url?: string;
   tasks: TaskItem[];
 }
 
@@ -69,8 +71,10 @@ export interface LangDriver {
 export interface RunnerStatus {
   status: 'ok' | 'broken' | 'missing';
   binary: string;
+  path?: string;
   version?: string;
   message?: string;
+  platform: 'linux' | 'darwin' | 'windows' | string;
 }
 
 export interface Submission {

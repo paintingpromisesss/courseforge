@@ -22,7 +22,7 @@ func (h *Handler) getProgress(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusNotFound, "course not found")
 		return
 	}
-	p, err := h.progress.Load(c.Dir, courseSlug)
+	p, err := h.progress.Load(r.Context(), c.Dir, courseSlug)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "failed to load progress")
 		return
@@ -57,9 +57,9 @@ func (h *Handler) updateProgress(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	if req.Done {
-		err = h.progress.MarkDone(c.Dir, courseSlug, taskSlug)
+		err = h.progress.MarkDone(r.Context(), c.Dir, courseSlug, taskSlug)
 	} else {
-		err = h.progress.MarkUndone(c.Dir, courseSlug, taskSlug)
+		err = h.progress.MarkUndone(r.Context(), c.Dir, courseSlug, taskSlug)
 	}
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "failed to update progress")

@@ -2,6 +2,7 @@ package runner
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -52,12 +54,10 @@ type Runner struct {
 	file    string // path to runners.json, empty if not set
 }
 
-// New creates a Runner preloaded with the built-in Go driver.
+// New creates a Runner preloaded with the built-in language drivers.
 func New() *Runner {
 	return &Runner{
-		drivers: map[string]LangDriver{
-			"go": defaultGoDriver(),
-		},
+		drivers: defaultDrivers(),
 	}
 }
 
@@ -97,12 +97,22 @@ func (r *Runner) AddDriver(lang string, d LangDriver) {
 	_ = r.saveFile()
 }
 
-// saveFile writes all current drivers to r.file. Must be called with mu held.
+// saveFile writes user-owned drivers to r.file. Must be called with mu held.
+// Built-in drivers left untouched from their factory defaults are NOT written,
+// so shipped driver updates keep taking effect instead of being frozen on disk.
 func (r *Runner) saveFile() error {
 	if r.file == "" {
 		return nil
 	}
-	data, err := json.MarshalIndent(r.drivers, "", "  ")
+	defaults := defaultDrivers()
+	persist := make(map[string]LangDriver, len(r.drivers))
+	for lang, d := range r.drivers {
+		if def, ok := defaults[lang]; ok && reflect.DeepEqual(d, def) {
+			continue // unchanged built-in — let the code own it
+		}
+		persist[lang] = d
+	}
+	data, err := json.MarshalIndent(persist, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -120,8 +130,15 @@ func (r *Runner) Drivers() map[string]LangDriver {
 	return maps.Clone(r.drivers)
 }
 
-// Run executes req and returns the result.
-func (r *Runner) Run(req RunRequest) (RunResult, error) {
+// DefaultDrivers returns the built-in factory drivers, ignoring any user edits.
+// Used to reset an edited runner back to its shipped command set.
+func (r *Runner) DefaultDrivers() map[string]LangDriver {
+	return defaultDrivers()
+}
+
+// Run executes req and returns the result. The process is killed when ctx is
+// cancelled (e.g. the client disconnects) or the per-request timeout elapses.
+func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	r.mu.RLock()
 	driver, ok := r.drivers[req.Language]
 	r.mu.RUnlock()
@@ -133,6 +150,8 @@ func (r *Runner) Run(req RunRequest) (RunResult, error) {
 	if timeout == 0 {
 		timeout = defaultTimeout
 	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	dir, args, err := r.prepare(driver, req)
 	if err != nil {
@@ -144,7 +163,9 @@ func (r *Runner) Run(req RunRequest) (RunResult, error) {
 	cmd.Dir = dir
 	configureCommand(cmd)
 
-	var stdout, stderr bytes.Buffer
+	// syncBuffer, not bytes.Buffer: on the timeout/cancel path we may read the
+	// captured output while a not-yet-dead process is still being copied into it.
+	var stdout, stderr syncBuffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -164,8 +185,9 @@ func (r *Runner) Run(req RunRequest) (RunResult, error) {
 	)
 	select {
 	case runErr = <-done:
-	case <-time.After(timeout):
-		timedOut = true
+	case <-ctx.Done():
+		// deadline → timeout; any other cancellation → client went away.
+		timedOut = errors.Is(ctx.Err(), context.DeadlineExceeded)
 		_ = stopCommand(cmd)
 		if err, exited := waitAfterStop(cmd, done); exited {
 			runErr = err
@@ -174,7 +196,7 @@ func (r *Runner) Run(req RunRequest) (RunResult, error) {
 				Stdout:   stdout.String(),
 				Stderr:   stderr.String(),
 				Duration: time.Since(start),
-				TimedOut: true,
+				TimedOut: timedOut,
 			}, nil
 		}
 	}
@@ -247,6 +269,26 @@ func (r *Runner) prepare(driver LangDriver, req RunRequest) (dir string, args []
 		}
 	}
 	return dir, args, nil
+}
+
+// syncBuffer is a bytes.Buffer safe for concurrent Write (by os/exec's output
+// copier goroutine) and String (by Run when it reads output after a timeout or
+// cancellation, before the process has fully exited).
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func expand(tmpl []string, file, testFile, dir string) []string {

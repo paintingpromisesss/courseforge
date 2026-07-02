@@ -48,7 +48,8 @@ type Topic struct {
 type Unit struct {
 	Slug      string   `yaml:"slug"`
 	Title     string   `yaml:"title"`
-	Theory    string   `yaml:"theory"` // path relative to unit folder, or ""
+	Theory    string   `yaml:"theory"`    // path relative to unit folder, or ""
+	VideoURL  string   `yaml:"video_url"` // optional intro video shown above theory
 	TaskSlugs []string `yaml:"tasks"`
 
 	Tasks []*Task `yaml:"-"`
@@ -58,8 +59,9 @@ type Unit struct {
 type Task struct {
 	Slug      string              `yaml:"slug"`
 	Title     string              `yaml:"title"`
-	Statement string              `yaml:"statement"` // path relative to task folder
-	Languages map[string]Language `yaml:"languages"`
+	Statement    string              `yaml:"statement"` // path relative to task folder
+	EditorialURL string              `yaml:"editorial_url"`
+	Languages    map[string]Language `yaml:"languages"`
 	Limits    *Limits             `yaml:"limits"`
 }
 

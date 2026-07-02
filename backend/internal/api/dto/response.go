@@ -11,10 +11,12 @@ type SlugResp struct {
 }
 
 type DetectResp struct {
-	Status  string `json:"status"` // ok | broken | missing
-	Binary  string `json:"binary"`
-	Version string `json:"version,omitempty"`
-	Message string `json:"message,omitempty"`
+	Status   string `json:"status"` // ok | broken | missing
+	Binary   string `json:"binary"`
+	Path     string `json:"path,omitempty"`
+	Version  string `json:"version,omitempty"`
+	Message  string `json:"message,omitempty"`
+	Platform string `json:"platform"` // linux | darwin | windows (host running the runner)
 }
 
 type ProgressResp struct {

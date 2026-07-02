@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"context"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -19,6 +20,7 @@ const (
 type DetectResult struct {
 	Status  DetectStatus
 	Binary  string // language binary that was looked up (e.g. "go")
+	Path    string // resolved absolute path of Binary, when found
 	Version string // installed toolchain version, e.g. "go1.22.4"
 	Message string // failure detail when Status is broken
 }
@@ -42,14 +44,50 @@ var probes = map[string]langProbe{
 		versionArgs: []string{"version"},
 		versionRe:   regexp.MustCompile(`go[0-9]+(?:\.[0-9]+)*`),
 	},
+	"python3": {
+		bin:         "python3",
+		code:        "print(\"courseforge-ok\")\n",
+		wantOut:     "courseforge-ok",
+		versionArgs: []string{"--version"},
+		versionRe:   regexp.MustCompile(`[0-9]+\.[0-9]+\.[0-9]+`),
+	},
+	"javascript": {
+		bin:         "node",
+		code:        "process.stdout.write(\"courseforge-ok\")\n",
+		wantOut:     "courseforge-ok",
+		versionArgs: []string{"--version"},
+		versionRe:   regexp.MustCompile(`v?[0-9]+\.[0-9]+\.[0-9]+`),
+	},
+	"cpp": {
+		bin:         "g++",
+		code:        "#include <cstdio>\nint main() { printf(\"courseforge-ok\"); return 0; }\n",
+		wantOut:     "courseforge-ok",
+		versionArgs: []string{"--version"},
+		versionRe:   regexp.MustCompile(`[0-9]+\.[0-9]+\.[0-9]+`),
+	},
+	"java": {
+		bin:         "javac",
+		code:        "class Main { public static void main(String[] a) { System.out.print(\"courseforge-ok\"); } }\n",
+		wantOut:     "courseforge-ok",
+		versionArgs: []string{"-version"},
+		versionRe:   regexp.MustCompile(`[0-9]+(?:\.[0-9]+)+`),
+	},
+	"csharp": {
+		bin:         "dotnet",
+		code:        "System.Console.Write(\"courseforge-ok\");\n",
+		wantOut:     "courseforge-ok",
+		versionArgs: []string{"--version"},
+		versionRe:   regexp.MustCompile(`[0-9]+\.[0-9]+\.[0-9]+`),
+	},
 }
 
 // probeVersion runs the binary's version command and extracts a version string.
-func probeVersion(path string, p langProbe) string {
+func probeVersion(ctx context.Context, path string, p langProbe) string {
 	if len(p.versionArgs) == 0 {
 		return ""
 	}
-	out, err := exec.Command(path, p.versionArgs...).Output()
+	// CombinedOutput: some toolchains (e.g. javac -version) print to stderr.
+	out, err := exec.CommandContext(ctx, path, p.versionArgs...).CombinedOutput()
 	if err != nil {
 		return ""
 	}
@@ -65,7 +103,7 @@ func probeVersion(path string, p langProbe) string {
 // Detect resolves the runner's binary via PATH (exec.LookPath, which honours
 // PATHEXT on Windows and mirrors `which`/`where`) and, when a probe exists,
 // runs a hello-world program through the driver to confirm it actually works.
-func (r *Runner) Detect(lang string) DetectResult {
+func (r *Runner) Detect(ctx context.Context, lang string) DetectResult {
 	p, hasProbe := probes[lang]
 	bin := p.bin
 	if !hasProbe {
@@ -84,34 +122,35 @@ func (r *Runner) Detect(lang string) DetectResult {
 	}
 	if !hasProbe {
 		// No functional test available — presence in PATH is the best signal.
-		return DetectResult{Status: StatusOK, Binary: bin}
+		return DetectResult{Status: StatusOK, Binary: bin, Path: path}
 	}
 
-	version := probeVersion(path, p)
+	version := probeVersion(ctx, path, p)
 
-	res, err := r.Run(RunRequest{Language: lang, Code: p.code})
+	res, err := r.Run(ctx, RunRequest{Language: lang, Code: p.code})
 	if err != nil {
-		return DetectResult{Status: StatusBroken, Binary: bin, Version: version, Message: err.Error()}
+		return DetectResult{Status: StatusBroken, Binary: bin, Path: path, Version: version, Message: err.Error()}
 	}
 	if res.TimedOut {
-		return DetectResult{Status: StatusBroken, Binary: bin, Version: version, Message: "hello-world test timed out"}
+		return DetectResult{Status: StatusBroken, Binary: bin, Path: path, Version: version, Message: "hello-world test timed out"}
 	}
 	if res.ExitCode != 0 {
 		msg := strings.TrimSpace(res.Stderr)
 		if msg == "" {
 			msg = strings.TrimSpace(res.Stdout)
 		}
-		return DetectResult{Status: StatusBroken, Binary: bin, Version: version, Message: truncate(msg, 300)}
+		return DetectResult{Status: StatusBroken, Binary: bin, Path: path, Version: version, Message: truncate(msg, 300)}
 	}
 	if p.wantOut != "" && !strings.Contains(res.Stdout, p.wantOut) {
-		return DetectResult{Status: StatusBroken, Binary: bin, Version: version, Message: "unexpected output: " + truncate(res.Stdout, 200)}
+		return DetectResult{Status: StatusBroken, Binary: bin, Path: path, Version: version, Message: "unexpected output: " + truncate(res.Stdout, 200)}
 	}
-	return DetectResult{Status: StatusOK, Binary: bin, Version: version}
+	return DetectResult{Status: StatusOK, Binary: bin, Path: path, Version: version}
 }
 
 func truncate(s string, n int) string {
 	if len(s) > n {
-		return s[:n]
+		// drop a rune split by the byte cut so the message stays valid UTF-8
+		return strings.ToValidUTF8(s[:n], "")
 	}
 	return s
 }

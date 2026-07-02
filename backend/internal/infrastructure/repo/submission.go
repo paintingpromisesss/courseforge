@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -42,8 +43,8 @@ func (s *SubmissionRepository) Close() error {
 }
 
 // Insert saves a submission and returns the assigned ID.
-func (s *SubmissionRepository) Insert(sub *domain.Submission) (int64, error) {
-	res, err := s.db.Exec(`
+func (s *SubmissionRepository) Insert(ctx context.Context, sub *domain.Submission) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO submissions
 			(course_slug, task_slug, language, code, stdout, stderr,
 			 exit_code, passed_tests, total_tests, duration_ms, timed_out, created_at)
@@ -60,8 +61,8 @@ func (s *SubmissionRepository) Insert(sub *domain.Submission) (int64, error) {
 }
 
 // List returns submissions for a task ordered by newest first.
-func (s *SubmissionRepository) List(courseSlug, taskSlug string) ([]domain.Submission, error) {
-	rows, err := s.db.Query(`
+func (s *SubmissionRepository) List(ctx context.Context, courseSlug, taskSlug string) ([]domain.Submission, error) {
+	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, course_slug, task_slug, language, code, stdout, stderr,
 		       exit_code, passed_tests, total_tests, duration_ms, timed_out, created_at
 		FROM submissions

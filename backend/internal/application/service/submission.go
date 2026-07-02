@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/paintingpromisesss/courseforge/internal/domain"
@@ -8,8 +9,8 @@ import (
 )
 
 type submissionRepository interface {
-	Insert(sub *domain.Submission) (int64, error)
-	List(courseSlug, taskSlug string) ([]domain.Submission, error)
+	Insert(ctx context.Context, sub *domain.Submission) (int64, error)
+	List(ctx context.Context, courseSlug, taskSlug string) ([]domain.Submission, error)
 }
 
 type SubmissionService struct {
@@ -24,8 +25,8 @@ func NewSubmissionService(repo submissionRepository, logger *zap.Logger) *Submis
 	}
 }
 
-func (s *SubmissionService) Create(sub *domain.Submission) (int64, error) {
-	id, err := s.repo.Insert(sub)
+func (s *SubmissionService) Create(ctx context.Context, sub *domain.Submission) (int64, error) {
+	id, err := s.repo.Insert(ctx, sub)
 	if err != nil {
 		s.logger.Error("failed to insert submission", zap.Error(err))
 		return 0, fmt.Errorf("create submission: %w", err)
@@ -34,8 +35,8 @@ func (s *SubmissionService) Create(sub *domain.Submission) (int64, error) {
 	return id, nil
 }
 
-func (s *SubmissionService) List(courseSlug, taskSlug string) ([]domain.Submission, error) {
-	submissions, err := s.repo.List(courseSlug, taskSlug)
+func (s *SubmissionService) List(ctx context.Context, courseSlug, taskSlug string) ([]domain.Submission, error) {
+	submissions, err := s.repo.List(ctx, courseSlug, taskSlug)
 	if err != nil {
 		s.logger.Error(
 			"failed to list submissions",

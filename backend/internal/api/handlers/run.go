@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -31,7 +32,7 @@ func (h *Handler) postRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.runner.Run(runner.RunRequest{
+	result, err := h.runner.Run(r.Context(), runner.RunRequest{
 		Language: req.Language,
 		Code:     req.Code,
 		TestCode: req.TestCode,
@@ -60,6 +61,15 @@ func (h *Handler) listRunners(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, dto.ToRunnerDrivers(h.runner.Drivers()))
 }
 
+// @Summary List built-in factory language drivers
+// @Tags runners
+// @Produce json
+// @Success 200 {object} map[string]dto.RunnerDriver
+// @Router /runners/defaults [get]
+func (h *Handler) listRunnerDefaults(w http.ResponseWriter, r *http.Request) {
+	h.writeJSON(w, http.StatusOK, dto.ToRunnerDrivers(h.runner.DefaultDrivers()))
+}
+
 // @Summary Detect and test a language runner on the host
 // @Tags runners
 // @Produce json
@@ -73,12 +83,14 @@ func (h *Handler) detectRunner(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusNotFound, "driver not found")
 		return
 	}
-	res := h.runner.Detect(lang)
+	res := h.runner.Detect(r.Context(), lang)
 	h.writeJSON(w, http.StatusOK, dto.DetectResp{
-		Status:  string(res.Status),
-		Binary:  res.Binary,
-		Version: res.Version,
-		Message: res.Message,
+		Status:   string(res.Status),
+		Binary:   res.Binary,
+		Path:     res.Path,
+		Version:  res.Version,
+		Message:  res.Message,
+		Platform: runtime.GOOS,
 	})
 }
 

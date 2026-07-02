@@ -6,12 +6,13 @@ import clsx from 'clsx';
 
 import { api } from '../api/client';
 import { Tabs } from '../components/ui/Tabs';
-import { Markdown } from '../components/ui/Markdown';
+import { Markdown, VideoEmbed } from '../components/ui/Markdown';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Badge } from '../components/ui/Badge';
 import { loadCode, saveCode } from '../lib/editorStorage';
 import { CodeMirrorEditor } from '../components/ui/CodeMirrorEditor';
-import { parseGoTestOutput, type ParsedResults } from '../lib/parseTests';
+import { LangSelect } from '../components/ui/LangSelect';
+import { parseTestOutput, type ParsedResults } from '../lib/parseTests';
 import { useTheme } from '../context/ThemeContext';
 import type { Submission } from '../api/types';
 
@@ -116,7 +117,7 @@ function SubmissionsList({ courseSlug, taskSlug }: { courseSlug: string; taskSlu
   );
 }
 
-type LeftTab = 'theory' | 'statement' | 'submissions' | 'solution';
+type LeftTab = 'theory' | 'statement' | 'video' | 'submissions' | 'solution';
 
 export function TaskPage() {
   const { courseSlug, trackSlug, topicSlug, unitSlug, taskSlug } = useParams<{
@@ -220,6 +221,16 @@ export function TaskPage() {
     enabled: !!courseSlug,
   });
 
+  // Runner status for the selected language (shared cache with LangSelect / Settings).
+  const { data: runnerStatus } = useQuery({
+    queryKey: ['runner-detect', lang],
+    queryFn: () => api.detectRunner(lang),
+    enabled: !!lang,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+  const runnerReady = runnerStatus?.status === 'ok';
+
   const theoryDone = !!(unitSlug && progress?.completed_tasks?.[unitSlug]);
 
   useEffect(() => {
@@ -270,7 +281,7 @@ export function TaskPage() {
     setResults(null);
     try {
       const resp = await api.run(lang, code, testCode);
-      const parsed = parseGoTestOutput(resp.stdout, resp.stderr);
+      const parsed = parseTestOutput(lang, resp.stdout, resp.stderr, resp.exit_code);
       setResults({ parsed, durationMs: resp.duration_ms, timedOut: resp.timed_out });
 
       await api.createSubmission({
@@ -301,6 +312,7 @@ export function TaskPage() {
   const leftTabs = [
     ...(unit?.has_theory ? [{ id: 'theory', label: 'Теория' }] : []),
     { id: 'statement', label: task?.title ?? 'Задача' },
+    ...(task?.editorial_url ? [{ id: 'video', label: 'Видео-разбор' }] : []),
     { id: 'submissions', label: 'Посылки' },
     { id: 'solution', label: <span className="flex items-center gap-1">Решение {!solutionUnlocked && '🔒'}</span> },
   ] as { id: string; label: React.ReactNode }[];
@@ -351,6 +363,7 @@ export function TaskPage() {
               const assetBase = `${BASE}/courses/${courseSlug}/tracks/${trackSlug}/topics/${topicSlug}/units/${unitSlug}`;
               return theory
                 ? <>
+                    {unit?.video_url && <VideoEmbed href={unit.video_url} />}
                     <Markdown content={theory} assetBase={assetBase} />
                     <div className="mt-8 flex justify-end">
                       <button
@@ -377,12 +390,15 @@ export function TaskPage() {
                 ? <Markdown content={statement} assetBase={assetBase} />
                 : <div className="text-tx-3 text-sm">Загрузка...</div>;
             })()}
+            {activeTab === 'video' && task?.editorial_url && (
+              <VideoEmbed href={task.editorial_url} />
+            )}
             {activeTab === 'submissions' && (
               <SubmissionsList courseSlug={courseSlug!} taskSlug={taskSlug!} />
             )}
             {activeTab === 'solution' && solutionUnlocked && (
               solution
-                ? <pre className="text-xs text-tx-2 font-mono overflow-x-auto">{solution}</pre>
+                ? <Markdown content={`<!-- code-snippets -->\n\`\`\`${lang}\n${solution}\n\`\`\``} />
                 : <div className="text-tx-3 text-sm">Загрузка...</div>
             )}
           </div>
@@ -395,25 +411,35 @@ export function TaskPage() {
 
         <div className="flex-1 flex flex-col overflow-hidden relative">
           <div className="flex items-center gap-2 px-3 h-11 shrink-0 border-b border-bdr bg-bg-2">
-            <select
+            <LangSelect
+              languages={task?.languages ?? []}
               value={lang}
-              onChange={(e) => setLang(e.target.value)}
-              className="bg-bg-3 border border-bdr text-tx-1 text-sm rounded px-2 py-1 focus:outline-none focus:border-brand"
-            >
-              {task?.languages?.map((l) => (
-                <option key={l} value={l}>{l}</option>
-              ))}
-            </select>
+              onChange={setLang}
+            />
             <button
               onClick={handleReset}
               className="px-3 py-1 text-sm text-tx-2 hover:text-tx-1 hover:bg-bg-4 rounded transition-colors"
             >
               Сброс
             </button>
+            {runnerStatus && !runnerReady && (
+              <span className="ml-auto flex items-center gap-1.5 text-warn text-xs" title={runnerStatus.message}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                Раннер {lang} не установлен
+              </span>
+            )}
             <button
               onClick={handleSubmit}
-              disabled={running}
-              className="ml-auto px-4 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white text-sm rounded transition-colors"
+              disabled={running || !runnerReady}
+              title={!runnerReady ? `Раннер для ${lang} недоступен` : undefined}
+              className={clsx(
+                'px-4 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm rounded transition-colors',
+                runnerStatus && !runnerReady ? 'ml-2' : 'ml-auto',
+              )}
             >
               {running ? 'Запуск...' : 'Отправить'}
             </button>

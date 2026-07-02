@@ -27,6 +27,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Delete("/catalogs/{catalogSlug}", h.deleteCatalog)
 
 	r.Get("/runners", h.listRunners)
+	r.Get("/runners/defaults", h.listRunnerDefaults)
 	r.Patch("/runners/{lang}", h.patchRunner)
 	r.Post("/runners/{lang}/detect", h.detectRunner)
 

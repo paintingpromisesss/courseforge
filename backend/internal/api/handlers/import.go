@@ -166,7 +166,7 @@ func (h *Handler) importCourseDir(sourceDir string) (string, *httpError) {
 	if _, err := os.Stat(destDir); err == nil {
 		return "", &httpError{http.StatusConflict, fmt.Sprintf("course slug %q already exists on disk", c.Slug)}
 	}
-	if err := os.Rename(sourceDir, destDir); err != nil {
+	if err := moveDir(sourceDir, destDir); err != nil {
 		return "", &httpError{http.StatusInternalServerError, "failed to install course"}
 	}
 	registered, err := h.loadAndRegisterCourse(c.Slug)
@@ -186,7 +186,7 @@ func (h *Handler) importCatalogDir(sourceDir string) (string, *httpError) {
 	if _, err := os.Stat(destDir); err == nil {
 		return "", &httpError{http.StatusConflict, fmt.Sprintf("catalog slug %q already exists on disk", cat.Slug)}
 	}
-	if err := os.Rename(sourceDir, destDir); err != nil {
+	if err := moveDir(sourceDir, destDir); err != nil {
 		return "", &httpError{http.StatusInternalServerError, "failed to install catalog"}
 	}
 	// rename any nested course whose slug collides with an existing course, so the
@@ -256,7 +256,7 @@ func containsString(s []string, v string) bool {
 }
 
 func removeString(s []string, v string) []string {
-	out := s[:0]
+	out := make([]string, 0, len(s))
 	for _, x := range s {
 		if x != v {
 			out = append(out, x)
@@ -391,4 +391,20 @@ func (h *Handler) loadAndRegisterCatalog(dirSlug string) (*domain.Catalog, error
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// moveDir moves src to dst. It tries os.Rename first (atomic, same filesystem)
+// and falls back to a recursive copy + remove when src and dst live on different
+// filesystems (e.g. TMPDIR on tmpfs vs. coursesDir on disk → os.Rename EXDEV).
+// Course content is regular files/dirs only; symlinks and perms beyond the
+// defaults aren't preserved — add if a course ever ships them.
+func moveDir(src, dst string) error {
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+	if err := os.CopyFS(dst, os.DirFS(src)); err != nil {
+		_ = os.RemoveAll(dst)
+		return err
+	}
+	return os.RemoveAll(src)
 }

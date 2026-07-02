@@ -89,6 +89,7 @@ export const api = {
     post<Submission>('/submissions', body),
 
   listRunners: () => get<Record<string, LangDriver>>('/runners'),
+  listRunnerDefaults: () => get<Record<string, LangDriver>>('/runners/defaults'),
   patchRunner: (lang: string, body: { run_cmd: string[]; test_cmd: string[] }) =>
     patch<void>(`/runners/${lang}`, body),
   detectRunner: (lang: string) => post<RunnerStatus>(`/runners/${lang}/detect`, {}),

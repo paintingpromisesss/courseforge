@@ -245,7 +245,16 @@ func rewriteCourseSlug(path, newSlug string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(courseSlugLine.ReplaceAllString(string(data), "slug: "+newSlug)), 0644)
+	// rewrite only the first top-level slug: line, never other slug-prefixed fields
+	done := false
+	out := courseSlugLine.ReplaceAllStringFunc(string(data), func(m string) string {
+		if done {
+			return m
+		}
+		done = true
+		return "slug: " + newSlug
+	})
+	return os.WriteFile(path, []byte(out), 0644)
 }
 
 func dedupe(in []string) []string {
