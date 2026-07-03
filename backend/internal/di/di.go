@@ -1,10 +1,12 @@
 package di
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/paintingpromisesss/courseforge/internal/api"
@@ -37,6 +39,15 @@ func Run(cfg *config.Config) error {
 	if err := r.UseFile(cfg.RunnersJSON); err != nil {
 		return fmt.Errorf("load runners: %w", err)
 	}
+
+	pgMgr := runner.NewPostgresManager(filepath.Join(cfg.DataDir, "postgres"))
+	if err := pgMgr.Start(context.Background()); err != nil {
+		log.Printf("postgres runner disabled: %v", err)
+	} else {
+		r.ConfigurePostgres(pgMgr.SocketDir())
+		defer pgMgr.Stop()
+	}
+
 	pr := repo.NewFileProgressRepository(cfg.CoursesDir)
 
 	ps := service.NewProgressService(pr, logger)
