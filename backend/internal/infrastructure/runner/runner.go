@@ -26,7 +26,7 @@ type LangDriver struct {
 	Ext         string            `json:"ext"`          // source file extension, e.g. ".go"
 	TestExt     string            `json:"test_ext"`     // test file name suffix, e.g. "_test.go"
 	InitFiles   map[string]string `json:"init_files"`   // files written to temp dir before execution, e.g. {"go.mod": "module main\n\ngo 1.26\n"}
-	NeedsSchema bool              `json:"needs_schema"` // if true, create an isolated postgres schema for the run
+	NeedsSchema bool              `json:"needs_schema,omitempty"` // if true, create an isolated postgres schema for the run
 }
 
 const (
@@ -126,16 +126,20 @@ func newSchemaName() (string, error) {
 // createSchema creates an isolated schema for one run in the shared
 // "courseforge" database.
 func (r *Runner) createSchema(ctx context.Context, name string) error {
-	cmd := exec.CommandContext(ctx, "psql", "-h", r.pgSocket, "courseforge", "-c", fmt.Sprintf("CREATE SCHEMA %s;", name))
-	return cmd.Run()
+	out, err := exec.CommandContext(ctx, "psql", "-h", r.pgSocket, "-d", "courseforge",
+		"-v", "ON_ERROR_STOP=1", "-c", "CREATE SCHEMA "+name).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("create schema: %w: %s", err, out)
+	}
+	return nil
 }
 
 // dropSchema removes a run's schema. Best-effort: if this fails (e.g. the
 // process is being killed), PostgresManager's startup reaper catches it
 // next boot — the database never accumulates permanent clutter.
 func (r *Runner) dropSchema(name string) {
-	cmd := exec.Command("psql", "-h", r.pgSocket, "courseforge", "-c", fmt.Sprintf("DROP SCHEMA IF EXISTS %s CASCADE;", name))
-	_ = cmd.Run()
+	_ = exec.Command("psql", "-h", r.pgSocket, "-d", "courseforge",
+		"-c", "DROP SCHEMA IF EXISTS "+name+" CASCADE").Run()
 }
 
 // saveFile writes user-owned drivers to r.file. Must be called with mu held.
@@ -222,7 +226,11 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = dir
 	if schemaName != "" {
-		cmd.Env = append(os.Environ(), "CF_SCHEMA="+schemaName)
+		cmd.Env = append(os.Environ(),
+			"PGHOST="+r.pgSocket,
+			"PGDATABASE=courseforge",
+			"PGOPTIONS=--search_path="+schemaName,
+		)
 	}
 	configureCommand(cmd)
 
