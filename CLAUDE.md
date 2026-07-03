@@ -59,6 +59,7 @@ Single Go binary serves both the REST API and the React SPA (`frontend/dist/`).
 - `LangDriver` defines `run_cmd`, `test_cmd`, `ext`, `test_ext`, `init_files` for a language
 - Go driver is built-in; others loaded from `data/runners.json`
 - Task runs = user code + test file in isolated temp dir; solution file never included
+- `postgres` driver (`needs_schema: true`) is special-cased: instead of an isolated temp process, it runs against one courseforge-managed Postgres cluster (`internal/infrastructure/runner/postgres.go`, Unix-only), isolated per run via `CREATE SCHEMA`/`DROP SCHEMA` rather than a new database — the cluster's database count never grows. Managed by `PostgresManager`, started/stopped in `internal/di/di.go`.
 
 **Build flags**: `swagger` build tag enables Swagger UI at `/swagger/index.html` (used by `make run` and `scripts/build.sh`; disabled in production-style builds).
 
