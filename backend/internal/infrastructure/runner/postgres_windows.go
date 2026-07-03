@@ -4,7 +4,7 @@ package runner
 
 import (
 	"context"
-	"fmt"
+	"errors"
 )
 
 // PostgresManager is unavailable on Windows: native Postgres there lacks
@@ -16,7 +16,7 @@ type PostgresManager struct{}
 func NewPostgresManager(dataDir string) *PostgresManager { return &PostgresManager{} }
 
 func (m *PostgresManager) Start(ctx context.Context) error {
-	return fmt.Errorf("postgres unavailable on Windows: Unix sockets not supported")
+	return errors.New("postgres unavailable on Windows: Unix sockets not supported")
 }
 
 func (m *PostgresManager) Stop() error       { return nil }
