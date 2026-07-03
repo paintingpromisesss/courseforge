@@ -66,5 +66,12 @@ func defaultDrivers() map[string]LangDriver {
 					"</Project>\n",
 			},
 		},
+		"postgres": {
+			RunCmd:      []string{"psql", "-v", "ON_ERROR_STOP=1", "-f", "schema.sql", "-f", "{file}"},
+			TestCmd:     []string{"sh", "-c", "psql -v ON_ERROR_STOP=1 -f schema.sql -f {file} && pg_prove {testfile}"},
+			Ext:         ".sql",
+			TestExt:     "_test.sql",
+			NeedsSchema: true,
+		},
 	}
 }

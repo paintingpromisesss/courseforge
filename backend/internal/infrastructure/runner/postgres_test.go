@@ -18,17 +18,38 @@ func requirePostgres(t *testing.T) {
 func TestRun_Postgres_SchemaIsolation(t *testing.T) {
 	requirePostgres(t)
 
-	r := New()
-	r.AddDriver("postgres", LangDriver{
-		RunCmd:      []string{"psql", "-v", "ON_ERROR_STOP=1", "-f", "{file}"},
-		Ext:         ".sql",
-		NeedsSchema: true,
-	})
+	dir := t.TempDir()
+	m := NewPostgresManager(filepath.Join(dir, "pg"))
+	if err := m.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer m.Stop()
 
-	// Not configured yet: must fail clearly instead of connecting nowhere.
-	_, err := r.Run(context.Background(), RunRequest{Language: "postgres", Code: "SELECT 1;"})
-	if err == nil {
-		t.Fatal("expected error when postgres is not configured")
+	r := New()
+	r.ConfigurePostgres(m.SocketDir())
+
+	res, err := r.Run(context.Background(), RunRequest{
+		Language: "postgres",
+		Code:     "CREATE TABLE t (id int); INSERT INTO t VALUES (1);",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ExitCode != 0 {
+		t.Fatalf("first run exit %d stderr: %s", res.ExitCode, res.Stderr)
+	}
+
+	// A second, independent run must not see the first run's table — proves
+	// schema-per-run isolation, not just "it connected".
+	res2, err := r.Run(context.Background(), RunRequest{
+		Language: "postgres",
+		Code:     "SELECT * FROM t;",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res2.ExitCode == 0 {
+		t.Fatalf("expected second run to fail (table t must not leak across schemas), got exit 0: %s", res2.Stdout)
 	}
 }
 
