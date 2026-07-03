@@ -3,6 +3,8 @@ package runner
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,11 +21,12 @@ import (
 // LangDriver defines how to run and test code for a specific language.
 // Placeholders in command slices: {file}, {testfile}, {dir}.
 type LangDriver struct {
-	RunCmd    []string          `json:"run_cmd"`    // e.g. ["go", "run", "{file}"]
-	TestCmd   []string          `json:"test_cmd"`   // e.g. ["go", "test", "{dir}"]
-	Ext       string            `json:"ext"`        // source file extension, e.g. ".go"
-	TestExt   string            `json:"test_ext"`   // test file name suffix, e.g. "_test.go"
-	InitFiles map[string]string `json:"init_files"` // files written to temp dir before execution, e.g. {"go.mod": "module main\n\ngo 1.26\n"}
+	RunCmd      []string          `json:"run_cmd"`      // e.g. ["go", "run", "{file}"]
+	TestCmd     []string          `json:"test_cmd"`     // e.g. ["go", "test", "{dir}"]
+	Ext         string            `json:"ext"`          // source file extension, e.g. ".go"
+	TestExt     string            `json:"test_ext"`     // test file name suffix, e.g. "_test.go"
+	InitFiles   map[string]string `json:"init_files"`   // files written to temp dir before execution, e.g. {"go.mod": "module main\n\ngo 1.26\n"}
+	NeedsSchema bool              `json:"needs_schema"` // if true, create an isolated postgres schema for the run
 }
 
 const (
@@ -49,9 +52,10 @@ type RunResult struct {
 
 // Runner executes code for configured languages.
 type Runner struct {
-	mu      sync.RWMutex
-	drivers map[string]LangDriver
-	file    string // path to runners.json, empty if not set
+	mu       sync.RWMutex
+	drivers  map[string]LangDriver
+	file     string // path to runners.json, empty if not set
+	pgSocket string // unix socket dir for postgres driver, empty if not configured
 }
 
 // New creates a Runner preloaded with the built-in language drivers.
@@ -95,6 +99,43 @@ func (r *Runner) AddDriver(lang string, d LangDriver) {
 	defer r.mu.Unlock()
 	r.drivers[lang] = d
 	_ = r.saveFile()
+}
+
+// ConfigurePostgres enables the "postgres" driver by pointing schema-
+// isolated runs at a running Postgres cluster's Unix socket directory.
+// Call once at startup after PostgresManager.Start succeeds; leave unset
+// to disable the driver (Run then errors instead of connecting nowhere).
+func (r *Runner) ConfigurePostgres(socketDir string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.pgSocket = socketDir
+}
+
+// newSchemaName generates a unique, safe-to-interpolate schema name for
+// one run. The fixed "cf_run_" prefix + hex charset lets callers embed it
+// directly in SQL without quoting (see createSchema/dropSchema and
+// PostgresManager.reapOrphanSchemas, which all rely on this exact shape).
+func newSchemaName() (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("rand: %w", err)
+	}
+	return "cf_run_" + hex.EncodeToString(b[:]), nil
+}
+
+// createSchema creates an isolated schema for one run in the shared
+// "courseforge" database.
+func (r *Runner) createSchema(ctx context.Context, name string) error {
+	cmd := exec.CommandContext(ctx, "psql", "-h", r.pgSocket, "courseforge", "-c", fmt.Sprintf("CREATE SCHEMA %s;", name))
+	return cmd.Run()
+}
+
+// dropSchema removes a run's schema. Best-effort: if this fails (e.g. the
+// process is being killed), PostgresManager's startup reaper catches it
+// next boot — the database never accumulates permanent clutter.
+func (r *Runner) dropSchema(name string) {
+	cmd := exec.Command("psql", "-h", r.pgSocket, "courseforge", "-c", fmt.Sprintf("DROP SCHEMA IF EXISTS %s CASCADE;", name))
+	_ = cmd.Run()
 }
 
 // saveFile writes user-owned drivers to r.file. Must be called with mu held.
@@ -153,6 +194,25 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	var schemaName string
+	if driver.NeedsSchema {
+		r.mu.RLock()
+		socket := r.pgSocket
+		r.mu.RUnlock()
+		if socket == "" {
+			return RunResult{}, fmt.Errorf("postgres driver needs ConfigurePostgres, but not configured")
+		}
+		var err error
+		schemaName, err = newSchemaName()
+		if err != nil {
+			return RunResult{}, err
+		}
+		if err := r.createSchema(ctx, schemaName); err != nil {
+			return RunResult{}, fmt.Errorf("create schema: %w", err)
+		}
+		defer r.dropSchema(schemaName)
+	}
+
 	dir, args, err := r.prepare(driver, req)
 	if err != nil {
 		return RunResult{}, err
@@ -161,6 +221,9 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = dir
+	if schemaName != "" {
+		cmd.Env = append(os.Environ(), "CF_SCHEMA="+schemaName)
+	}
 	configureCommand(cmd)
 
 	// syncBuffer, not bytes.Buffer: on the timeout/cancel path we may read the
