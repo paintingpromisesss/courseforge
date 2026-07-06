@@ -40,6 +40,15 @@ func (m *PostgresManager) Start(ctx context.Context) error {
 		return fmt.Errorf("create postgres data dir: %w", err)
 	}
 
+	// postgres changes its working directory on startup, so a relative
+	// dataDir would resolve unix_socket_directories against the wrong
+	// cwd ("could not create lock file ...: No such file or directory").
+	abs, err := filepath.Abs(m.dataDir)
+	if err != nil {
+		return fmt.Errorf("resolve postgres data dir: %w", err)
+	}
+	m.dataDir = abs
+
 	if _, err := os.Stat(filepath.Join(m.dataDir, "PG_VERSION")); os.IsNotExist(err) {
 		out, err := exec.CommandContext(ctx, "initdb", "-D", m.dataDir, "--auth=trust", "--no-sync").CombinedOutput()
 		if err != nil {
