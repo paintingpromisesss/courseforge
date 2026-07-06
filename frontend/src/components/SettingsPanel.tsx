@@ -365,6 +365,22 @@ const RUNNERS: RunnerDef[] = [
       { os: 'Windows', cmd: 'winget install Microsoft.DotNet.SDK.10' },
     ],
   },
+  {
+    id: 'postgres',
+    name: 'PostgreSQL (SQL)',
+    docsUrl: 'https://pgtap.org/',
+    install: [
+      {
+        os: 'Linux',
+        cmd: 'sudo apt install postgresql-16 postgresql-16-pgtap libtap-parser-sourcehandler-pgtap-perl\n'
+          + '# initdb/pg_ctl обычно лежат в /usr/lib/postgresql/16/bin — при необходимости добавьте в PATH:\n'
+          + 'sudo ln -sf /usr/lib/postgresql/16/bin/initdb /usr/local/bin/initdb\n'
+          + 'sudo ln -sf /usr/lib/postgresql/16/bin/pg_ctl /usr/local/bin/pg_ctl',
+      },
+      { os: 'macOS', cmd: 'brew install postgresql@16 pgtap\ncpan TAP::Parser::SourceHandler::pgTAP  # для pg_prove' },
+      { os: 'Windows', cmd: '# не поддерживается: раннер postgres требует управляемый кластер (PostgresManager), реализованного для Windows нет — этот раннер всегда отключён на этой ОС' },
+    ],
+  },
 ];
 
 // icons
