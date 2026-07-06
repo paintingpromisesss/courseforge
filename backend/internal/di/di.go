@@ -44,7 +44,7 @@ func Run(cfg *config.Config) error {
 	if err := pgMgr.Start(context.Background()); err != nil {
 		log.Printf("postgres runner disabled: %v", err)
 	} else {
-		r.ConfigurePostgres(pgMgr.SocketDir())
+		r.ConfigurePostgres(pgMgr.Host(), pgMgr.Port())
 		defer pgMgr.Stop()
 	}
 

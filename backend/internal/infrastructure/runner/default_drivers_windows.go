@@ -61,9 +61,9 @@ func defaultDrivers() map[string]LangDriver {
 			},
 		},
 		"postgres": {
-			// PostgresManager has no Windows implementation (see postgres_windows.go),
-			// so this driver is always disabled here — listed for parity with the
-			// Unix defaults, gated the same way (ConfigurePostgres never runs).
+			// PostgresManager's Windows implementation (see postgres_windows.go)
+			// uses loopback TCP instead of a Unix socket, since Postgres on
+			// Windows doesn't support socket files.
 			RunCmd:      []string{"psql", "-v", "ON_ERROR_STOP=1", "-f", "schema.sql", "-f", "{file}"},
 			TestCmd:     []string{"cmd", "/c", "psql -v ON_ERROR_STOP=1 -f schema.sql -f {file} && pg_prove {testfile}"},
 			Ext:         ".sql",

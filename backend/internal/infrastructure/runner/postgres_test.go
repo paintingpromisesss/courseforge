@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -26,7 +27,7 @@ func TestRun_Postgres_SchemaIsolation(t *testing.T) {
 	defer m.Stop()
 
 	r := New()
-	r.ConfigurePostgres(m.SocketDir())
+	r.ConfigurePostgres(m.Host(), m.Port())
 
 	res, err := r.Run(context.Background(), RunRequest{
 		Language: "postgres",
@@ -63,7 +64,7 @@ func TestPostgresManager_StartCreatesDatabaseAndExtension(t *testing.T) {
 	}
 	defer m.Stop()
 
-	out, err := exec.Command("psql", "-h", m.SocketDir(), "-d", "courseforge",
+	out, err := exec.Command("psql", "-h", m.Host(), "-p", strconv.Itoa(m.Port()), "-d", "courseforge",
 		"-tAc", "SELECT extname FROM pg_extension WHERE extname = 'pgtap'").CombinedOutput()
 	if err != nil {
 		t.Fatalf("psql check: %v: %s", err, out)
@@ -84,7 +85,7 @@ func TestPostgresManager_ReapsOrphanSchemas(t *testing.T) {
 	defer m.Stop()
 
 	// Simulate a schema orphaned by a crashed run.
-	if out, err := exec.Command("psql", "-h", m.SocketDir(), "-d", "courseforge",
+	if out, err := exec.Command("psql", "-h", m.Host(), "-p", strconv.Itoa(m.Port()), "-d", "courseforge",
 		"-c", "CREATE SCHEMA cf_run_deadbeef").CombinedOutput(); err != nil {
 		t.Fatalf("create orphan schema: %v: %s", err, out)
 	}
@@ -93,7 +94,7 @@ func TestPostgresManager_ReapsOrphanSchemas(t *testing.T) {
 		t.Fatalf("reapOrphanSchemas: %v", err)
 	}
 
-	out, err := exec.Command("psql", "-h", m.SocketDir(), "-d", "courseforge",
+	out, err := exec.Command("psql", "-h", m.Host(), "-p", strconv.Itoa(m.Port()), "-d", "courseforge",
 		"-tAc", "SELECT count(*) FROM information_schema.schemata WHERE schema_name = 'cf_run_deadbeef'").CombinedOutput()
 	if err != nil {
 		t.Fatalf("psql check: %v: %s", err, out)

@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -52,10 +53,11 @@ type RunResult struct {
 
 // Runner executes code for configured languages.
 type Runner struct {
-	mu       sync.RWMutex
-	drivers  map[string]LangDriver
-	file     string // path to runners.json, empty if not set
-	pgSocket string // unix socket dir for postgres driver, empty if not configured
+	mu      sync.RWMutex
+	drivers map[string]LangDriver
+	file    string // path to runners.json, empty if not set
+	pgHost  string // postgres host for the "postgres" driver (Unix socket dir, or a TCP host on Windows); empty if not configured
+	pgPort  int    // postgres port; paired with pgHost
 }
 
 // New creates a Runner preloaded with the built-in language drivers.
@@ -102,13 +104,15 @@ func (r *Runner) AddDriver(lang string, d LangDriver) {
 }
 
 // ConfigurePostgres enables the "postgres" driver by pointing schema-
-// isolated runs at a running Postgres cluster's Unix socket directory.
+// isolated runs at a running Postgres cluster (host is a Unix socket
+// directory on Unix, or a TCP host like "127.0.0.1" on Windows).
 // Call once at startup after PostgresManager.Start succeeds; leave unset
 // to disable the driver (Run then errors instead of connecting nowhere).
-func (r *Runner) ConfigurePostgres(socketDir string) {
+func (r *Runner) ConfigurePostgres(host string, port int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.pgSocket = socketDir
+	r.pgHost = host
+	r.pgPort = port
 }
 
 // newSchemaName generates a unique, safe-to-interpolate schema name for
@@ -126,7 +130,7 @@ func newSchemaName() (string, error) {
 // createSchema creates an isolated schema for one run in the shared
 // "courseforge" database.
 func (r *Runner) createSchema(ctx context.Context, name string) error {
-	out, err := exec.CommandContext(ctx, "psql", "-h", r.pgSocket, "-d", "courseforge",
+	out, err := exec.CommandContext(ctx, "psql", "-h", r.pgHost, "-p", strconv.Itoa(r.pgPort), "-d", "courseforge",
 		"-v", "ON_ERROR_STOP=1", "-c", "CREATE SCHEMA "+name).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("create schema: %w: %s", err, out)
@@ -138,7 +142,7 @@ func (r *Runner) createSchema(ctx context.Context, name string) error {
 // process is being killed), PostgresManager's startup reaper catches it
 // next boot — the database never accumulates permanent clutter.
 func (r *Runner) dropSchema(name string) {
-	_ = exec.Command("psql", "-h", r.pgSocket, "-d", "courseforge",
+	_ = exec.Command("psql", "-h", r.pgHost, "-p", strconv.Itoa(r.pgPort), "-d", "courseforge",
 		"-c", "DROP SCHEMA IF EXISTS "+name+" CASCADE").Run()
 }
 
@@ -201,9 +205,9 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	var schemaName string
 	if driver.NeedsSchema {
 		r.mu.RLock()
-		socket := r.pgSocket
+		host := r.pgHost
 		r.mu.RUnlock()
-		if socket == "" {
+		if host == "" {
 			return RunResult{}, fmt.Errorf("postgres driver needs ConfigurePostgres, but not configured")
 		}
 		var err error
@@ -227,7 +231,8 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	cmd.Dir = dir
 	if schemaName != "" {
 		cmd.Env = append(os.Environ(),
-			"PGHOST="+r.pgSocket,
+			"PGHOST="+r.pgHost,
+			"PGPORT="+strconv.Itoa(r.pgPort),
 			"PGDATABASE=courseforge",
 			"PGOPTIONS=--search_path="+schemaName,
 		)

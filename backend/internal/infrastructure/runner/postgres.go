@@ -26,10 +26,17 @@ func NewPostgresManager(dataDir string) *PostgresManager {
 	return &PostgresManager{dataDir: dataDir}
 }
 
-// SocketDir returns the Unix socket directory clients should connect
-// through (PGHOST). Only meaningful after Start succeeds.
-func (m *PostgresManager) SocketDir() string {
+// Host returns the Unix socket directory clients should connect through
+// (PGHOST). Only meaningful after Start succeeds.
+func (m *PostgresManager) Host() string {
 	return m.dataDir
+}
+
+// Port returns the port clients should connect through (PGPORT). Fixed at
+// the Postgres default since each cluster gets its own private socket
+// directory, so there's no risk of colliding with another instance.
+func (m *PostgresManager) Port() int {
+	return 5432
 }
 
 // Start initializes the cluster if needed, starts it listening on a Unix
@@ -89,14 +96,7 @@ func (m *PostgresManager) Stop() error {
 // process that was killed mid-run, so a crash never leaves permanent
 // clutter in the courseforge database.
 func (m *PostgresManager) reapOrphanSchemas(ctx context.Context) error {
-	const sweep = `DO $$
-DECLARE r record;
-BEGIN
-  FOR r IN SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'cf\_run\_%' LOOP
-    EXECUTE 'DROP SCHEMA IF EXISTS ' || quote_ident(r.schema_name) || ' CASCADE';
-  END LOOP;
-END $$;`
-	return m.psql(ctx, sweep)
+	return m.psql(ctx, pgtapSweepSQL)
 }
 
 func (m *PostgresManager) psql(ctx context.Context, stmt string) error {

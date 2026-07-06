@@ -378,7 +378,14 @@ const RUNNERS: RunnerDef[] = [
           + 'sudo ln -sf /usr/lib/postgresql/16/bin/pg_ctl /usr/local/bin/pg_ctl',
       },
       { os: 'macOS', cmd: 'brew install postgresql@16 pgtap\ncpan TAP::Parser::SourceHandler::pgTAP  # для pg_prove' },
-      { os: 'Windows', cmd: '# не поддерживается: раннер postgres требует управляемый кластер (PostgresManager), реализованного для Windows нет — этот раннер всегда отключён на этой ОС' },
+      {
+        os: 'Windows',
+        cmd: 'winget install PostgreSQL.PostgreSQL.16  # даёт initdb/pg_ctl/psql/createdb\n'
+          + '# pgTAP и pg_prove на Windows пакетами не ставятся, нужна сборка из исходников:\n'
+          + '#   pgTAP: PGXN client + nmake (Visual Studio Build Tools) — pgxn install pgtap\n'
+          + '#   pg_prove: Strawberry Perl, затем cpan TAP::Parser::SourceHandler::pgTAP\n'
+          + '# Без pgtap раннер стартует, но CREATE EXTENSION pgtap упадёт — соответствующий лог при старте сервера объяснит, чего не хватает.',
+      },
     ],
   },
 ];
