@@ -72,6 +72,10 @@ func defaultDrivers() map[string]LangDriver {
 			Ext:         ".sql",
 			TestExt:     "_test.sql",
 			NeedsSchema: true,
+			// Tasks override this with their own DDL/seed data via task.yaml's
+			// init_files; the empty default keeps RunCmd/TestCmd's `-f schema.sql`
+			// working (and this package's own tests runnable) even without one.
+			InitFiles: map[string]string{"schema.sql": ""},
 		},
 	}
 }

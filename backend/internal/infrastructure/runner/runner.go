@@ -212,7 +212,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 			return RunResult{}, err
 		}
 		if err := r.createSchema(ctx, schemaName); err != nil {
-			return RunResult{}, fmt.Errorf("create schema: %w", err)
+			return RunResult{}, err
 		}
 		defer r.dropSchema(schemaName)
 	}
