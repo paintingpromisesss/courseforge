@@ -60,5 +60,16 @@ func defaultDrivers() map[string]LangDriver {
 					"</Project>\n",
 			},
 		},
+		"postgres": {
+			// PostgresManager has no Windows implementation (see postgres_windows.go),
+			// so this driver is always disabled here — listed for parity with the
+			// Unix defaults, gated the same way (ConfigurePostgres never runs).
+			RunCmd:      []string{"psql", "-v", "ON_ERROR_STOP=1", "-f", "schema.sql", "-f", "{file}"},
+			TestCmd:     []string{"cmd", "/c", "psql -v ON_ERROR_STOP=1 -f schema.sql -f {file} && pg_prove {testfile}"},
+			Ext:         ".sql",
+			TestExt:     "_test.sql",
+			NeedsSchema: true,
+			InitFiles:   map[string]string{"schema.sql": ""},
+		},
 	}
 }
