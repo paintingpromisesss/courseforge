@@ -92,3 +92,10 @@ export interface Submission {
   timed_out: boolean;
   created_at: string;
 }
+
+export interface CreateSubmissionReq {
+  course_slug: string;
+  task_slug: string;
+  language: string;
+  code: string;
+}

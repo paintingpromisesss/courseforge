@@ -9,6 +9,7 @@ import { python } from '@codemirror/lang-python';
 import { java } from '@codemirror/lang-java';
 import { cpp } from '@codemirror/lang-cpp';
 import { go, goLanguage } from '@codemirror/lang-go';
+import { sql, PostgreSQL } from '@codemirror/lang-sql';
 import { completeFromList, ifNotIn } from '@codemirror/autocomplete';
 import { LanguageSupport, StreamLanguage } from '@codemirror/language';
 import { csharp } from '@codemirror/legacy-modes/mode/clike';
@@ -49,6 +50,7 @@ const LANG_EXT: Record<string, () => Extension> = {
   java: java,
   cpp: cpp,
   csharp: () => StreamLanguage.define(csharp),
+  postgres: () => sql({ dialect: PostgreSQL }),
 };
 
 function getLangExt(lang: string): Extension {

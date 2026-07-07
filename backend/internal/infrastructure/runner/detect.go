@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -36,6 +37,11 @@ type langProbe struct {
 	versionRe   *regexp.Regexp
 }
 
+// pgVersionRe extracts major.minor from "SHOW server_version" output
+// (e.g. "16.4" or "16.4 (Debian 16.4-1)") — matches the UI's other runner
+// version labels, which show major.minor, not a full patch/build string.
+var pgVersionRe = regexp.MustCompile(`[0-9]+\.[0-9]+`)
+
 var probes = map[string]langProbe{
 	"go": {
 		bin:         "go",
@@ -67,7 +73,7 @@ var probes = map[string]langProbe{
 	},
 	"java": {
 		bin:         "javac",
-		code:        "class Main { public static void main(String[] a) { System.out.print(\"courseforge-ok\"); } }\n",
+		code:        "class Solution { public static void main(String[] a) { System.out.print(\"courseforge-ok\"); } }\n",
 		wantOut:     "courseforge-ok",
 		versionArgs: []string{"-version"},
 		versionRe:   regexp.MustCompile(`[0-9]+(?:\.[0-9]+)+`),
@@ -120,6 +126,9 @@ func (r *Runner) Detect(ctx context.Context, lang string) DetectResult {
 	if err != nil {
 		return DetectResult{Status: StatusMissing, Binary: bin}
 	}
+	if lang == "postgres" {
+		return r.detectPostgres(ctx, bin, path)
+	}
 	if !hasProbe {
 		// No functional test available — presence in PATH is the best signal.
 		return DetectResult{Status: StatusOK, Binary: bin, Path: path}
@@ -143,6 +152,29 @@ func (r *Runner) Detect(ctx context.Context, lang string) DetectResult {
 	}
 	if p.wantOut != "" && !strings.Contains(res.Stdout, p.wantOut) {
 		return DetectResult{Status: StatusBroken, Binary: bin, Path: path, Version: version, Message: "unexpected output: " + truncate(res.Stdout, 200)}
+	}
+	return DetectResult{Status: StatusOK, Binary: bin, Path: path, Version: version}
+}
+
+// detectPostgres reports the "postgres" driver as available only once
+// ConfigurePostgres succeeded (PostgresManager actually started the cluster)
+// and the cluster answers a real query, with its server version attached.
+func (r *Runner) detectPostgres(ctx context.Context, bin, path string) DetectResult {
+	r.mu.RLock()
+	host := r.pgHost
+	port := r.pgPort
+	r.mu.RUnlock()
+	if host == "" {
+		return DetectResult{Status: StatusMissing, Binary: bin, Path: path, Message: "postgres cluster not running"}
+	}
+	out, err := exec.CommandContext(ctx, "psql", "-h", host, "-p", strconv.Itoa(port), "-d", "postgres",
+		"-tAc", "SHOW server_version").CombinedOutput()
+	if err != nil {
+		return DetectResult{Status: StatusBroken, Binary: bin, Path: path, Message: truncate(strings.TrimSpace(string(out)), 300)}
+	}
+	version := strings.TrimSpace(string(out))
+	if m := pgVersionRe.FindString(version); m != "" {
+		version = m
 	}
 	return DetectResult{Status: StatusOK, Binary: bin, Path: path, Version: version}
 }

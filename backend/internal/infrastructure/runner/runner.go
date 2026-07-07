@@ -36,10 +36,11 @@ const (
 
 // RunRequest describes a code execution.
 type RunRequest struct {
-	Language string
-	Code     string
-	TestCode string        // non-empty → task mode: run tests against Code
-	Timeout  time.Duration // 0 → defaultTimeout
+	Language    string
+	Code        string
+	TestCode    string        // non-empty → task mode: run tests against Code
+	Schema      string        // schema.sql content for postgres driver
+	Timeout     time.Duration // 0 → defaultTimeout
 }
 
 // RunResult holds the output of an execution.
@@ -234,7 +235,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 			"PGHOST="+r.pgHost,
 			"PGPORT="+strconv.Itoa(r.pgPort),
 			"PGDATABASE=courseforge",
-			"PGOPTIONS=--search_path="+schemaName,
+			"PGOPTIONS=--search_path="+schemaName+",public",
 		)
 	}
 	configureCommand(cmd)
@@ -320,15 +321,40 @@ func (r *Runner) prepare(driver LangDriver, req RunRequest) (dir string, args []
 		}
 	}
 
-	codeFile := filepath.Join(dir, "main"+driver.Ext)
-	if err = os.WriteFile(codeFile, []byte(req.Code), 0600); err != nil {
+	// Write schema.sql if provided (postgres tasks)
+	if req.Schema != "" {
+		schemaPath := filepath.Join(dir, "schema.sql")
+		if err = os.WriteFile(schemaPath, []byte(req.Schema), 0600); err != nil {
+			return dir, nil, fmt.Errorf("write schema: %w", err)
+		}
+	}
+
+	// Course test files reference the submitted code as "solution" (C++
+	// #include, JS/Python import) — Java additionally requires the public
+	// class name to match the file name exactly, hence "Solution"/"SolutionTest".
+	codeBase, testBase := "solution", "solution"
+	if req.Language == "java" {
+		codeBase, testBase = "Solution", "SolutionTest"
+	}
+
+	code := req.Code
+	if req.Language == "postgres" {
+		code = wrapPostgresQueryAsView(code)
+	}
+
+	codeFile := filepath.Join(dir, codeBase+driver.Ext)
+	if err = os.WriteFile(codeFile, []byte(code), 0600); err != nil {
 		return dir, nil, fmt.Errorf("write code: %w", err)
 	}
 
 	cmdTemplate := driver.RunCmd
 	var testFile string
 	if req.TestCode != "" {
-		testFile = filepath.Join(dir, "main"+driver.TestExt)
+		if req.Language == "java" {
+			testFile = filepath.Join(dir, testBase+driver.Ext)
+		} else {
+			testFile = filepath.Join(dir, testBase+driver.TestExt)
+		}
 		if err = os.WriteFile(testFile, []byte(req.TestCode), 0600); err != nil {
 			return dir, nil, fmt.Errorf("write test: %w", err)
 		}

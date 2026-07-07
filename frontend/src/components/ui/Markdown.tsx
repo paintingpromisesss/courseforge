@@ -81,6 +81,7 @@ const LANG_LABELS: Record<string, string> = {
   javascript: 'JavaScript', js: 'JavaScript',
   typescript: 'TypeScript', ts: 'TypeScript',
   rust: 'Rust', rs: 'Rust',
+  postgres: 'PostgreSQL',
 };
 
 function langLabel(lang: string): string {
@@ -91,6 +92,7 @@ function langLabel(lang: string): string {
 // Map the version-suffixed ones to the names hljs registers, else highlighting is off.
 const HLJS_ALIAS: Record<string, string> = {
   python3: 'python', python2: 'python', py3: 'python',
+  postgres: 'sql',
 };
 function fenceLang(lang: string): string {
   return HLJS_ALIAS[lang.toLowerCase()] || lang;

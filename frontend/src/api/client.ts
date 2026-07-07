@@ -1,4 +1,4 @@
-import type { CatalogItem, CourseItem, CourseDetail, LangDriver, Progress, RunResp, RunnerStatus, Submission } from './types';
+import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunResp, RunnerStatus, Submission } from './types';
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api';
 
@@ -85,8 +85,7 @@ export const api = {
   listSubmissions: (courseSlug: string, taskSlug: string) =>
     get<Submission[]>(`/submissions?courseSlug=${courseSlug}&taskSlug=${taskSlug}`),
 
-  createSubmission: (body: Omit<Submission, 'id' | 'created_at'>) =>
-    post<Submission>('/submissions', body),
+  createSubmission: (body: CreateSubmissionReq) => post<Submission>('/submissions', body),
 
   listRunners: () => get<Record<string, LangDriver>>('/runners'),
   listRunnerDefaults: () => get<Record<string, LangDriver>>('/runners/defaults'),

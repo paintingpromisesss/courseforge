@@ -13,6 +13,7 @@ const LANG_LABELS: Record<string, string> = {
   javascript: 'JavaScript', js: 'JavaScript',
   typescript: 'TypeScript', ts: 'TypeScript',
   rust: 'Rust', rs: 'Rust',
+  postgres: 'PostgreSQL',
 };
 
 function label(lang: string): string {

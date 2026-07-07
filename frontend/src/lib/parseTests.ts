@@ -15,30 +15,50 @@ function summarize(tests: TestResult[]): ParsedResults {
 }
 
 // ── Go: `go test -v` ─────────────────────────────────────────────────────────
+//
+// `go test -v` prints every `=== RUN`/failure-message line first, then a
+// separate summary block of `--- PASS`/`--- FAIL` lines at the end (indented
+// under an unindented parent line for subtests created via t.Run). A single
+// left-to-right pass can't attribute detail messages to the right summary
+// line, so this collects detail by test name first, then parses the summary
+// block (preferring subtest leaves over their parent so a table-driven test
+// scores per case instead of collapsing to one).
 export function parseGoTestOutput(stdout: string, stderr: string): ParsedResults {
   const output = stdout + '\n' + stderr;
   const lines = output.split('\n');
-  const tests: TestResult[] = [];
-  let currentDetail: string[] = [];
 
+  const details = new Map<string, string[]>();
+  let currentName: string | null = null;
   for (const line of lines) {
-    if (/^=== RUN\s+\S+/.test(line)) {
-      currentDetail = [];
+    const run = line.match(/^=== RUN\s+(\S+)/);
+    if (run) {
+      currentName = run[1];
+      if (!details.has(currentName)) details.set(currentName, []);
       continue;
     }
-    const pass = line.match(/^--- PASS: (\S+)/);
-    const fail = line.match(/^--- FAIL: (\S+)/);
-    if (pass) {
-      tests.push({ name: pass[1], passed: true, detail: currentDetail.join('\n') });
-      currentDetail = [];
-    } else if (fail) {
-      tests.push({ name: fail[1], passed: false, detail: currentDetail.join('\n') });
-      currentDetail = [];
-    } else {
+    if (/^--- (PASS|FAIL): /.test(line.trim())) {
+      currentName = null;
+      continue;
+    }
+    if (currentName) {
       const indent = line.match(/^\s{4}(\S.*)$/);
-      if (indent) currentDetail.push(indent[1]);
+      if (indent) details.get(currentName)!.push(indent[1]);
     }
   }
+
+  const leaves: TestResult[] = [];
+  const tops: TestResult[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const pass = trimmed.match(/^--- PASS: (\S+)/);
+    const fail = trimmed.match(/^--- FAIL: (\S+)/);
+    const m = pass ?? fail;
+    if (!m) continue;
+    const name = m[1];
+    const result: TestResult = { name, passed: !!pass, detail: (details.get(name) ?? []).join('\n') };
+    (name.includes('/') ? leaves : tops).push(result);
+  }
+  const tests = leaves.length > 0 ? leaves : tops;
 
   if (tests.length === 0) {
     const passed = output.includes('ok ') && !output.includes('FAIL');
@@ -72,19 +92,32 @@ function parsePytest(output: string): ParsedResults | null {
 }
 
 // ── JavaScript: `mocha --reporter tap` ───────────────────────────────────────
+//
+// Course tests use node:test's describe/it, so mocha's TAP reporter emits
+// *nested* TAP: each `it()` is a leaf `ok N - name` indented under its
+// describe block, and the describe block itself repeats as an outer,
+// unindented `ok 1 - <describe name>` rollup line. The old regex anchored
+// `^` with no leading-whitespace allowance, so it only ever matched that
+// single outer rollup line — one entry, not the real per-test names. Leaves
+// carry `type: 'test'` in their YAML block, the rollup carries `type:
+// 'suite'`; skip the latter so only real tests are counted.
 function parseTap(output: string): ParsedResults | null {
   const lines = output.split('\n');
   const tests: TestResult[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^(ok|not ok)\s+\d+\s*(.*)$/);
+    const m = lines[i].match(/^\s*(ok|not ok)\s+\d+\s*-?\s*(.*)$/);
     if (!m) continue;
     const passed = m[1] === 'ok';
-    const detail: string[] = [];
-    if (!passed) {
-      // YAML diagnostic block indented beneath the failing point
-      for (let j = i + 1; j < lines.length && /^\s/.test(lines[j]); j++) detail.push(lines[j].trim());
+    const yaml: string[] = [];
+    if (lines[i + 1]?.trim() === '---') {
+      for (let j = i + 2; j < lines.length; j++) {
+        const t = lines[j].trim();
+        if (t === '...' || t === '---') break;
+        yaml.push(t);
+      }
     }
-    tests.push({ name: m[2].trim() || `test ${tests.length + 1}`, passed, detail: detail.join('\n') });
+    if (yaml.includes("type: 'suite'")) continue;
+    tests.push({ name: m[2].trim() || `test ${tests.length + 1}`, passed, detail: passed ? '' : yaml.join('\n') });
   }
   if (tests.length === 0) return null;
   return summarize(tests);
@@ -119,15 +152,23 @@ function parseGtest(output: string): ParsedResults | null {
 // ── Java: JUnit 5 (junit-platform-console-standalone, `--details=tree`) ───────
 function parseJUnit(output: string): ParsedResults | null {
   const tests: TestResult[] = [];
-  // Tree leaves are the test methods: `methodName() ✔` or
-  // `methodName() ✘ <inline failure message>`. Container rows (class/engine
-  // names) have no `()` so they are skipped; stack-trace frames carry arguments
-  // inside the parens, so the empty `()` guard excludes them too.
+  // Tree leaves are the test methods: `methodName ✔` or
+  // `methodName ✘ <inline failure message>` — JUnit Platform Console
+  // Launcher 1.13's tree renderer does NOT append `()` after the method
+  // name (confirmed against actual --details=tree output), so a regex
+  // requiring it never matches and every run falls through to the
+  // generic-placeholder-name fallback below.
   // Horizontal whitespace only ([ \t], not \s) so a trailing ✔ never lets the
   // detail capture spill across the newline into the next tree row.
-  const leafRe = /([A-Za-z_$][\w$]*)\(\)[ \t]+(✔|✘)(?:[ \t]+([^\n]*))?/gm;
+  // Container rows (engine/class names) end in one of a fixed set of tokens —
+  // the JUnit engine display names, and "SolutionTest" (the class name the
+  // runner always writes the test file as, see runner.go) — so they're
+  // excluded by name rather than by requiring `()`, which no longer appears.
+  const containerNames = new Set(['Suite', 'Jupiter', 'Vintage', 'SolutionTest']);
+  const leafRe = /([A-Za-z_$][\w$]*)[ \t]+(✔|✘)(?:[ \t]+([^\n]*))?/gm;
   let m: RegExpExecArray | null;
   while ((m = leafRe.exec(output))) {
+    if (containerNames.has(m[1])) continue;
     tests.push({ name: m[1], passed: m[2] === '✔', detail: (m[3] ?? '').trim() });
   }
   if (tests.length > 0) return summarize(tests);
@@ -146,22 +187,42 @@ function parseJUnit(output: string): ParsedResults | null {
   return null;
 }
 
-// ── C#: NUnit via `dotnet test` ──────────────────────────────────────────────
+// ── C#: NUnit via `dotnet test -v n` ─────────────────────────────────────────
+//
+// `-v quiet` (the old flag) prints only the aggregate summary line, no
+// per-test names at all, so passing tests were always synthesized as generic
+// `test N` placeholders. `-v normal` additionally prints one `Passed Name
+// [time]` / `Failed Name [time]` line per test, with the failure's `Error
+// Message:`/`Stack Trace:` block indented beneath it — driver now runs `-v n`
+// so this can read real names for both outcomes.
 function parseDotnet(output: string): ParsedResults | null {
+  const lines = output.split('\n');
+  const tests: TestResult[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    // Require the trailing `[time]` so build/restore log lines that happen to
+    // start with "Failed to ..." (e.g. NuGet's prune-package-data warning)
+    // aren't mistaken for a test result.
+    const m = lines[i].match(/^\s*(Passed|Failed)\s+(\S+)\s+\[[^\]]*\]/);
+    if (!m) continue;
+    const passed = m[1] === 'Passed';
+    const detail: string[] = [];
+    if (!passed) {
+      for (let j = i + 1; j < lines.length && /^\s+\S/.test(lines[j]); j++) detail.push(lines[j].trim());
+    }
+    tests.push({ name: m[2], passed, detail: detail.join('\n') });
+  }
+  if (tests.length > 0) return summarize(tests);
+
+  // Fallback: no per-test lines (e.g. verbosity overridden) — use the summary.
   const m = output.match(/Failed:\s*(\d+),\s*Passed:\s*(\d+),\s*Skipped:\s*(\d+),\s*Total:\s*(\d+)/);
   if (!m) return null;
   const failed = Number(m[1]);
   const passed = Number(m[2]);
-  const tests: TestResult[] = [];
-  // Named failures appear as `  Failed TestName [..]` lines.
-  const failNames: string[] = [];
-  for (const line of output.split('\n')) {
-    const fm = line.match(/^\s*Failed\s+(\S+)/);
-    if (fm && fm[1] !== 'Failed') failNames.push(fm[1]);
-  }
-  for (let i = 0; i < failed; i++) tests.push({ name: failNames[i] ?? `failure ${i + 1}`, passed: false, detail: '' });
-  for (let i = 0; i < passed; i++) tests.push({ name: `test ${i + 1}`, passed: true, detail: '' });
-  return summarize(tests);
+  const t: TestResult[] = [];
+  for (let i = 0; i < failed; i++) t.push({ name: `failure ${i + 1}`, passed: false, detail: '' });
+  for (let i = 0; i < passed; i++) t.push({ name: `test ${i + 1}`, passed: true, detail: '' });
+  if (t.length > 0) return summarize(t);
+  return null;
 }
 
 // Compile/run error or unrecognized output: surface it as one entry so the user
@@ -174,6 +235,7 @@ function genericResult(stdout: string, stderr: string, exitCode: number): Parsed
 const PARSERS: Record<string, (output: string) => ParsedResults | null> = {
   python3: parsePytest,
   javascript: parseTap,
+  postgres: parseTap,
   cpp: parseGtest,
   java: parseJUnit,
   csharp: parseDotnet,

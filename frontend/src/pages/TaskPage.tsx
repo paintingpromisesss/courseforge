@@ -28,7 +28,8 @@ function ResultsOverlay({
   timedOut: boolean;
   onClose: () => void;
 }) {
-  const [selected, setSelected] = useState(0);
+  const sortedTests = [...results.tests].sort((a, b) => Number(b.passed) - Number(a.passed));
+  const [selected, setSelected] = useState(sortedTests[0]?.name);
   const allPassed = results.passed === results.total;
 
   return (
@@ -50,13 +51,13 @@ function ResultsOverlay({
       </div>
       <div className="flex" style={{ height: 220 }}>
         <div className="w-48 border-r border-bdr overflow-y-auto py-1">
-          {results.tests.map((t, i) => (
+          {sortedTests.map((t) => (
             <button
-              key={i}
-              onClick={() => setSelected(i)}
+              key={t.name}
+              onClick={() => setSelected(t.name)}
               className={clsx(
                 'w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors',
-                selected === i ? 'bg-bg-4 text-tx-1' : 'text-tx-2 hover:bg-bg-3',
+                selected === t.name ? 'bg-bg-4 text-tx-1' : 'text-tx-2 hover:bg-bg-3',
               )}
             >
               <span className={t.passed ? 'text-ok' : 'text-err'}>{t.passed ? '✓' : '✗'}</span>
@@ -65,11 +66,14 @@ function ResultsOverlay({
           ))}
         </div>
         <div className="flex-1 overflow-auto p-3">
-          {results.tests[selected] && (
-            <pre className="text-xs text-tx-2 font-mono whitespace-pre-wrap">
-              {results.tests[selected].detail || '(нет вывода)'}
-            </pre>
-          )}
+          {(() => {
+            const t = sortedTests.find((t) => t.name === selected);
+            return t && (
+              <pre className="text-xs text-tx-2 font-mono whitespace-pre-wrap">
+                {t.detail || '(нет вывода)'}
+              </pre>
+            );
+          })()}
         </div>
       </div>
     </motion.div>
@@ -107,7 +111,7 @@ function SubmissionsList({ courseSlug, taskSlug }: { courseSlug: string; taskSlu
             </button>
             {expanded === s.id && (
               <div className="bg-bg-1 border-t border-bdr-s px-4 py-3">
-                <pre className="text-xs text-tx-2 font-mono overflow-x-auto">{s.code}</pre>
+                <Markdown content={`<!-- code-snippets -->\n\`\`\`${s.language}\n${s.code}\n\`\`\``} />
               </div>
             )}
           </div>
@@ -280,25 +284,19 @@ export function TaskPage() {
     setRunning(true);
     setResults(null);
     try {
-      const resp = await api.run(lang, code, testCode);
-      const parsed = parseTestOutput(lang, resp.stdout, resp.stderr, resp.exit_code);
-      setResults({ parsed, durationMs: resp.duration_ms, timedOut: resp.timed_out });
-
-      await api.createSubmission({
+      // Run against the server's own copy of the tests (with task schema for
+      // postgres) — this is both the authoritative score and the display data,
+      // so results shown always match what got scored.
+      const sub = await api.createSubmission({
         course_slug: courseSlug!,
         task_slug: taskSlug!,
         language: lang,
         code,
-        stdout: resp.stdout,
-        stderr: resp.stderr,
-        exit_code: resp.exit_code,
-        passed_tests: parsed.passed,
-        total_tests: parsed.total,
-        duration_ms: resp.duration_ms,
-        timed_out: resp.timed_out,
       });
+      const parsed = parseTestOutput(lang, sub.stdout, sub.stderr, sub.exit_code);
+      setResults({ parsed, durationMs: sub.duration_ms, timedOut: sub.timed_out });
 
-      if (parsed.passed === parsed.total && parsed.total > 0) {
+      if (sub.total_tests > 0 && sub.passed_tests === sub.total_tests) {
         await api.markDone(courseSlug!, taskSlug!, true);
         qc.invalidateQueries({ queryKey: ['progress', courseSlug] });
       }
