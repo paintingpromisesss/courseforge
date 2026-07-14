@@ -48,6 +48,7 @@ export function parseGoTestOutput(stdout: string, stderr: string): ParsedResults
 
   const leaves: TestResult[] = [];
   const tops: TestResult[] = [];
+  const hasSubtests = new Set<string>();
   for (const line of lines) {
     const trimmed = line.trim();
     const pass = trimmed.match(/^--- PASS: (\S+)/);
@@ -56,12 +57,22 @@ export function parseGoTestOutput(stdout: string, stderr: string): ParsedResults
     if (!m) continue;
     const name = m[1];
     const result: TestResult = { name, passed: !!pass, detail: (details.get(name) ?? []).join('\n') };
-    (name.includes('/') ? leaves : tops).push(result);
+    if (name.includes('/')) {
+      hasSubtests.add(name.split('/')[0]);
+      leaves.push(result);
+    } else {
+      tops.push(result);
+    }
   }
-  const tests = leaves.length > 0 ? leaves : tops;
+  // Subtests score per-case; a parent's own line is just their rollup, but a
+  // standalone top-level test's line is its only result — keep those.
+  const tests = [...leaves, ...tops.filter((t) => !hasSubtests.has(t.name))];
 
   if (tests.length === 0) {
-    const passed = output.includes('ok ') && !output.includes('FAIL');
+    // "no tests to run" exits 0 with "ok" printed but proves nothing ran —
+    // must never be shown as a pass (mirrors the backend's countGoTest guard).
+    const passed =
+      output.includes('ok ') && !output.includes('FAIL') && !output.includes('no tests to run');
     tests.push({ name: 'Run', passed, detail: output.trim() });
   }
   return summarize(tests);

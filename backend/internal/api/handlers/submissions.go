@@ -63,9 +63,11 @@ func (h *Handler) createSubmission(w http.ResponseWriter, r *http.Request) {
 	if ld.Schema != "" {
 		schemaPath := filepath.Join(h.coursesDir, c.Dir, track.Slug, topic.Slug, unit.Slug, task.Slug, req.Language, ld.Schema)
 		schemaBytes, err := os.ReadFile(schemaPath)
-		if err == nil {
-			schemaContent = string(schemaBytes)
+		if err != nil {
+			h.writeError(w, http.StatusInternalServerError, "failed to load task schema")
+			return
 		}
+		schemaContent = string(schemaBytes)
 	}
 
 	result, err := h.runner.Run(r.Context(), runner.RunRequest{

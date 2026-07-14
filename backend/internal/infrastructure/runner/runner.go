@@ -338,30 +338,36 @@ func (r *Runner) prepare(driver LangDriver, req RunRequest) (dir string, args []
 	}
 
 	code := req.Code
-	if req.Language == "postgres" {
+	// Wrap only for test runs: pg_prove's fresh connection needs the query
+	// persisted as a view. A playground run should print the rows as-is.
+	if req.Language == "postgres" && req.TestCode != "" {
 		code = wrapPostgresQueryAsView(code)
 	}
 
-	codeFile := filepath.Join(dir, codeBase+driver.Ext)
-	if err = os.WriteFile(codeFile, []byte(code), 0600); err != nil {
+	// {file}/{testfile} expand to names relative to the temp dir (the command
+	// runs with cmd.Dir = dir): the fixed names never contain spaces, so the
+	// `cmd /c "..."`/`sh -c "..."` templates stay intact even when the temp
+	// dir path itself has one (e.g. a Windows user name with a space).
+	codeName := codeBase + driver.Ext
+	if err = os.WriteFile(filepath.Join(dir, codeName), []byte(code), 0600); err != nil {
 		return dir, nil, fmt.Errorf("write code: %w", err)
 	}
 
 	cmdTemplate := driver.RunCmd
-	var testFile string
+	var testName string
 	if req.TestCode != "" {
 		if req.Language == "java" {
-			testFile = filepath.Join(dir, testBase+driver.Ext)
+			testName = testBase + driver.Ext
 		} else {
-			testFile = filepath.Join(dir, testBase+driver.TestExt)
+			testName = testBase + driver.TestExt
 		}
-		if err = os.WriteFile(testFile, []byte(req.TestCode), 0600); err != nil {
+		if err = os.WriteFile(filepath.Join(dir, testName), []byte(req.TestCode), 0600); err != nil {
 			return dir, nil, fmt.Errorf("write test: %w", err)
 		}
 		cmdTemplate = driver.TestCmd
 	}
 
-	args = expand(cmdTemplate, codeFile, testFile, dir)
+	args = expand(cmdTemplate, codeName, testName, dir)
 
 	// Resolve relative executable path against the server's CWD before the
 	// caller sets cmd.Dir, because Go resolves relative paths against cmd.Dir.

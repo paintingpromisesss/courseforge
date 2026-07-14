@@ -53,11 +53,17 @@ var (
 //	    --- FAIL: TestReverseString/case_1 (0.00s)
 //	    --- PASS: TestReverseString/case_2 (0.00s)
 //
-// Leaf (subtest) lines are preferred for the count so a table-driven test
-// scores per-case; the parent line is only used as a fallback when there are
-// no subtests, since counting both would double-count every subtest.
+// Subtest lines score per-case; a top-level line is counted only when the
+// test has no subtests of its own — counting a parent alongside its subtests
+// would double-count, but dropping standalone tests would hide their failures.
 func countGoTest(output string) (passed, total int) {
-	var pLeaf, fLeaf, pTop, fTop int
+	type topResult struct {
+		name string
+		pass bool
+	}
+	var pLeaf, fLeaf int
+	var tops []topResult
+	hasSubtests := map[string]bool{}
 	for raw := range strings.SplitSeq(output, "\n") {
 		line := strings.TrimSpace(raw)
 		var rest string
@@ -71,23 +77,29 @@ func countGoTest(output string) (passed, total int) {
 			continue
 		}
 		name, _, _ := strings.Cut(rest, " ")
-		isSubtest := strings.Contains(name, "/")
-		switch {
-		case isSubtest && isPass:
-			pLeaf++
-		case isSubtest && !isPass:
-			fLeaf++
-		case !isSubtest && isPass:
-			pTop++
-		case !isSubtest && !isPass:
-			fTop++
+		if parent, _, isSubtest := strings.Cut(name, "/"); isSubtest {
+			hasSubtests[parent] = true
+			if isPass {
+				pLeaf++
+			} else {
+				fLeaf++
+			}
+		} else {
+			tops = append(tops, topResult{name, isPass})
 		}
 	}
-	if pLeaf+fLeaf > 0 {
-		return pLeaf, pLeaf + fLeaf
+	passed, total = pLeaf, pLeaf+fLeaf
+	for _, t := range tops {
+		if hasSubtests[t.name] {
+			continue
+		}
+		total++
+		if t.pass {
+			passed++
+		}
 	}
-	if pTop+fTop > 0 {
-		return pTop, pTop + fTop
+	if total > 0 {
+		return passed, total
 	}
 	// "no tests to run" exits 0 with "ok" printed but proves nothing ran —
 	// must never be scored as a pass.

@@ -7,7 +7,8 @@ package runner
 // since Java requires the public class name to match the file name) and, in
 // task mode, the test to "solution<test_ext>" (Java: "SolutionTest<ext>") —
 // matching how course test files include/import the submitted code. Commands
-// reference {file}/{testfile}/{dir} placeholders, expanded to those paths.
+// reference {file}/{testfile} placeholders, expanded to those names relative
+// to the run's temp dir ({dir} expands to its absolute path).
 // All commands are user-editable from Settings, so the host-specific paths
 // below (junit jars, etc.) are sensible defaults, not hard requirements.
 func defaultDrivers() map[string]LangDriver {

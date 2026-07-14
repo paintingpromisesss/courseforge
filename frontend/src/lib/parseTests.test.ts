@@ -34,6 +34,32 @@ describe('parseTestOutput', () => {
     expect(r.tests.find((t) => t.name === 'TestReverseString/case_1')?.detail).toContain('want "olleh"');
   });
 
+  it('go: keeps a standalone top-level failure next to passing subtests', () => {
+    const out = [
+      '=== RUN   TestValidateInput',
+      '    main_test.go:12: got true, want false',
+      '--- FAIL: TestValidateInput (0.00s)',
+      '=== RUN   TestCases',
+      '=== RUN   TestCases/case_1',
+      '=== RUN   TestCases/case_2',
+      '--- PASS: TestCases (0.00s)',
+      '    --- PASS: TestCases/case_1 (0.00s)',
+      '    --- PASS: TestCases/case_2 (0.00s)',
+      'FAIL',
+    ].join('\n');
+    const r = parseTestOutput('go', out, '', 1);
+    expect(r.total).toBe(3);
+    expect(r.passed).toBe(2);
+    expect(r.tests.find((t) => t.name === 'TestValidateInput')?.passed).toBe(false);
+    expect(r.tests.find((t) => t.name === 'TestCases')).toBeUndefined();
+  });
+
+  it('go: "no tests to run" must not be shown as a pass', () => {
+    const out = 'testing: warning: no tests to run\nPASS\nok  \tplayground\t(cached) [no tests to run]\n';
+    const r = parseTestOutput('go', out, '', 1);
+    expect(r.passed).toBe(0);
+  });
+
   it('go: captures t.Logf detail for passing subtests too, not just failures', () => {
     const out = [
       '=== RUN   TestReverseString',

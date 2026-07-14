@@ -115,6 +115,28 @@ func TestSaveFile_SkipsUnchangedBuiltins(t *testing.T) {
 	}
 }
 
+func TestPrepareExpandsRelativeFileNames(t *testing.T) {
+	// {file}/{testfile} must expand to names relative to the temp dir, not
+	// absolute paths: shell-string templates (cmd /c "...", sh -c "...") get
+	// them interpolated unquoted, so an absolute temp path containing a space
+	// (e.g. a Windows user name with one) would split the command.
+	r := New()
+	d := LangDriver{
+		RunCmd:  []string{"sh", "-c", "node {file}"},
+		TestCmd: []string{"sh", "-c", "node {file} && mocha {testfile}"},
+		Ext:     ".js",
+		TestExt: "_test.js",
+	}
+	dir, args, err := r.prepare(d, RunRequest{Language: "javascript", Code: "1", TestCode: "2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	if want := "node solution.js && mocha solution_test.js"; args[2] != want {
+		t.Errorf("got %q, want %q", args[2], want)
+	}
+}
+
 func TestRun_UnsupportedLanguage(t *testing.T) {
 	r := New()
 	_, err := r.Run(context.Background(), RunRequest{Language: "brainfuck", Code: "+++"})

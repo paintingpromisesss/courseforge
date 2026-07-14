@@ -30,6 +30,24 @@ ok  	playground	0.003s
 	}
 }
 
+func TestCountTestResultsGoStandaloneNextToSubtests(t *testing.T) {
+	out := `=== RUN   TestValidateInput
+    main_test.go:12: got true, want false
+--- FAIL: TestValidateInput (0.00s)
+=== RUN   TestCases
+=== RUN   TestCases/case_1
+=== RUN   TestCases/case_2
+--- PASS: TestCases (0.00s)
+    --- PASS: TestCases/case_1 (0.00s)
+    --- PASS: TestCases/case_2 (0.00s)
+FAIL
+FAIL	playground	0.004s
+`
+	if passed, total := CountTestResults("go", out, ""); passed != 2 || total != 3 {
+		t.Errorf("got %d/%d, want 2/3 (standalone top-level failure must not be hidden by subtests)", passed, total)
+	}
+}
+
 func TestCountTestResultsGoNoTestsToRun(t *testing.T) {
 	out := "testing: warning: no tests to run\nPASS\nok  \tplayground\t(cached) [no tests to run]\n"
 	if passed, total := CountTestResults("go", out, ""); passed != 0 || total != 1 {
