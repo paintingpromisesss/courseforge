@@ -35,6 +35,9 @@ export function TheoryPage() {
     try {
       await api.markDone(courseSlug, unitSlug, true);
       await qc.invalidateQueries({ queryKey: ['progress', courseSlug] });
+      // course cards show done counts
+      qc.invalidateQueries({ queryKey: ['courses'] });
+      qc.invalidateQueries({ queryKey: ['catalogs'] });
     } finally {
       setMarkingDone(false);
     }

@@ -6,6 +6,8 @@ export interface CourseItem {
   catalog_slug?: string;
   theory_count: number;
   task_count: number;
+  done_count: number;
+  theory_done_count: number;
 }
 
 export interface CatalogItem {
@@ -51,14 +53,6 @@ export interface CourseDetail extends CourseItem {
 export interface Progress {
   course_slug: string;
   completed_tasks: Record<string, boolean>;
-}
-
-export interface RunResp {
-  stdout: string;
-  stderr: string;
-  exit_code: number;
-  duration_ms: number;
-  timed_out: boolean;
 }
 
 export interface LangDriver {

@@ -1,10 +1,11 @@
 import { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useParams, useNavigate, Outlet } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { api } from '../api/client';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import type { TrackItem } from '../api/types';
 import { buildTree, initialOpen, type TreeNode, type NavTarget } from '../lib/buildTree';
 
@@ -15,6 +16,7 @@ interface SidebarProps {
   activeUnitSlug?: string;
   onTask: (nav: NavTarget) => void;
   onTheory: (nav: NavTarget) => void;
+  onResetProgress: () => void;
 }
 
 interface RowProps {
@@ -93,16 +95,17 @@ function TreeRow({ node, depth, open, toggle, activeTaskSlug, activeUnitSlug, on
   );
 }
 
-function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheory }: SidebarProps) {
+function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheory, onResetProgress }: SidebarProps) {
   const tree = buildTree(tracks, done);
   const [open, setOpen] = useState<Record<string, boolean>>(() =>
     initialOpen(tree, activeTaskSlug, activeUnitSlug),
   );
   const toggle = (id: string) => setOpen((m) => ({ ...m, [id]: !m[id] }));
+  const hasProgress = Object.keys(done).length > 0;
 
   return (
-    <nav className="w-64 shrink-0 border-r border-bdr bg-bg-2 h-full overflow-y-auto">
-      <div className="p-3 space-y-1">
+    <nav className="w-64 shrink-0 border-r border-bdr bg-bg-2 h-full flex flex-col">
+      <div className="p-3 space-y-1 flex-1 overflow-y-auto">
         {tree.map((node) => (
           <TreeRow
             key={node.id}
@@ -117,6 +120,16 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
           />
         ))}
       </div>
+      {hasProgress && (
+        <div className="p-3 border-t border-bdr">
+          <button
+            onClick={onResetProgress}
+            className="w-full px-2 py-1.5 rounded text-left text-xs text-tx-3 hover:text-err hover:bg-bg-4 transition-colors"
+          >
+            Сбросить прогресс
+          </button>
+        </div>
+      )}
     </nav>
   );
 }
@@ -129,6 +142,8 @@ export function CoursePage() {
   const { courseSlug } = useParams<{ courseSlug: string }>();
   const navigate = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
+  const qc = useQueryClient();
+  const [resetOpen, setResetOpen] = useState(false);
 
   const { data: course, isLoading } = useQuery({
     queryKey: ['course', courseSlug],
@@ -144,6 +159,17 @@ export function CoursePage() {
 
   const done = progress?.completed_tasks ?? {};
   const { taskSlug, unitSlug } = useParams<{ taskSlug?: string; unitSlug?: string }>();
+
+  const resetMut = useMutation({
+    mutationFn: () => api.resetProgress(courseSlug!),
+    onSuccess: () => {
+      setResetOpen(false);
+      qc.invalidateQueries({ queryKey: ['progress', courseSlug] });
+      // course cards show done_count — refresh them too
+      qc.invalidateQueries({ queryKey: ['courses'] });
+      qc.invalidateQueries({ queryKey: ['catalogs'] });
+    },
+  });
 
   if (isLoading) return <div className="p-8 text-tx-3">Загрузка...</div>;
   if (!course) return <div className="p-8 text-err">Курс не найден</div>;
@@ -176,8 +202,17 @@ export function CoursePage() {
           activeUnitSlug={unitSlug}
           onTask={handleTask}
           onTheory={handleTheory}
+          onResetProgress={() => setResetOpen(true)}
         />
       </motion.div>
+      <ConfirmDialog
+        open={resetOpen}
+        title="Сбросить прогресс?"
+        message="Все отметки о выполненных задачах этого курса будут сняты. Сабмиты останутся."
+        confirmLabel={resetMut.isPending ? 'Сброс...' : 'Сбросить'}
+        onConfirm={() => resetMut.mutate()}
+        onCancel={() => setResetOpen(false)}
+      />
       <motion.main
         ref={mainRef}
         className="flex-1 overflow-auto"

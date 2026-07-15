@@ -130,8 +130,8 @@ func newSchemaName() (string, error) {
 
 // createSchema creates an isolated schema for one run in the shared
 // "courseforge" database.
-func (r *Runner) createSchema(ctx context.Context, name string) error {
-	out, err := exec.CommandContext(ctx, "psql", "-h", r.pgHost, "-p", strconv.Itoa(r.pgPort), "-d", "courseforge",
+func createSchema(ctx context.Context, host string, port int, name string) error {
+	out, err := exec.CommandContext(ctx, "psql", "-h", host, "-p", strconv.Itoa(port), "-d", "courseforge",
 		"-v", "ON_ERROR_STOP=1", "-c", "CREATE SCHEMA "+name).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("create schema: %w: %s", err, out)
@@ -142,8 +142,8 @@ func (r *Runner) createSchema(ctx context.Context, name string) error {
 // dropSchema removes a run's schema. Best-effort: if this fails (e.g. the
 // process is being killed), PostgresManager's startup reaper catches it
 // next boot — the database never accumulates permanent clutter.
-func (r *Runner) dropSchema(name string) {
-	_ = exec.Command("psql", "-h", r.pgHost, "-p", strconv.Itoa(r.pgPort), "-d", "courseforge",
+func dropSchema(host string, port int, name string) {
+	_ = exec.Command("psql", "-h", host, "-p", strconv.Itoa(port), "-d", "courseforge",
 		"-c", "DROP SCHEMA IF EXISTS "+name+" CASCADE").Run()
 }
 
@@ -203,23 +203,26 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	var schemaName string
+	// Snapshot host/port once under the lock: ConfigurePostgres may run
+	// concurrently (the cluster starts in the background at boot).
+	var schemaName, pgHost string
+	var pgPort int
 	if driver.NeedsSchema {
 		r.mu.RLock()
-		host := r.pgHost
+		pgHost, pgPort = r.pgHost, r.pgPort
 		r.mu.RUnlock()
-		if host == "" {
-			return RunResult{}, fmt.Errorf("postgres driver needs ConfigurePostgres, but not configured")
+		if pgHost == "" {
+			return RunResult{}, fmt.Errorf("postgres cluster is not running (still starting, or failed at startup)")
 		}
 		var err error
 		schemaName, err = newSchemaName()
 		if err != nil {
 			return RunResult{}, err
 		}
-		if err := r.createSchema(ctx, schemaName); err != nil {
+		if err := createSchema(ctx, pgHost, pgPort, schemaName); err != nil {
 			return RunResult{}, err
 		}
-		defer r.dropSchema(schemaName)
+		defer dropSchema(pgHost, pgPort, schemaName)
 	}
 
 	dir, args, err := r.prepare(driver, req)
@@ -232,8 +235,8 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	cmd.Dir = dir
 	if schemaName != "" {
 		cmd.Env = append(os.Environ(),
-			"PGHOST="+r.pgHost,
-			"PGPORT="+strconv.Itoa(r.pgPort),
+			"PGHOST="+pgHost,
+			"PGPORT="+strconv.Itoa(pgPort),
 			"PGDATABASE=courseforge",
 			"PGOPTIONS=--search_path="+schemaName+",public",
 		)
@@ -340,7 +343,7 @@ func (r *Runner) prepare(driver LangDriver, req RunRequest) (dir string, args []
 	code := req.Code
 	// Wrap only for test runs: pg_prove's fresh connection needs the query
 	// persisted as a view. A playground run should print the rows as-is.
-	if req.Language == "postgres" && req.TestCode != "" {
+	if driver.NeedsSchema && req.TestCode != "" {
 		code = wrapPostgresQueryAsView(code)
 	}
 

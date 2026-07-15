@@ -65,6 +65,22 @@ func (s *FileProgressRepository) MarkUndone(ctx context.Context, courseDir, cour
 	return s.save(courseDir, p)
 }
 
+// Reset removes all progress for a course by deleting its progress.json;
+// a subsequent Load returns empty progress.
+func (s *FileProgressRepository) Reset(ctx context.Context, courseDir string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	err := os.Remove(s.progressPath(courseDir))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
 // load reads progress from disk. Must be called with mu held.
 func (s *FileProgressRepository) load(courseDir, courseSlug string) (*domain.Progress, error) {
 	path := s.progressPath(courseDir)

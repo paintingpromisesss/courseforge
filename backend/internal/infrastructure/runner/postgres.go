@@ -16,14 +16,12 @@ import (
 // ("courseforge") — isolation between runs happens via schemas
 // (Runner.createSchema/dropSchema), so the cluster itself never grows a
 // new database or process per submission.
+//
+// Lifecycle methods shared with the Windows implementation (Stop,
+// reapOrphanSchemas, psql) live in postgres_common.go; this file provides
+// the Unix specifics: a private Unix socket directory, no TCP.
 type PostgresManager struct {
 	dataDir string // cluster data directory; also used as the Unix socket directory
-}
-
-// NewPostgresManager returns a manager for a cluster rooted at dataDir.
-// dataDir is created (and initdb'd) on Start if it doesn't exist yet.
-func NewPostgresManager(dataDir string) *PostgresManager {
-	return &PostgresManager{dataDir: dataDir}
 }
 
 // Host returns the Unix socket directory clients should connect through
@@ -37,6 +35,11 @@ func (m *PostgresManager) Host() string {
 // directory, so there's no risk of colliding with another instance.
 func (m *PostgresManager) Port() int {
 	return 5432
+}
+
+// connArgs returns the psql/createdb arguments for reaching this cluster.
+func (m *PostgresManager) connArgs() []string {
+	return []string{"-h", m.dataDir}
 }
 
 // Start initializes the cluster if needed, starts it listening on a Unix
@@ -71,7 +74,7 @@ func (m *PostgresManager) Start(ctx context.Context) error {
 		return fmt.Errorf("pg_ctl start: %w: %s", err, out)
 	}
 
-	if out, err := exec.CommandContext(ctx, "createdb", "-h", m.dataDir, "courseforge").CombinedOutput(); err != nil &&
+	if out, err := exec.CommandContext(ctx, "createdb", append(m.connArgs(), "courseforge")...).CombinedOutput(); err != nil &&
 		!bytes.Contains(out, []byte("already exists")) {
 		return fmt.Errorf("createdb: %w: %s", err, out)
 	}
@@ -81,29 +84,4 @@ func (m *PostgresManager) Start(ctx context.Context) error {
 	}
 
 	return m.reapOrphanSchemas(ctx)
-}
-
-// Stop shuts the cluster down cleanly.
-func (m *PostgresManager) Stop() error {
-	out, err := exec.Command("pg_ctl", "-D", m.dataDir, "-w", "-m", "fast", "stop").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("pg_ctl stop: %w: %s", err, out)
-	}
-	return nil
-}
-
-// reapOrphanSchemas drops any run schema left behind by a courseforge
-// process that was killed mid-run, so a crash never leaves permanent
-// clutter in the courseforge database.
-func (m *PostgresManager) reapOrphanSchemas(ctx context.Context) error {
-	return m.psql(ctx, pgtapSweepSQL)
-}
-
-func (m *PostgresManager) psql(ctx context.Context, stmt string) error {
-	out, err := exec.CommandContext(ctx, "psql", "-h", m.dataDir, "-d", "courseforge",
-		"-v", "ON_ERROR_STOP=1", "-c", stmt).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("psql: %w: %s", err, out)
-	}
-	return nil
 }

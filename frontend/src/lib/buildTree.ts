@@ -48,16 +48,18 @@ function taskLeaf(base: NavTarget, t: TaskItem, done: Done): TreeNode {
 }
 
 function theoryLeaf(base: NavTarget, title: string, done: Done): TreeNode {
-  // Theory completion drives the ✓ icon but is not part of the task total.
+  // A theory-only unit counts toward group N/M totals like a task does; its
+  // completion is stored under the unit slug (see TheoryPage.markTheoryDone).
+  const flag = !!done[base.unit];
   return {
     id: `${base.track}/${base.topic}/${base.unit}/theory`,
     kind: 'theory',
     title,
     children: [],
-    done: 0,
-    total: 0,
+    done: flag ? 1 : 0,
+    total: 1,
     nav: base,
-    doneFlag: !!done[base.unit],
+    doneFlag: flag,
   };
 }
 

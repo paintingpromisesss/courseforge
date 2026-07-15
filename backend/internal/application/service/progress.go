@@ -12,6 +12,7 @@ type progressRepository interface {
 	Load(ctx context.Context, courseDir, courseSlug string) (*domain.Progress, error)
 	MarkDone(ctx context.Context, courseDir, courseSlug, taskSlug string) error
 	MarkUndone(ctx context.Context, courseDir, courseSlug, taskSlug string) error
+	Reset(ctx context.Context, courseDir string) error
 }
 
 type ProgressService struct {
@@ -53,6 +54,21 @@ func (s *ProgressService) MarkDone(ctx context.Context, courseDir, courseSlug, t
 		)
 
 		return fmt.Errorf("mark task done: %w", err)
+	}
+
+	return nil
+}
+
+func (s *ProgressService) Reset(ctx context.Context, courseDir, courseSlug string) error {
+	if err := s.repo.Reset(ctx, courseDir); err != nil {
+		s.logger.Error(
+			"failed to reset progress",
+			zap.String("course_dir", courseDir),
+			zap.String("course_slug", courseSlug),
+			zap.Error(err),
+		)
+
+		return fmt.Errorf("reset progress: %w", err)
 	}
 
 	return nil

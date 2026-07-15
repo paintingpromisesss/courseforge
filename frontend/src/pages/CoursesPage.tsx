@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { api } from '../api/client';
+import { CardDoneMark, CardProgressStrip } from '../components/ui/ProgressBar';
 
 function FolderIcon() {
   return (
@@ -141,7 +142,7 @@ export function CoursesPage() {
 
   const cardCls = (selectedNow: boolean) =>
     clsx(
-      'relative flex flex-col h-full bg-bg-2 border rounded-xl p-5 transition-all',
+      'relative flex flex-col h-full bg-bg-2 border rounded-xl p-5 transition-all overflow-hidden',
       editMode
         ? clsx('cursor-pointer select-none', selectedNow ? 'border-err shadow-md' : 'border-bdr hover:border-bdr-e')
         : 'border-bdr hover:border-bdr-e hover:shadow-md hover:-translate-y-px group',
@@ -229,7 +230,12 @@ export function CoursesPage() {
                     )}
                     <p className="text-tx-3 text-xs mt-auto pt-3">
                       {course.theory_count} {pluralTheory(course.theory_count)} · {course.task_count} {pluralTask(course.task_count)}
+                      <CardDoneMark course={course} />
                     </p>
+                    <CardProgressStrip
+                      value={course.done_count + course.theory_done_count}
+                      max={course.task_count + course.theory_count}
+                    />
                   </>
                 );
                 return (

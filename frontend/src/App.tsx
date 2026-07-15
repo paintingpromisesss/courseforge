@@ -20,6 +20,28 @@ function GearIcon() {
   );
 }
 
+function Logo() {
+  return (
+    <Link to="/" aria-label="CourseForge — главная" className="flex items-center gap-2 shrink-0 group">
+      <svg
+        width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        className="text-brand transition-transform group-hover:-rotate-6"
+      >
+        <path d="M7 10H6a4 4 0 0 1-4-4 1 1 0 0 1 1-1h4" />
+        <path d="M7 5a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1 7 7 0 0 1-7 7H8a1 1 0 0 1-1-1z" />
+        <path d="M9 12v5" />
+        <path d="M15 12v5" />
+        <path d="M5 20a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3 1 1 0 0 1-1 1H6a1 1 0 0 1-1-1" />
+      </svg>
+      <span className="text-sm font-semibold tracking-tight">
+        <span className="text-tx-1">Course</span>
+        <span className="text-brand">Forge</span>
+      </span>
+    </Link>
+  );
+}
+
 function AppLayout() {
   const { courseSlug, catalogSlug } = useParams<{ courseSlug?: string; catalogSlug?: string }>();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -42,7 +64,7 @@ function AppLayout() {
   const outlet = useOutlet();
   const routeKey = courseSlug ? `course:${courseSlug}` : catalogSlug ? `catalog:${catalogSlug}` : 'home';
 
-  const crumbs: { label: string; to: string }[] = [{ label: 'Главная', to: '/' }];
+  const crumbs: { label: string; to: string }[] = [];
   if (catalog) crumbs.push({ label: catalog.title, to: `/catalogs/${catalog.slug}` });
   if (course) {
     if (parentCatalog) crumbs.push({ label: parentCatalog.title, to: `/catalogs/${parentCatalog.slug}` });
@@ -52,11 +74,12 @@ function AppLayout() {
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-bg-1">
       <header className="flex items-center gap-2 px-4 h-11 border-b border-bdr bg-bg-2 shrink-0">
+        <Logo />
         {crumbs.map((c, i) => {
           const last = i === crumbs.length - 1;
           return (
             <span key={c.to} className="flex items-center gap-2 min-w-0">
-              {i > 0 && <span className="text-bdr shrink-0">›</span>}
+              <span className="text-bdr shrink-0">›</span>
               <Link
                 to={c.to}
                 className={clsx(

@@ -14,6 +14,8 @@ type CourseItem struct {
 	CatalogSlug string `json:"catalog_slug,omitempty"`
 	TheoryCount int    `json:"theory_count"`
 	TaskCount   int    `json:"task_count"`
+	DoneCount   int    `json:"done_count"`
+	TheoryDone  int    `json:"theory_done_count"`
 }
 
 type CatalogItem struct {

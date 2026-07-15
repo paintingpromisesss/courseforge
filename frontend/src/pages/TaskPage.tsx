@@ -256,6 +256,9 @@ export function TaskPage() {
     try {
       await api.markDone(courseSlug, unitSlug, true);
       await qc.invalidateQueries({ queryKey: ['progress', courseSlug] });
+      // course cards show done counts
+      qc.invalidateQueries({ queryKey: ['courses'] });
+      qc.invalidateQueries({ queryKey: ['catalogs'] });
     } finally {
       setMarkingTheoryDone(false);
     }
@@ -299,6 +302,9 @@ export function TaskPage() {
       if (sub.total_tests > 0 && sub.passed_tests === sub.total_tests) {
         await api.markDone(courseSlug!, taskSlug!, true);
         qc.invalidateQueries({ queryKey: ['progress', courseSlug] });
+        // course cards show done counts
+        qc.invalidateQueries({ queryKey: ['courses'] });
+        qc.invalidateQueries({ queryKey: ['catalogs'] });
       }
 
       qc.invalidateQueries({ queryKey: ['submissions', courseSlug, taskSlug] });

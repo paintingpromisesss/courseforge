@@ -43,13 +43,28 @@ func Run(cfg *config.Config) error {
 		return fmt.Errorf("load runners: %w", err)
 	}
 
+	// Start the Postgres cluster in the background so initdb/pg_ctl never
+	// delay HTTP startup; postgres runs that arrive before it's ready get a
+	// clear "cluster is not running" error from the runner.
 	pgMgr := runner.NewPostgresManager(filepath.Join(cfg.DataDir, "postgres"))
-	if err := pgMgr.Start(context.Background()); err != nil {
-		log.Printf("postgres runner disabled: %v", err)
-	} else {
+	pgDone := make(chan struct{})
+	var pgStarted bool
+	go func() {
+		defer close(pgDone)
+		if err := pgMgr.Start(context.Background()); err != nil {
+			log.Printf("postgres runner disabled: %v", err)
+			return
+		}
 		r.ConfigurePostgres(pgMgr.Host(), pgMgr.Port())
-		defer pgMgr.Stop()
-	}
+		pgStarted = true
+		log.Printf("postgres runner ready on %s:%d", pgMgr.Host(), pgMgr.Port())
+	}()
+	defer func() {
+		<-pgDone
+		if pgStarted {
+			_ = pgMgr.Stop()
+		}
+	}()
 
 	pr := repo.NewFileProgressRepository(cfg.CoursesDir)
 
