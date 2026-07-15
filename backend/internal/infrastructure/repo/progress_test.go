@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"os"
 	"testing"
 )
@@ -16,7 +17,7 @@ func newTestFileProgressRepository(t *testing.T) (*FileProgressRepository, strin
 
 func TestLoad_Empty(t *testing.T) {
 	s, _ := newTestFileProgressRepository(t)
-	p, err := s.Load("go-basics", "go-basics")
+	p, err := s.Load(context.Background(), "go-basics", "go-basics")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,11 +32,11 @@ func TestLoad_Empty(t *testing.T) {
 func TestMarkDone_Persist(t *testing.T) {
 	s, _ := newTestFileProgressRepository(t)
 
-	if err := s.MarkDone("go-basics", "go-basics", "task-1"); err != nil {
+	if err := s.MarkDone(context.Background(), "go-basics", "go-basics", "task-1"); err != nil {
 		t.Fatal(err)
 	}
 
-	p, err := s.Load("go-basics", "go-basics")
+	p, err := s.Load(context.Background(), "go-basics", "go-basics")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,14 +48,14 @@ func TestMarkDone_Persist(t *testing.T) {
 func TestMarkUndone(t *testing.T) {
 	s, _ := newTestFileProgressRepository(t)
 
-	_ = s.MarkDone("go-basics", "go-basics", "task-1")
-	_ = s.MarkDone("go-basics", "go-basics", "task-2")
+	_ = s.MarkDone(context.Background(), "go-basics", "go-basics", "task-1")
+	_ = s.MarkDone(context.Background(), "go-basics", "go-basics", "task-2")
 
-	if err := s.MarkUndone("go-basics", "go-basics", "task-1"); err != nil {
+	if err := s.MarkUndone(context.Background(), "go-basics", "go-basics", "task-1"); err != nil {
 		t.Fatal(err)
 	}
 
-	p, err := s.Load("go-basics", "go-basics")
+	p, err := s.Load(context.Background(), "go-basics", "go-basics")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +70,7 @@ func TestMarkUndone(t *testing.T) {
 func TestSave_Atomic(t *testing.T) {
 	s, dir := newTestFileProgressRepository(t)
 
-	_ = s.MarkDone("go-basics", "go-basics", "task-1")
+	_ = s.MarkDone(context.Background(), "go-basics", "go-basics", "task-1")
 
 	if _, err := os.Stat(dir + "/go-basics/progress.json.tmp"); !os.IsNotExist(err) {
 		t.Fatal("tmp file should not exist after save")

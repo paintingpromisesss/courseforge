@@ -2,6 +2,9 @@ package runner
 
 import (
 	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +12,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,11 +22,12 @@ import (
 // LangDriver defines how to run and test code for a specific language.
 // Placeholders in command slices: {file}, {testfile}, {dir}.
 type LangDriver struct {
-	RunCmd    []string          `json:"run_cmd"`    // e.g. ["go", "run", "{file}"]
-	TestCmd   []string          `json:"test_cmd"`   // e.g. ["go", "test", "{dir}"]
-	Ext       string            `json:"ext"`        // source file extension, e.g. ".go"
-	TestExt   string            `json:"test_ext"`   // test file name suffix, e.g. "_test.go"
-	InitFiles map[string]string `json:"init_files"` // files written to temp dir before execution, e.g. {"go.mod": "module main\n\ngo 1.26\n"}
+	RunCmd      []string          `json:"run_cmd"`      // e.g. ["go", "run", "{file}"]
+	TestCmd     []string          `json:"test_cmd"`     // e.g. ["go", "test", "{dir}"]
+	Ext         string            `json:"ext"`          // source file extension, e.g. ".go"
+	TestExt     string            `json:"test_ext"`     // test file name suffix, e.g. "_test.go"
+	InitFiles   map[string]string `json:"init_files"`   // files written to temp dir before execution, e.g. {"go.mod": "module main\n\ngo 1.26\n"}
+	NeedsSchema bool              `json:"needs_schema,omitempty"` // if true, create an isolated postgres schema for the run
 }
 
 const (
@@ -30,10 +36,11 @@ const (
 
 // RunRequest describes a code execution.
 type RunRequest struct {
-	Language string
-	Code     string
-	TestCode string        // non-empty → task mode: run tests against Code
-	Timeout  time.Duration // 0 → defaultTimeout
+	Language    string
+	Code        string
+	TestCode    string        // non-empty → task mode: run tests against Code
+	Schema      string        // schema.sql content for postgres driver
+	Timeout     time.Duration // 0 → defaultTimeout
 }
 
 // RunResult holds the output of an execution.
@@ -50,14 +57,14 @@ type Runner struct {
 	mu      sync.RWMutex
 	drivers map[string]LangDriver
 	file    string // path to runners.json, empty if not set
+	pgHost  string // postgres host for the "postgres" driver (Unix socket dir, or a TCP host on Windows); empty if not configured
+	pgPort  int    // postgres port; paired with pgHost
 }
 
-// New creates a Runner preloaded with the built-in Go driver.
+// New creates a Runner preloaded with the built-in language drivers.
 func New() *Runner {
 	return &Runner{
-		drivers: map[string]LangDriver{
-			"go": defaultGoDriver(),
-		},
+		drivers: defaultDrivers(),
 	}
 }
 
@@ -97,12 +104,65 @@ func (r *Runner) AddDriver(lang string, d LangDriver) {
 	_ = r.saveFile()
 }
 
-// saveFile writes all current drivers to r.file. Must be called with mu held.
+// ConfigurePostgres enables the "postgres" driver by pointing schema-
+// isolated runs at a running Postgres cluster (host is a Unix socket
+// directory on Unix, or a TCP host like "127.0.0.1" on Windows).
+// Call once at startup after PostgresManager.Start succeeds; leave unset
+// to disable the driver (Run then errors instead of connecting nowhere).
+func (r *Runner) ConfigurePostgres(host string, port int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.pgHost = host
+	r.pgPort = port
+}
+
+// newSchemaName generates a unique, safe-to-interpolate schema name for
+// one run. The fixed "cf_run_" prefix + hex charset lets callers embed it
+// directly in SQL without quoting (see createSchema/dropSchema and
+// PostgresManager.reapOrphanSchemas, which all rely on this exact shape).
+func newSchemaName() (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("rand: %w", err)
+	}
+	return "cf_run_" + hex.EncodeToString(b[:]), nil
+}
+
+// createSchema creates an isolated schema for one run in the shared
+// "courseforge" database.
+func createSchema(ctx context.Context, host string, port int, name string) error {
+	out, err := exec.CommandContext(ctx, "psql", "-h", host, "-p", strconv.Itoa(port), "-d", "courseforge",
+		"-v", "ON_ERROR_STOP=1", "-c", "CREATE SCHEMA "+name).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("create schema: %w: %s", err, out)
+	}
+	return nil
+}
+
+// dropSchema removes a run's schema. Best-effort: if this fails (e.g. the
+// process is being killed), PostgresManager's startup reaper catches it
+// next boot — the database never accumulates permanent clutter.
+func dropSchema(host string, port int, name string) {
+	_ = exec.Command("psql", "-h", host, "-p", strconv.Itoa(port), "-d", "courseforge",
+		"-c", "DROP SCHEMA IF EXISTS "+name+" CASCADE").Run()
+}
+
+// saveFile writes user-owned drivers to r.file. Must be called with mu held.
+// Built-in drivers left untouched from their factory defaults are NOT written,
+// so shipped driver updates keep taking effect instead of being frozen on disk.
 func (r *Runner) saveFile() error {
 	if r.file == "" {
 		return nil
 	}
-	data, err := json.MarshalIndent(r.drivers, "", "  ")
+	defaults := defaultDrivers()
+	persist := make(map[string]LangDriver, len(r.drivers))
+	for lang, d := range r.drivers {
+		if def, ok := defaults[lang]; ok && reflect.DeepEqual(d, def) {
+			continue // unchanged built-in — let the code own it
+		}
+		persist[lang] = d
+	}
+	data, err := json.MarshalIndent(persist, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -120,8 +180,15 @@ func (r *Runner) Drivers() map[string]LangDriver {
 	return maps.Clone(r.drivers)
 }
 
-// Run executes req and returns the result.
-func (r *Runner) Run(req RunRequest) (RunResult, error) {
+// DefaultDrivers returns the built-in factory drivers, ignoring any user edits.
+// Used to reset an edited runner back to its shipped command set.
+func (r *Runner) DefaultDrivers() map[string]LangDriver {
+	return defaultDrivers()
+}
+
+// Run executes req and returns the result. The process is killed when ctx is
+// cancelled (e.g. the client disconnects) or the per-request timeout elapses.
+func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	r.mu.RLock()
 	driver, ok := r.drivers[req.Language]
 	r.mu.RUnlock()
@@ -133,6 +200,30 @@ func (r *Runner) Run(req RunRequest) (RunResult, error) {
 	if timeout == 0 {
 		timeout = defaultTimeout
 	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// Snapshot host/port once under the lock: ConfigurePostgres may run
+	// concurrently (the cluster starts in the background at boot).
+	var schemaName, pgHost string
+	var pgPort int
+	if driver.NeedsSchema {
+		r.mu.RLock()
+		pgHost, pgPort = r.pgHost, r.pgPort
+		r.mu.RUnlock()
+		if pgHost == "" {
+			return RunResult{}, fmt.Errorf("postgres cluster is not running (still starting, or failed at startup)")
+		}
+		var err error
+		schemaName, err = newSchemaName()
+		if err != nil {
+			return RunResult{}, err
+		}
+		if err := createSchema(ctx, pgHost, pgPort, schemaName); err != nil {
+			return RunResult{}, err
+		}
+		defer dropSchema(pgHost, pgPort, schemaName)
+	}
 
 	dir, args, err := r.prepare(driver, req)
 	if err != nil {
@@ -142,9 +233,19 @@ func (r *Runner) Run(req RunRequest) (RunResult, error) {
 
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = dir
+	if schemaName != "" {
+		cmd.Env = append(os.Environ(),
+			"PGHOST="+pgHost,
+			"PGPORT="+strconv.Itoa(pgPort),
+			"PGDATABASE=courseforge",
+			"PGOPTIONS=--search_path="+schemaName+",public",
+		)
+	}
 	configureCommand(cmd)
 
-	var stdout, stderr bytes.Buffer
+	// syncBuffer, not bytes.Buffer: on the timeout/cancel path we may read the
+	// captured output while a not-yet-dead process is still being copied into it.
+	var stdout, stderr syncBuffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -164,8 +265,9 @@ func (r *Runner) Run(req RunRequest) (RunResult, error) {
 	)
 	select {
 	case runErr = <-done:
-	case <-time.After(timeout):
-		timedOut = true
+	case <-ctx.Done():
+		// deadline → timeout; any other cancellation → client went away.
+		timedOut = errors.Is(ctx.Err(), context.DeadlineExceeded)
 		_ = stopCommand(cmd)
 		if err, exited := waitAfterStop(cmd, done); exited {
 			runErr = err
@@ -174,7 +276,7 @@ func (r *Runner) Run(req RunRequest) (RunResult, error) {
 				Stdout:   stdout.String(),
 				Stderr:   stderr.String(),
 				Duration: time.Since(start),
-				TimedOut: true,
+				TimedOut: timedOut,
 			}, nil
 		}
 	}
@@ -222,22 +324,53 @@ func (r *Runner) prepare(driver LangDriver, req RunRequest) (dir string, args []
 		}
 	}
 
-	codeFile := filepath.Join(dir, "main"+driver.Ext)
-	if err = os.WriteFile(codeFile, []byte(req.Code), 0600); err != nil {
+	// Write schema.sql if provided (postgres tasks)
+	if req.Schema != "" {
+		schemaPath := filepath.Join(dir, "schema.sql")
+		if err = os.WriteFile(schemaPath, []byte(req.Schema), 0600); err != nil {
+			return dir, nil, fmt.Errorf("write schema: %w", err)
+		}
+	}
+
+	// Course test files reference the submitted code as "solution" (C++
+	// #include, JS/Python import) — Java additionally requires the public
+	// class name to match the file name exactly, hence "Solution"/"SolutionTest".
+	codeBase, testBase := "solution", "solution"
+	if req.Language == "java" {
+		codeBase, testBase = "Solution", "SolutionTest"
+	}
+
+	code := req.Code
+	// Wrap only for test runs: pg_prove's fresh connection needs the query
+	// persisted as a view. A playground run should print the rows as-is.
+	if driver.NeedsSchema && req.TestCode != "" {
+		code = wrapPostgresQueryAsView(code)
+	}
+
+	// {file}/{testfile} expand to names relative to the temp dir (the command
+	// runs with cmd.Dir = dir): the fixed names never contain spaces, so the
+	// `cmd /c "..."`/`sh -c "..."` templates stay intact even when the temp
+	// dir path itself has one (e.g. a Windows user name with a space).
+	codeName := codeBase + driver.Ext
+	if err = os.WriteFile(filepath.Join(dir, codeName), []byte(code), 0600); err != nil {
 		return dir, nil, fmt.Errorf("write code: %w", err)
 	}
 
 	cmdTemplate := driver.RunCmd
-	var testFile string
+	var testName string
 	if req.TestCode != "" {
-		testFile = filepath.Join(dir, "main"+driver.TestExt)
-		if err = os.WriteFile(testFile, []byte(req.TestCode), 0600); err != nil {
+		if req.Language == "java" {
+			testName = testBase + driver.Ext
+		} else {
+			testName = testBase + driver.TestExt
+		}
+		if err = os.WriteFile(filepath.Join(dir, testName), []byte(req.TestCode), 0600); err != nil {
 			return dir, nil, fmt.Errorf("write test: %w", err)
 		}
 		cmdTemplate = driver.TestCmd
 	}
 
-	args = expand(cmdTemplate, codeFile, testFile, dir)
+	args = expand(cmdTemplate, codeName, testName, dir)
 
 	// Resolve relative executable path against the server's CWD before the
 	// caller sets cmd.Dir, because Go resolves relative paths against cmd.Dir.
@@ -247,6 +380,26 @@ func (r *Runner) prepare(driver LangDriver, req RunRequest) (dir string, args []
 		}
 	}
 	return dir, args, nil
+}
+
+// syncBuffer is a bytes.Buffer safe for concurrent Write (by os/exec's output
+// copier goroutine) and String (by Run when it reads output after a timeout or
+// cancellation, before the process has fully exited).
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func expand(tmpl []string, file, testFile, dir string) []string {

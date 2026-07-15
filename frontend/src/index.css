@@ -55,7 +55,7 @@ body {
     @apply tracking-normal;
   }
 
-  .markdown-body :where(h1, h2, h3, h4) {
+  .markdown-body :where(h1, h2, h3, h4, h5, h6) {
     @apply text-tx-1 font-semibold;
   }
 
@@ -100,8 +100,12 @@ body {
     @apply block bg-transparent p-0 font-mono text-[13px] font-normal leading-6 text-tx-1;
   }
 
-  .markdown-body :where(ul, ol) {
-    @apply my-4 pl-6;
+  .markdown-body :where(ul) {
+    @apply my-4 list-disc pl-6;
+  }
+
+  .markdown-body :where(ol) {
+    @apply my-4 list-decimal pl-6;
   }
 
   .markdown-body :where(li) {
@@ -135,4 +139,31 @@ body {
   .markdown-body :where(img) {
     @apply my-5 max-w-full rounded-md border border-bdr;
   }
+
+  /* Tabbed multi-language snippet: inner code block fills the card chrome. */
+  .markdown-body .code-tabs :where(pre) {
+    @apply m-0 rounded-none border-0 bg-transparent;
+  }
 }
+
+/* highlight.js tokens, themed via the app palette (dark = default, light below) */
+.markdown-body :where(pre code).hljs { color: var(--tx-1); }
+.hljs-comment, .hljs-quote { color: var(--tx-3); font-style: italic; }
+.hljs-keyword, .hljs-literal, .hljs-meta-keyword, .hljs-doctag { color: #c792ea; }
+.hljs-built_in, .hljs-type, .hljs-class .hljs-title { color: #4ec9b0; }
+.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-meta-string { color: #98c379; }
+.hljs-number, .hljs-literal { color: #d19a66; }
+.hljs-title, .hljs-title.function_, .hljs-function .hljs-title, .hljs-section { color: #61afef; }
+.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable, .hljs-property { color: #e06c75; }
+.hljs-params { color: var(--tx-1); }
+.hljs-meta, .hljs-comment .hljs-doctag { color: #7f848e; }
+.hljs-tag, .hljs-name { color: #e06c75; }
+
+.light .markdown-body :where(pre code).hljs { color: var(--tx-1); }
+.light .hljs-keyword, .light .hljs-literal, .light .hljs-meta-keyword, .light .hljs-doctag { color: #a626a4; }
+.light .hljs-built_in, .light .hljs-type, .light .hljs-class .hljs-title { color: #0184bc; }
+.light .hljs-string, .light .hljs-regexp, .light .hljs-symbol, .light .hljs-meta-string { color: #50a14f; }
+.light .hljs-number { color: #b76b01; }
+.light .hljs-title, .light .hljs-title.function_, .light .hljs-function .hljs-title, .light .hljs-section { color: #4078f2; }
+.light .hljs-attr, .light .hljs-attribute, .light .hljs-variable, .light .hljs-template-variable, .light .hljs-property { color: #e45649; }
+.light .hljs-tag, .light .hljs-name { color: #e45649; }

@@ -22,12 +22,32 @@ func (h *Handler) getProgress(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusNotFound, "course not found")
 		return
 	}
-	p, err := h.progress.Load(c.Dir, courseSlug)
+	p, err := h.progress.Load(r.Context(), c.Dir, courseSlug)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "failed to load progress")
 		return
 	}
 	h.writeJSON(w, http.StatusOK, dto.ToProgressResp(p))
+}
+
+// @Summary Reset all progress for a course
+// @Tags progress
+// @Param courseSlug path string true "Course slug"
+// @Success 204
+// @Failure 404 {object} map[string]string
+// @Router /progress/{courseSlug} [delete]
+func (h *Handler) resetProgress(w http.ResponseWriter, r *http.Request) {
+	courseSlug := chi.URLParam(r, "courseSlug")
+	c := h.getCourseBySlug(courseSlug)
+	if c == nil {
+		h.writeError(w, http.StatusNotFound, "course not found")
+		return
+	}
+	if err := h.progress.Reset(r.Context(), c.Dir, courseSlug); err != nil {
+		h.writeError(w, http.StatusInternalServerError, "failed to reset progress")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // @Summary Mark task done or undone
@@ -57,9 +77,9 @@ func (h *Handler) updateProgress(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	if req.Done {
-		err = h.progress.MarkDone(c.Dir, courseSlug, taskSlug)
+		err = h.progress.MarkDone(r.Context(), c.Dir, courseSlug, taskSlug)
 	} else {
-		err = h.progress.MarkUndone(c.Dir, courseSlug, taskSlug)
+		err = h.progress.MarkUndone(r.Context(), c.Dir, courseSlug, taskSlug)
 	}
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "failed to update progress")

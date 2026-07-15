@@ -1,11 +1,16 @@
 package di
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/paintingpromisesss/courseforge/internal/api"
 	"github.com/paintingpromisesss/courseforge/internal/api/handlers"
@@ -37,6 +42,30 @@ func Run(cfg *config.Config) error {
 	if err := r.UseFile(cfg.RunnersJSON); err != nil {
 		return fmt.Errorf("load runners: %w", err)
 	}
+
+	// Start the Postgres cluster in the background so initdb/pg_ctl never
+	// delay HTTP startup; postgres runs that arrive before it's ready get a
+	// clear "cluster is not running" error from the runner.
+	pgMgr := runner.NewPostgresManager(filepath.Join(cfg.DataDir, "postgres"))
+	pgDone := make(chan struct{})
+	var pgStarted bool
+	go func() {
+		defer close(pgDone)
+		if err := pgMgr.Start(context.Background()); err != nil {
+			log.Printf("postgres runner disabled: %v", err)
+			return
+		}
+		r.ConfigurePostgres(pgMgr.Host(), pgMgr.Port())
+		pgStarted = true
+		log.Printf("postgres runner ready on %s:%d", pgMgr.Host(), pgMgr.Port())
+	}()
+	defer func() {
+		<-pgDone
+		if pgStarted {
+			_ = pgMgr.Stop()
+		}
+	}()
+
 	pr := repo.NewFileProgressRepository(cfg.CoursesDir)
 
 	ps := service.NewProgressService(pr, logger)
@@ -57,6 +86,8 @@ func Run(cfg *config.Config) error {
 		return err
 	}
 
+	srv := &http.Server{Addr: cfg.Addr, Handler: router}
+
 	log.Printf("listening on http://%s", displayAddr(cfg.Addr))
 	if swaggerEnabled {
 		log.Printf("swagger UI: http://%s/swagger/index.html", displayAddr(cfg.Addr))
@@ -65,7 +96,29 @@ func Run(cfg *config.Config) error {
 		log.Printf("frontend dir: %s", cfg.FrontendDir)
 	}
 
-	return http.ListenAndServe(cfg.Addr, router)
+	// Wait for Ctrl+C/SIGTERM and shut the HTTP server down before returning,
+	// so the deferred pgMgr.Stop()/sr.Close() above actually run — otherwise
+	// the postgres cluster is left running and the next start hits a stale lock.
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.ListenAndServe() }()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	select {
+	case err := <-errCh:
+		if err != nil && err != http.ErrServerClosed {
+			return err
+		}
+	case <-stop:
+		log.Printf("shutting down...")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			return fmt.Errorf("shutdown: %w", err)
+		}
+	}
+	return nil
 }
 
 func displayAddr(addr string) string {

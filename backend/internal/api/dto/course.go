@@ -14,6 +14,8 @@ type CourseItem struct {
 	CatalogSlug string `json:"catalog_slug,omitempty"`
 	TheoryCount int    `json:"theory_count"`
 	TaskCount   int    `json:"task_count"`
+	DoneCount   int    `json:"done_count"`
+	TheoryDone  int    `json:"theory_done_count"`
 }
 
 type CatalogItem struct {
@@ -49,13 +51,15 @@ type UnitItem struct {
 	Slug      string     `json:"slug"`
 	Title     string     `json:"title"`
 	HasTheory bool       `json:"has_theory"`
+	VideoURL  string     `json:"video_url,omitempty"`
 	Tasks     []TaskItem `json:"tasks"`
 }
 
 type TaskItem struct {
-	Slug      string   `json:"slug"`
-	Title     string   `json:"title"`
-	Languages []string `json:"languages"`
+	Slug         string   `json:"slug"`
+	Title        string   `json:"title"`
+	Languages    []string `json:"languages"`
+	EditorialURL string   `json:"editorial_url,omitempty"`
 }
 
 func ToCourseItem(c *domain.Course) CourseItem {
@@ -110,9 +114,9 @@ func ToCourseDetail(c *domain.Course) CourseDetail {
 						langs = append(langs, lang)
 					}
 					sort.Strings(langs)
-					tasks[l] = TaskItem{Slug: task.Slug, Title: task.Title, Languages: langs}
+					tasks[l] = TaskItem{Slug: task.Slug, Title: task.Title, Languages: langs, EditorialURL: task.EditorialURL}
 				}
-				units[k] = UnitItem{Slug: u.Slug, Title: u.Title, HasTheory: u.Theory != "", Tasks: tasks}
+				units[k] = UnitItem{Slug: u.Slug, Title: u.Title, HasTheory: u.Theory != "", VideoURL: u.VideoURL, Tasks: tasks}
 			}
 			topics[j] = TopicItem{Slug: p.Slug, Title: p.Title, Description: p.Description, Units: units}
 		}

@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -23,14 +24,20 @@ func NewFileProgressRepository(coursesDir string) *FileProgressRepository {
 
 // Load returns progress for a course. Returns empty Progress if file doesn't exist yet.
 // courseDir is the path relative to coursesDir (may differ from courseSlug for catalog courses).
-func (s *FileProgressRepository) Load(courseDir, courseSlug string) (*domain.Progress, error) {
+func (s *FileProgressRepository) Load(ctx context.Context, courseDir, courseSlug string) (*domain.Progress, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.load(courseDir, courseSlug)
 }
 
 // MarkDone marks taskSlug as completed and persists.
-func (s *FileProgressRepository) MarkDone(courseDir, courseSlug, taskSlug string) error {
+func (s *FileProgressRepository) MarkDone(ctx context.Context, courseDir, courseSlug, taskSlug string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -43,7 +50,10 @@ func (s *FileProgressRepository) MarkDone(courseDir, courseSlug, taskSlug string
 }
 
 // MarkUndone marks taskSlug as not completed and persists.
-func (s *FileProgressRepository) MarkUndone(courseDir, courseSlug, taskSlug string) error {
+func (s *FileProgressRepository) MarkUndone(ctx context.Context, courseDir, courseSlug, taskSlug string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -53,6 +63,22 @@ func (s *FileProgressRepository) MarkUndone(courseDir, courseSlug, taskSlug stri
 	}
 	delete(p.CompletedTasks, taskSlug)
 	return s.save(courseDir, p)
+}
+
+// Reset removes all progress for a course by deleting its progress.json;
+// a subsequent Load returns empty progress.
+func (s *FileProgressRepository) Reset(ctx context.Context, courseDir string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	err := os.Remove(s.progressPath(courseDir))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 // load reads progress from disk. Must be called with mu held.

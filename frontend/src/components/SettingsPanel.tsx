@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { api } from '../api/client';
 import type { LangDriver, RunnerStatus } from '../api/types';
 import { useTheme } from '../context/ThemeContext';
+import { splitArgs, joinArgs } from '../lib/shlex';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -74,39 +75,71 @@ type ImportJob = { id: number; name: string; status: 'pending' | 'ok' | 'error';
 // name is known synchronously (for instant UI); files are read lazily on import.
 type ImportSource = { name: string; load: () => Promise<{ file: File; path: string }[]> };
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Retry transient NotFoundError — dropped FileSystemEntry handles can momentarily
+// fail to resolve (Chromium reclaims them under the hood); a quick retry succeeds.
+async function withRetry<T>(fn: () => Promise<T>, attempts = 5): Promise<T> {
+  let lastErr: any;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e: any) {
+      lastErr = e;
+      if (e?.name !== 'NotFoundError') throw e;
+      await sleep(50 * (i + 1));
+    }
+  }
+  throw lastErr;
+}
+
+// Promisified FileSystem API helpers — both success AND error callbacks, so a
+// failed read REJECTS instead of hanging the promise forever (the old code passed
+// no error callback, so any failure left the import silently stuck with no error).
+function entryFile(entry: any): Promise<File> {
+  return withRetry(() => new Promise<File>((resolve, reject) => entry.file(resolve, reject)));
+}
+function readEntriesBatch(reader: any): Promise<any[]> {
+  return new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+}
+
 // Recursively read a dropped FileSystemEntry into root-prefixed {file,path} pairs.
-function readEntry(entry: any, prefix: string): Promise<{ file: File; path: string }[]> {
+// Recursion is SEQUENTIAL on purpose: Chromium deadlocks (readEntries stops firing
+// its callback) when too many FileSystemDirectoryReader instances run concurrently,
+// which is what made deeper/larger course trees hang with no error or network call.
+async function readEntry(entry: any, prefix: string): Promise<{ file: File; path: string }[]> {
   if (entry.isFile) {
-    return new Promise((resolve) =>
-      entry.file((f: File) => resolve([{ file: f, path: prefix + entry.name }])),
-    );
+    const f = await entryFile(entry);
+    return [{ file: f, path: prefix + entry.name }];
   }
   const reader = entry.createReader();
-  return new Promise((resolve) => {
-    const collected: any[] = [];
-    const readBatch = () =>
-      // readEntries returns at most ~100 entries per call, so loop until empty
-      reader.readEntries(async (batch: any[]) => {
-        if (!batch.length) {
-          const nested = await Promise.all(collected.map((e) => readEntry(e, prefix + entry.name + '/')));
-          resolve(nested.flat());
-          return;
-        }
-        collected.push(...batch);
-        readBatch();
-      });
-    readBatch();
-  });
+  const children: any[] = [];
+  // readEntries returns at most ~100 entries per call, so loop until it returns empty.
+  for (;;) {
+    const batch = await readEntriesBatch(reader);
+    if (!batch.length) break;
+    children.push(...batch);
+  }
+  const out: { file: File; path: string }[] = [];
+  for (const child of children) {
+    out.push(...(await readEntry(child, prefix + entry.name + '/')));
+  }
+  return out;
 }
 
 // Each dropped directory becomes one import source (a course, or a catalog folder).
-// Entries are captured synchronously (the DataTransfer is neutered after the handler);
-// file contents are read lazily so the UI can show pending jobs immediately.
+// We START reading EAGERLY here, inside the drop handler, while the dropped
+// FileSystemEntry handles are freshest — deferring the read (the old behaviour) let
+// the handles go stale and the deep read failed with NotFoundError. The read promise
+// is kicked off now; load() just awaits it, so the UI can still show pending jobs.
 function sourcesFromDataTransfer(items: DataTransferItemList): ImportSource[] {
   return Array.from(items)
     .map((it) => it.webkitGetAsEntry?.())
     .filter((e: any) => e && e.isDirectory)
-    .map((e: any) => ({ name: e.name, load: () => readEntry(e, '') }));
+    .map((e: any) => {
+      const filesPromise = readEntry(e, '');
+      return { name: e.name, load: () => filesPromise };
+    });
 }
 
 // A webkitdirectory picker yields files grouped under their first path segment.
@@ -137,17 +170,18 @@ function CoursesSection() {
     // show pending jobs immediately (names are known sync); read files per-job after
     setJobs(sources.map((s, i) => ({ id: start + i, name: s.name, status: 'pending' })));
 
-    await Promise.all(
-      sources.map(async (src, i) => {
-        const id = start + i;
-        try {
-          await api.uploadCourseFiles(await src.load());
-          setJobs((js) => js.map((j) => (j.id === id ? { ...j, status: 'ok' } : j)));
-        } catch (e) {
-          setJobs((js) => js.map((j) => (j.id === id ? { ...j, status: 'error', error: (e as Error).message } : j)));
-        }
-      }),
-    );
+    // Process sources ONE AT A TIME. Reading a dropped directory tree spins up
+    // FileSystemDirectoryReader instances; running several trees concurrently can
+    // deadlock Chromium's reader, so we never read more than one tree at a time.
+    for (let i = 0; i < sources.length; i++) {
+      const id = start + i;
+      try {
+        await api.uploadCourseFiles(await sources[i].load());
+        setJobs((js) => js.map((j) => (j.id === id ? { ...j, status: 'ok' } : j)));
+      } catch (e) {
+        setJobs((js) => js.map((j) => (j.id === id ? { ...j, status: 'error', error: (e as Error).message } : j)));
+      }
+    }
     // refresh catalogs first so newly imported catalog members are known before
     // the courses list updates — otherwise they flash as standalone courses
     await qc.refetchQueries({ queryKey: ['catalogs'] });
@@ -275,6 +309,85 @@ const RUNNERS: RunnerDef[] = [
       { os: 'Windows', cmd: 'winget install GoLang.Go' },
     ],
   },
+  {
+    id: 'python3',
+    name: 'Python',
+    docsUrl: 'https://www.python.org/downloads/',
+    install: [
+      { os: 'Linux', cmd: 'sudo apt install python3 python3-pip\npip3 install pytest' },
+      { os: 'macOS', cmd: 'brew install python\npip3 install pytest' },
+      { os: 'Windows', cmd: 'winget install Python.Python.3.12\npip install pytest' },
+    ],
+  },
+  {
+    id: 'javascript',
+    name: 'JavaScript (Node.js)',
+    docsUrl: 'https://nodejs.org/',
+    install: [
+      { os: 'Linux', cmd: 'sudo apt install nodejs npm\nnpm i -g mocha' },
+      { os: 'macOS', cmd: 'brew install node\nnpm i -g mocha' },
+      { os: 'Windows', cmd: 'winget install OpenJS.NodeJS\nnpm i -g mocha' },
+    ],
+  },
+  {
+    id: 'cpp',
+    name: 'C++',
+    docsUrl: 'https://gcc.gnu.org/',
+    install: [
+      { os: 'Linux', cmd: 'sudo apt install g++ libgtest-dev' },
+      { os: 'macOS', cmd: 'brew install gcc googletest' },
+      { os: 'Windows', cmd: 'winget install GnuWin32.Make\n# MinGW-w64 + vcpkg install gtest' },
+    ],
+  },
+  {
+    id: 'java',
+    name: 'Java',
+    docsUrl: 'https://adoptium.net/',
+    install: [
+      {
+        os: 'Linux',
+        cmd: 'sudo apt install default-jdk\n'
+          + '# JUnit 5: скачайте junit-platform-console-standalone.jar с Maven Central https://search.maven.org/artifact/org.junit.platform/junit-platform-console-standalone\n'
+          + 'sudo mkdir -p /usr/share/java\n'
+          + 'sudo mv ~/Downloads/junit-platform-console-standalone-*.jar /usr/share/java/junit-platform-console-standalone.jar',
+      },
+      { os: 'macOS', cmd: 'brew install openjdk\n# JUnit 5: скачайте junit-platform-console-standalone.jar с Maven Central https://search.maven.org/artifact/org.junit.platform/junit-platform-console-standalone\n# и сохраните как /usr/share/java/junit-platform-console-standalone.jar' },
+      { os: 'Windows', cmd: 'winget install EclipseAdoptium.Temurin.21.JDK\n# JUnit 5: скачайте junit-platform-console-standalone.jar с Maven Central https://search.maven.org/artifact/org.junit.platform/junit-platform-console-standalone,\n# сохраните в удобную папку и укажите путь к ней в команде теста раннера (Settings → Раннеры → Java)' },
+    ],
+  },
+  {
+    id: 'csharp',
+    name: 'C#',
+    docsUrl: 'https://dotnet.microsoft.com/download',
+    install: [
+      { os: 'Linux', cmd: 'sudo apt install dotnet-sdk-10.0' },
+      { os: 'macOS', cmd: 'brew install dotnet-sdk' },
+      { os: 'Windows', cmd: 'winget install Microsoft.DotNet.SDK.10' },
+    ],
+  },
+  {
+    id: 'postgres',
+    name: 'PostgreSQL (SQL)',
+    docsUrl: 'https://pgtap.org/',
+    install: [
+      {
+        os: 'Linux',
+        cmd: 'sudo apt install postgresql-16 postgresql-16-pgtap libtap-parser-sourcehandler-pgtap-perl\n'
+          + '# initdb/pg_ctl обычно лежат в /usr/lib/postgresql/16/bin — при необходимости добавьте в PATH:\n'
+          + 'sudo ln -sf /usr/lib/postgresql/16/bin/initdb /usr/local/bin/initdb\n'
+          + 'sudo ln -sf /usr/lib/postgresql/16/bin/pg_ctl /usr/local/bin/pg_ctl',
+      },
+      { os: 'macOS', cmd: 'brew install postgresql@16 pgtap\ncpan TAP::Parser::SourceHandler::pgTAP  # для pg_prove' },
+      {
+        os: 'Windows',
+        cmd: 'winget install PostgreSQL.PostgreSQL.16  # даёт initdb/pg_ctl/psql/createdb\n'
+          + '# pgTAP и pg_prove на Windows пакетами не ставятся, нужна сборка из исходников:\n'
+          + '#   pgTAP: PGXN client + nmake (Visual Studio Build Tools) — pgxn install pgtap\n'
+          + '#   pg_prove: Strawberry Perl, затем cpan TAP::Parser::SourceHandler::pgTAP\n'
+          + '# Без pgtap раннер стартует, но CREATE EXTENSION pgtap упадёт — соответствующий лог при старте сервера объяснит, чего не хватает.',
+      },
+    ],
+  },
 ];
 
 // icons
@@ -304,6 +417,15 @@ function WrenchIcon() {
   );
 }
 
+function ResetIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 2v6h6" />
+      <path d="M3 13a9 9 0 1 0 3-7.7L3 8" />
+    </svg>
+  );
+}
+
 function CheckIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -324,7 +446,7 @@ function AlertIcon() {
 
 const STATUS_META = {
   ok:      { label: 'Установлен',                  color: 'text-ok',         Icon: CheckIcon },
-  broken:  { label: 'Установлен, тест не пройден',  color: 'text-warn',  Icon: AlertIcon },
+  broken:  { label: 'Тест не пройден',  color: 'text-warn',  Icon: AlertIcon },
   missing: { label: 'Не установлен',               color: 'text-tx-3',       Icon: AlertIcon },
 } as const;
 
@@ -356,26 +478,48 @@ function Instructions({ def, status }: { def: RunnerDef; status?: RunnerStatus }
   );
 }
 
-function StatusBadge({ status, version, fetching }: { status?: RunnerStatus['status']; version?: string; fetching: boolean }) {
+function StatusBadge({ status, version, message, fetching }: { status?: RunnerStatus['status']; version?: string; message?: string; fetching: boolean }) {
   if (fetching) return <span className="flex items-center h-5 text-tx-3 text-xs whitespace-nowrap">Проверка…</span>;
   const sm = status ? STATUS_META[status] : null;
   if (!sm) return <span className="block h-5" />;
   return (
-    <span className={clsx('flex items-center h-5 gap-1 text-xs whitespace-nowrap', sm.color)}>
+    <span
+      className={clsx('flex items-center h-5 gap-1 text-xs whitespace-nowrap', sm.color, status === 'broken' && message && 'cursor-help')}
+      title={status === 'broken' ? message : undefined}
+    >
       <span className="inline-flex shrink-0 w-[13px] h-[13px]"><sm.Icon /></span>
       <span>{sm.label}{version ? ` (${version})` : ''}</span>
     </span>
   );
 }
 
-function RunnerCard({ def, driver }: { def: RunnerDef; driver?: LangDriver }) {
+function RunnerCard({ def, driver, defaultDriver }: { def: RunnerDef; driver?: LangDriver; defaultDriver?: LangDriver }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<CardMode>('edit');
   const settled = useRef(false);
-  const [run, setRun] = useState((driver?.run_cmd ?? []).join(' '));
-  const [test, setTest] = useState((driver?.test_cmd ?? []).join(' '));
+
+  // The saved driver loads/refreshes asynchronously; fall back to factory
+  // defaults until it arrives so the fields are never blank.
+  const baseRun = joinArgs(driver?.run_cmd ?? defaultDriver?.run_cmd ?? []);
+  const baseTest = joinArgs(driver?.test_cmd ?? defaultDriver?.test_cmd ?? []);
+  const defRun = joinArgs(defaultDriver?.run_cmd ?? []);
+  const defTest = joinArgs(defaultDriver?.test_cmd ?? []);
+
+  const [run, setRun] = useState(baseRun);
+  const [test, setTest] = useState(baseTest);
   const [err, setErr] = useState('');
+
+  // Re-sync fields when the saved/default commands change (initial load, save),
+  // without clobbering in-progress edits (base only changes on load/save).
+  const lastBase = useRef({ run: baseRun, test: baseTest });
+  useEffect(() => {
+    if (lastBase.current.run !== baseRun) { setRun(baseRun); lastBase.current.run = baseRun; }
+    if (lastBase.current.test !== baseTest) { setTest(baseTest); lastBase.current.test = baseTest; }
+  }, [baseRun, baseTest]);
+
+  const canReset = !!defaultDriver && (run !== defRun || test !== defTest);
+  const resetToDefaults = () => { setRun(defRun); setTest(defTest); };
 
   const detect = useQuery({
     queryKey: ['runner-detect', def.id],
@@ -397,8 +541,8 @@ function RunnerCard({ def, driver }: { def: RunnerDef; driver?: LangDriver }) {
 
   const save = useMutation({
     mutationFn: () => api.patchRunner(def.id, {
-      run_cmd: run.trim().split(/\s+/),
-      test_cmd: test.trim() ? test.trim().split(/\s+/) : [],
+      run_cmd: splitArgs(run),
+      test_cmd: splitArgs(test),
     }),
     onSuccess: () => {
       setErr('');
@@ -410,7 +554,8 @@ function RunnerCard({ def, driver }: { def: RunnerDef; driver?: LangDriver }) {
 
   const status = detect.data?.status;
   const version = detect.data?.version;
-  const dirty = driver && (run !== driver.run_cmd.join(' ') || test !== driver.test_cmd.join(' '));
+  const message = detect.data?.message;
+  const dirty = driver && (run !== joinArgs(driver.run_cmd) || test !== joinArgs(driver.test_cmd));
 
   return (
     <div className="rounded bg-bg-3 border border-bdr overflow-hidden">
@@ -422,8 +567,8 @@ function RunnerCard({ def, driver }: { def: RunnerDef; driver?: LangDriver }) {
           open ? 'pb-1.5' : 'pb-2.5',
         )}
       >
-        <div className="min-w-0">
-          <p className="text-tx-1 text-sm font-medium">{def.name}</p>
+        <div className="min-w-0 flex-1">
+          <p className="text-tx-1 text-sm font-medium break-words">{def.name}</p>
           {/* expanded: status sits under the name (shifted by text) */}
           <AnimatePresence initial={false}>
             {open && (
@@ -436,7 +581,7 @@ function RunnerCard({ def, driver }: { def: RunnerDef; driver?: LangDriver }) {
                 className="overflow-hidden"
               >
                 <div className="mt-1.5">
-                  <StatusBadge status={status} version={version} fetching={detect.isFetching} />
+                  <StatusBadge status={status} version={version} message={message} fetching={detect.isFetching} />
                 </div>
               </motion.div>
             )}
@@ -479,7 +624,7 @@ function RunnerCard({ def, driver }: { def: RunnerDef; driver?: LangDriver }) {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.12 }}
               >
-                <StatusBadge status={status} version={version} fetching={detect.isFetching} />
+                <StatusBadge status={status} version={version} message={message} fetching={detect.isFetching} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -510,16 +655,26 @@ function RunnerCard({ def, driver }: { def: RunnerDef; driver?: LangDriver }) {
                   >
                     {mode === 'edit' ? (
                       <div className="space-y-2">
-                        <FormField label="Run" value={run} onChange={setRun} placeholder="go run ." mono />
-                        <FormField label="Test" value={test} onChange={setTest} placeholder="go test -v ." mono />
+                        <FormField label="Run" value={run} onChange={setRun} placeholder={defRun || 'команда запуска'} mono />
+                        <FormField label="Test" value={test} onChange={setTest} placeholder={defTest || 'команда тестов'} mono />
                         {err && <p className="text-err text-xs">{err}</p>}
-                        <button
-                          onClick={() => save.mutate()}
-                          disabled={!dirty || save.isPending}
-                          className="w-full h-8 rounded bg-brand text-white text-xs hover:opacity-90 disabled:opacity-40 transition-opacity"
-                        >
-                          {save.isPending ? 'Сохранение…' : 'Сохранить'}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => save.mutate()}
+                            disabled={!dirty || save.isPending}
+                            className="flex-1 h-8 rounded bg-brand text-white text-xs hover:opacity-90 disabled:opacity-40 transition-opacity"
+                          >
+                            {save.isPending ? 'Сохранение…' : 'Сохранить'}
+                          </button>
+                          <button
+                            onClick={resetToDefaults}
+                            disabled={!canReset}
+                            title="Сбросить команды к значениям по умолчанию"
+                            className="shrink-0 h-8 px-2 rounded border border-bdr text-tx-3 hover:text-tx-1 hover:bg-bg-4 disabled:opacity-40 disabled:cursor-default transition-colors"
+                          >
+                            <ResetIcon />
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <Instructions def={def} status={detect.data} />
@@ -548,18 +703,138 @@ function RunnerCard({ def, driver }: { def: RunnerDef; driver?: LangDriver }) {
   );
 }
 
+// maps the Go runtime.GOOS values reported by /detect to the `os` labels
+// used in RunnerDef.install, so the prompt only ever includes commands for
+// the host that is actually running the runners.
+const PLATFORM_LABEL: Record<string, string> = {
+  linux: 'Linux',
+  darwin: 'macOS',
+  windows: 'Windows',
+};
+
+function buildSetupPrompt(
+  statuses: Record<string, RunnerStatus | undefined>,
+  drivers: Record<string, LangDriver>,
+): string {
+  const platform = Object.values(statuses).find((s) => s?.platform)?.platform ?? 'unknown';
+  const osLabel = PLATFORM_LABEL[platform] ?? platform;
+
+  const lines: string[] = [];
+  lines.push(
+    'Ты — ассистент, который помогает настроить раннеры кода для CourseForge (self-hosted инструмент для запуска решений на разных языках).',
+    'Настрой недостающие раннеры пошагово: давай ровно одну команду за раз и жди подтверждения, что она выполнена, прежде чем переходить к следующей.',
+    '',
+    `Платформа хоста: ${osLabel} (${platform})`,
+    'Важно: команды должны быть универсальными для этой ОС (через системный пакетный менеджер), а НЕ завязанными на пути или версии конкретно этой машины — их можно будет повторить на другом устройстве с той же ОС.',
+    '',
+    'Текущее состояние раннеров:',
+  );
+
+  for (const def of RUNNERS) {
+    const s = statuses[def.id];
+    const driver = drivers[def.id];
+    const statusLabel = s ? STATUS_META[s.status].label : 'неизвестно';
+    const details = [statusLabel];
+    if (s?.version) details.push(`версия ${s.version}`);
+    if (s?.path) details.push(`путь: ${s.path}`);
+    lines.push(`- ${def.name} (${def.id}): ${details.join(', ')}`);
+    if (driver) {
+      lines.push(`  текущая команда запуска: ${joinArgs(driver.run_cmd)}`);
+      lines.push(`  текущая команда тестов: ${joinArgs(driver.test_cmd)}`);
+    }
+  }
+
+  const needsSetup = RUNNERS.filter((def) => statuses[def.id]?.status !== 'ok');
+  if (needsSetup.length > 0) {
+    lines.push('', 'Раннеры, которые нужно настроить:');
+    for (const def of needsSetup) {
+      const s = statuses[def.id];
+      lines.push('', `### ${def.name} (${def.id})`);
+      if (s?.status === 'broken' && s.message) {
+        lines.push(`Ошибка теста: ${s.message}`);
+      }
+      const install = def.install.find((it) => it.os === osLabel);
+      lines.push(`Команды установки для ${osLabel}:`);
+      lines.push(install ? install.cmd : '(нет готовой команды для этой ОС — предложи вариант через её обычный пакетный менеджер)');
+      lines.push(`Документация: ${def.docsUrl}`);
+    }
+  } else {
+    lines.push('', 'Все раннеры уже установлены и прошли проверку.');
+  }
+
+  lines.push(
+    '',
+    'Задача:',
+    '1. Ответь одним сообщением: единый список команд для всех раннеров из «нужно настроить» подряд, в порядке установки, с кратким однострочным комментарием перед каждой командой (что она делает). Не разбивай ответ на несколько сообщений и не жди подтверждения между командами.',
+    '2. Для каждой команды используй только универсальный пакетный менеджер указанной ОС — без путей, версий или шагов, специфичных для конкретной машины.',
+    '3. В конце сообщения одним пунктом добавь: после выполнения команд нажать «Проверить» у каждой карточки в Settings → Раннеры, чтобы CourseForge переобнаружил раннеры.',
+    '4. Если для раннера нет готовой команды — предложи вариант через стандартный пакетный менеджер той же ОС, не меняя платформу.',
+  );
+
+  return lines.join('\n');
+}
+
+function CopyIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function SetupPromptButton({ statuses, drivers }: { statuses: Record<string, RunnerStatus | undefined>; drivers: Record<string, LangDriver> }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    await navigator.clipboard.writeText(buildSetupPrompt(statuses, drivers));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <button
+      onClick={copy}
+      title="Скопировать промпт для AI-агента с текущим статусом раннеров, чтобы настроить недостающие одним сообщением"
+      className="flex items-center gap-1.5 text-tx-3 hover:text-tx-1 text-xs leading-4 transition-colors"
+    >
+      <span className="inline-flex items-center justify-center shrink-0 w-[13px] h-4">{copied ? <CheckIcon /> : <CopyIcon />}</span>
+      {copied ? 'Скопировано' : 'Промпт для настройки'}
+    </button>
+  );
+}
+
 function RunnersSection() {
   const { data: runners = {} } = useQuery({
     queryKey: ['runners'],
     queryFn: api.listRunners,
   });
+  const { data: defaults = {} } = useQuery({
+    queryKey: ['runner-defaults'],
+    queryFn: api.listRunnerDefaults,
+    staleTime: Infinity,
+  });
+  // shares the ['runner-detect', id] cache with each RunnerCard's own query
+  // (same key + staleTime: Infinity), so this doesn't trigger extra requests.
+  const detectQueries = useQueries({
+    queries: RUNNERS.map((def) => ({
+      queryKey: ['runner-detect', def.id],
+      queryFn: () => api.detectRunner(def.id),
+      staleTime: Infinity,
+      refetchOnWindowFocus: false,
+    })),
+  });
+  const statuses = Object.fromEntries(RUNNERS.map((def, i) => [def.id, detectQueries[i].data]));
 
   return (
     <div>
-      <SectionTitle>Раннеры</SectionTitle>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-tx-3 text-xs font-medium uppercase tracking-wide">Раннеры</p>
+        <SetupPromptButton statuses={statuses} drivers={runners} />
+      </div>
       <div className="space-y-2">
         {RUNNERS.map((def) => (
-          <RunnerCard key={def.id} def={def} driver={runners[def.id]} />
+          <RunnerCard key={def.id} def={def} driver={runners[def.id]} defaultDriver={defaults[def.id]} />
         ))}
       </div>
     </div>

@@ -1,148 +1,147 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useParams, useNavigate, Outlet } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useParams, useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { api } from '../api/client';
 import { ProgressBar } from '../components/ui/ProgressBar';
-import type { TrackItem, TopicItem, UnitItem, TaskItem } from '../api/types';
-
-function countTasks(track: TrackItem): number {
-  return track.topics.reduce((a, p) => a + p.units.reduce((b, u) => b + u.tasks.length, 0), 0);
-}
-
-function countTopicTasks(topic: TopicItem): number {
-  return topic.units.reduce((a, u) => a + u.tasks.length, 0);
-}
-
-function doneInTrack(track: TrackItem, done: Record<string, boolean>): number {
-  return track.topics.reduce((a, p) =>
-    a + p.units.reduce((b, u) =>
-      b + u.tasks.filter((t) => done[t.slug]).length, 0), 0);
-}
-
-function doneInTopic(topic: TopicItem, done: Record<string, boolean>): number {
-  return topic.units.reduce((a, u) => a + u.tasks.filter((t) => done[t.slug]).length, 0);
-}
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import type { TrackItem } from '../api/types';
+import { buildTree, initialOpen, type TreeNode, type NavTarget } from '../lib/buildTree';
 
 interface SidebarProps {
+  title: string;
   tracks: TrackItem[];
   done: Record<string, boolean>;
   activeTaskSlug?: string;
   activeUnitSlug?: string;
-  onTask: (track: TrackItem, topic: TopicItem, unit: UnitItem, task: TaskItem) => void;
-  onTheory: (track: TrackItem, topic: TopicItem, unit: UnitItem) => void;
+  onTask: (nav: NavTarget) => void;
+  onTheory: (nav: NavTarget) => void;
+  onResetProgress: () => void;
 }
 
-function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheory }: SidebarProps) {
-  const [openTracks, setOpenTracks] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(tracks.map((t) => [t.slug, true]))
-  );
-  const [openTopics, setOpenTopics] = useState<Record<string, boolean>>({});
-  const [openUnits, setOpenUnits] = useState<Record<string, boolean>>({});
+interface RowProps {
+  node: TreeNode;
+  depth: number;
+  open: Record<string, boolean>;
+  toggle: (id: string) => void;
+  activeTaskSlug?: string;
+  activeUnitSlug?: string;
+  onTask: (nav: NavTarget) => void;
+  onTheory: (nav: NavTarget) => void;
+}
 
-  const toggle = (map: Record<string, boolean>, set: (v: Record<string, boolean>) => void, key: string) =>
-    set({ ...map, [key]: !map[key] });
+function TreeRow({ node, depth, open, toggle, activeTaskSlug, activeUnitSlug, onTask, onTheory }: RowProps) {
+  const indent = depth > 0 ? 'ml-3' : '';
+
+  if (node.kind === 'group') {
+    const isOpen = open[node.id];
+    const topLevel = depth === 0;
+    return (
+      <div className={indent}>
+        <button
+          onClick={() => toggle(node.id)}
+          className={clsx(
+            'w-full flex items-center gap-2 rounded hover:bg-bg-4 transition-colors text-left',
+            topLevel ? 'px-2 py-1.5' : 'px-2 py-1',
+          )}
+        >
+          <span className={clsx('text-tx-3 text-xs transition-transform', isOpen && 'rotate-90')}>▶</span>
+          <span
+            className={clsx('flex-1 truncate', topLevel ? 'text-sm font-medium text-tx-1' : 'text-xs text-tx-2')}
+          >
+            {node.title}
+          </span>
+          {node.total > 0 && <span className="text-xs text-tx-3 shrink-0">{node.done}/{node.total}</span>}
+        </button>
+        {isOpen && (
+          <div className="mt-0.5 space-y-0.5">
+            {node.children.map((c) => (
+              <TreeRow
+                key={c.id}
+                node={c}
+                depth={depth + 1}
+                open={open}
+                toggle={toggle}
+                activeTaskSlug={activeTaskSlug}
+                activeUnitSlug={activeUnitSlug}
+                onTask={onTask}
+                onTheory={onTheory}
+              />
+            ))}
+            {topLevel && node.total > 0 && <ProgressBar value={node.done} max={node.total} className="mx-2 mt-1 mb-2" />}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const isTask = node.kind === 'task';
+  const active = isTask ? activeTaskSlug === node.nav?.task : activeUnitSlug === node.nav?.unit;
+  return (
+    <div className={indent}>
+      <button
+        onClick={() => (isTask ? onTask(node.nav!) : onTheory(node.nav!))}
+        className={clsx(
+          'w-full flex items-center gap-2 px-2 py-1 rounded text-left transition-colors text-xs',
+          active ? 'bg-brand-subtle text-brand' : 'text-tx-2 hover:bg-bg-4 hover:text-tx-1',
+        )}
+      >
+        <span className={clsx('text-xs', node.doneFlag ? 'text-ok' : 'text-tx-3')}>
+          {node.doneFlag ? '✓' : '·'}
+        </span>
+        <span className="truncate">{node.title}</span>
+      </button>
+    </div>
+  );
+}
+
+function Sidebar({ title, tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheory, onResetProgress }: SidebarProps) {
+  const tree = buildTree(tracks, done);
+  const [open, setOpen] = useState<Record<string, boolean>>(() =>
+    initialOpen(tree, activeTaskSlug, activeUnitSlug),
+  );
+  const toggle = (id: string) => setOpen((m) => ({ ...m, [id]: !m[id] }));
+  const hasProgress = Object.keys(done).length > 0;
+  const totalDone = tree.reduce((a, n) => a + n.done, 0);
+  const total = tree.reduce((a, n) => a + n.total, 0);
 
   return (
-    <nav className="w-64 shrink-0 border-r border-bdr bg-bg-2 h-full overflow-y-auto">
-      <div className="p-3 space-y-1">
-        {tracks.map((track) => {
-          const total = countTasks(track);
-          const d = doneInTrack(track, done);
-          return (
-            <div key={track.slug}>
-              <button
-                onClick={() => toggle(openTracks, setOpenTracks, track.slug)}
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-4 transition-colors text-left group"
-              >
-                <span className={clsx('text-tx-3 text-xs transition-transform', openTracks[track.slug] && 'rotate-90')}>▶</span>
-                <span className="flex-1 text-sm font-medium text-tx-1 truncate">{track.title}</span>
-                {total > 0 && <span className="text-xs text-tx-3 shrink-0">{d}/{total}</span>}
-              </button>
-              {openTracks[track.slug] && (
-                <div className="ml-3 mt-0.5 space-y-0.5">
-                  {track.topics.map((topic) => {
-                    const td = doneInTopic(topic, done);
-                    const tt = countTopicTasks(topic);
-                    return (
-                      <div key={topic.slug}>
-                        <button
-                          onClick={() => toggle(openTopics, setOpenTopics, topic.slug)}
-                          className="w-full flex items-center gap-2 px-2 py-1 rounded hover:bg-bg-4 transition-colors text-left"
-                        >
-                          <span className={clsx('text-tx-3 text-xs transition-transform', openTopics[topic.slug] && 'rotate-90')}>▶</span>
-                          <span className="flex-1 text-xs text-tx-2 truncate">{topic.title}</span>
-                          {tt > 0 && <span className="text-xs text-tx-3 shrink-0">{td}/{tt}</span>}
-                        </button>
-                        {openTopics[topic.slug] && (
-                          <div className="ml-3 mt-0.5 space-y-0.5">
-                            {topic.units.map((unit) => {
-                              const theoryOnly = unit.has_theory && unit.tasks.length === 0;
-                              if (theoryOnly) {
-                                return (
-                                  <button
-                                    key={unit.slug}
-                                    onClick={() => onTheory(track, topic, unit)}
-                                    className={clsx(
-                                      'w-full flex items-center gap-2 px-2 py-1 rounded text-left transition-colors text-xs',
-                                      activeUnitSlug === unit.slug
-                                        ? 'bg-brand-subtle text-brand'
-                                        : 'text-tx-2 hover:bg-bg-4 hover:text-tx-1',
-                                    )}
-                                  >
-                                    <span className={clsx('text-xs', done[unit.slug] ? 'text-ok' : 'text-tx-3')}>
-                                      {done[unit.slug] ? '✓' : '·'}
-                                    </span>
-                                    <span className="truncate">{unit.title}</span>
-                                  </button>
-                                );
-                              }
-                              return (
-                                <div key={unit.slug}>
-                                  <button
-                                    onClick={() => toggle(openUnits, setOpenUnits, unit.slug)}
-                                    className="w-full flex items-center gap-2 px-2 py-1 rounded hover:bg-bg-4 transition-colors text-left"
-                                  >
-                                    <span className={clsx('text-tx-3 text-xs transition-transform', openUnits[unit.slug] && 'rotate-90')}>▶</span>
-                                    <span className="flex-1 text-xs text-tx-3 truncate">{unit.title}</span>
-                                  </button>
-                                  {openUnits[unit.slug] && (
-                                    <div className="ml-3 mt-0.5 space-y-0.5">
-                                      {unit.tasks.map((task) => (
-                                        <button
-                                          key={task.slug}
-                                          onClick={() => onTask(track, topic, unit, task)}
-                                          className={clsx(
-                                            'w-full flex items-center gap-2 px-2 py-1 rounded text-left transition-colors text-xs',
-                                            activeTaskSlug === task.slug
-                                              ? 'bg-brand-subtle text-brand'
-                                              : 'text-tx-2 hover:bg-bg-4 hover:text-tx-1',
-                                          )}
-                                        >
-                                          <span className={clsx('text-xs', done[task.slug] ? 'text-ok' : 'text-tx-3')}>
-                                            {done[task.slug] ? '✓' : '·'}
-                                          </span>
-                                          <span className="truncate">{task.title}</span>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {total > 0 && <ProgressBar value={d} max={total} className="mx-2 mt-1 mb-2" />}
-                </div>
-              )}
-            </div>
-          );
-        })}
+    <nav className="w-64 shrink-0 border-r border-bdr bg-bg-2 h-full flex flex-col">
+      <div className="px-4 pt-4 pb-3 border-b border-bdr">
+        <h2 className="text-sm font-semibold text-tx-1 leading-snug">{title}</h2>
+        {total > 0 && (
+          <>
+            <ProgressBar value={totalDone} max={total} className="mt-2.5" />
+            <p className="text-xs text-tx-3 mt-1.5">{totalDone}/{total} выполнено</p>
+          </>
+        )}
       </div>
+      <div className="p-3 space-y-1 flex-1 overflow-y-auto">
+        {tree.map((node) => (
+          <TreeRow
+            key={node.id}
+            node={node}
+            depth={0}
+            open={open}
+            toggle={toggle}
+            activeTaskSlug={activeTaskSlug}
+            activeUnitSlug={activeUnitSlug}
+            onTask={onTask}
+            onTheory={onTheory}
+          />
+        ))}
+      </div>
+      {hasProgress && (
+        <div className="p-3 border-t border-bdr">
+          <button
+            onClick={onResetProgress}
+            className="w-full px-2 py-1.5 rounded text-left text-xs text-tx-3 hover:text-err hover:bg-bg-4 transition-colors"
+          >
+            Сбросить прогресс
+          </button>
+        </div>
+      )}
     </nav>
   );
 }
@@ -155,6 +154,8 @@ export function CoursePage() {
   const { courseSlug } = useParams<{ courseSlug: string }>();
   const navigate = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
+  const qc = useQueryClient();
+  const [resetOpen, setResetOpen] = useState(false);
 
   const { data: course, isLoading } = useQuery({
     queryKey: ['course', courseSlug],
@@ -170,19 +171,52 @@ export function CoursePage() {
 
   const done = progress?.completed_tasks ?? {};
   const { taskSlug, unitSlug } = useParams<{ taskSlug?: string; unitSlug?: string }>();
+  const location = useLocation();
+
+  // Remember the last visited spot for the "Продолжить обучение" banner on the home page.
+  useEffect(() => {
+    if (!course || !courseSlug) return;
+    // During the exit animation this component is still mounted while
+    // useLocation already points at the next route — don't record foreign paths.
+    if (!location.pathname.startsWith(`/courses/${courseSlug}`)) return;
+    let label: string | undefined;
+    for (const tr of course.tracks) {
+      for (const tp of tr.topics) {
+        for (const u of tp.units) {
+          if (unitSlug && u.slug === unitSlug && !taskSlug) label = u.title;
+          for (const t of u.tasks) if (taskSlug && t.slug === taskSlug) label = t.title;
+        }
+      }
+    }
+    localStorage.setItem(
+      'cf:last-visit',
+      JSON.stringify({ slug: courseSlug, title: course.title, label, path: location.pathname }),
+    );
+  }, [course, courseSlug, taskSlug, unitSlug, location.pathname]);
+
+  const resetMut = useMutation({
+    mutationFn: () => api.resetProgress(courseSlug!),
+    onSuccess: () => {
+      setResetOpen(false);
+      qc.invalidateQueries({ queryKey: ['progress', courseSlug] });
+      // course cards show done_count — refresh them too
+      qc.invalidateQueries({ queryKey: ['courses'] });
+      qc.invalidateQueries({ queryKey: ['catalogs'] });
+    },
+  });
 
   if (isLoading) return <div className="p-8 text-tx-3">Загрузка...</div>;
   if (!course) return <div className="p-8 text-err">Курс не найден</div>;
 
-  const handleTask = (track: TrackItem, topic: TopicItem, unit: UnitItem, task: TaskItem) => {
+  const handleTask = (nav: NavTarget) => {
     navigate(
-      `/courses/${courseSlug}/tracks/${track.slug}/topics/${topic.slug}/units/${unit.slug}/tasks/${task.slug}`,
+      `/courses/${courseSlug}/tracks/${nav.track}/topics/${nav.topic}/units/${nav.unit}/tasks/${nav.task}`,
     );
   };
 
-  const handleTheory = (track: TrackItem, topic: TopicItem, unit: UnitItem) => {
+  const handleTheory = (nav: NavTarget) => {
     navigate(
-      `/courses/${courseSlug}/tracks/${track.slug}/topics/${topic.slug}/units/${unit.slug}/theory`,
+      `/courses/${courseSlug}/tracks/${nav.track}/topics/${nav.topic}/units/${nav.unit}/theory`,
     );
   };
 
@@ -196,14 +230,24 @@ export function CoursePage() {
         transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
       >
         <Sidebar
+          title={course.title}
           tracks={course.tracks}
           done={done}
           activeTaskSlug={taskSlug}
           activeUnitSlug={unitSlug}
           onTask={handleTask}
           onTheory={handleTheory}
+          onResetProgress={() => setResetOpen(true)}
         />
       </motion.div>
+      <ConfirmDialog
+        open={resetOpen}
+        title="Сбросить прогресс?"
+        message="Все отметки о выполненных задачах этого курса будут сняты. Сабмиты останутся."
+        confirmLabel={resetMut.isPending ? 'Сброс...' : 'Сбросить'}
+        onConfirm={() => resetMut.mutate()}
+        onCancel={() => setResetOpen(false)}
+      />
       <motion.main
         ref={mainRef}
         className="flex-1 overflow-auto"

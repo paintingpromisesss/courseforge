@@ -6,6 +6,8 @@ export interface CourseItem {
   catalog_slug?: string;
   theory_count: number;
   task_count: number;
+  done_count: number;
+  theory_done_count: number;
 }
 
 export interface CatalogItem {
@@ -19,12 +21,14 @@ export interface TaskItem {
   slug: string;
   title: string;
   languages: string[];
+  editorial_url?: string;
 }
 
 export interface UnitItem {
   slug: string;
   title: string;
   has_theory: boolean;
+  video_url?: string;
   tasks: TaskItem[];
 }
 
@@ -51,14 +55,6 @@ export interface Progress {
   completed_tasks: Record<string, boolean>;
 }
 
-export interface RunResp {
-  stdout: string;
-  stderr: string;
-  exit_code: number;
-  duration_ms: number;
-  timed_out: boolean;
-}
-
 export interface LangDriver {
   run_cmd: string[];
   test_cmd: string[];
@@ -69,8 +65,10 @@ export interface LangDriver {
 export interface RunnerStatus {
   status: 'ok' | 'broken' | 'missing';
   binary: string;
+  path?: string;
   version?: string;
   message?: string;
+  platform: 'linux' | 'darwin' | 'windows' | string;
 }
 
 export interface Submission {
@@ -87,4 +85,11 @@ export interface Submission {
   duration_ms: number;
   timed_out: boolean;
   created_at: string;
+}
+
+export interface CreateSubmissionReq {
+  course_slug: string;
+  task_slug: string;
+  language: string;
+  code: string;
 }

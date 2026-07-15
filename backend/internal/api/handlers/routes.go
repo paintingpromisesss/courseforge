@@ -17,6 +17,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 
 	r.Get("/progress/{courseSlug}", h.getProgress)
 	r.Put("/progress/{courseSlug}/tasks/{taskSlug}", h.updateProgress)
+	r.Delete("/progress/{courseSlug}", h.resetProgress)
 
 	r.Post("/run", h.postRun)
 
@@ -27,6 +28,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Delete("/catalogs/{catalogSlug}", h.deleteCatalog)
 
 	r.Get("/runners", h.listRunners)
+	r.Get("/runners/defaults", h.listRunnerDefaults)
 	r.Patch("/runners/{lang}", h.patchRunner)
 	r.Post("/runners/{lang}/detect", h.detectRunner)
 

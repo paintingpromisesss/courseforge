@@ -6,3 +6,9 @@ frontend/dist/
 frontend/node_modules/
 /courses
 /data
+.agents/
+agent/
+skills-lock.json
+.serena
+.tokensave
+.superpowers

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/paintingpromisesss/courseforge/internal/domain"
@@ -8,9 +9,10 @@ import (
 )
 
 type progressRepository interface {
-	Load(courseDir, courseSlug string) (*domain.Progress, error)
-	MarkDone(courseDir, courseSlug, taskSlug string) error
-	MarkUndone(courseDir, courseSlug, taskSlug string) error
+	Load(ctx context.Context, courseDir, courseSlug string) (*domain.Progress, error)
+	MarkDone(ctx context.Context, courseDir, courseSlug, taskSlug string) error
+	MarkUndone(ctx context.Context, courseDir, courseSlug, taskSlug string) error
+	Reset(ctx context.Context, courseDir string) error
 }
 
 type ProgressService struct {
@@ -25,8 +27,8 @@ func NewProgressService(repo progressRepository, logger *zap.Logger) *ProgressSe
 	}
 }
 
-func (s *ProgressService) Load(courseDir, courseSlug string) (*domain.Progress, error) {
-	progress, err := s.repo.Load(courseDir, courseSlug)
+func (s *ProgressService) Load(ctx context.Context, courseDir, courseSlug string) (*domain.Progress, error) {
+	progress, err := s.repo.Load(ctx, courseDir, courseSlug)
 	if err != nil {
 		s.logger.Error(
 			"failed to load progress",
@@ -41,8 +43,8 @@ func (s *ProgressService) Load(courseDir, courseSlug string) (*domain.Progress, 
 	return progress, nil
 }
 
-func (s *ProgressService) MarkDone(courseDir, courseSlug, taskSlug string) error {
-	if err := s.repo.MarkDone(courseDir, courseSlug, taskSlug); err != nil {
+func (s *ProgressService) MarkDone(ctx context.Context, courseDir, courseSlug, taskSlug string) error {
+	if err := s.repo.MarkDone(ctx, courseDir, courseSlug, taskSlug); err != nil {
 		s.logger.Error(
 			"failed to mark task done",
 			zap.String("course_dir", courseDir),
@@ -57,8 +59,23 @@ func (s *ProgressService) MarkDone(courseDir, courseSlug, taskSlug string) error
 	return nil
 }
 
-func (s *ProgressService) MarkUndone(courseDir, courseSlug, taskSlug string) error {
-	if err := s.repo.MarkUndone(courseDir, courseSlug, taskSlug); err != nil {
+func (s *ProgressService) Reset(ctx context.Context, courseDir, courseSlug string) error {
+	if err := s.repo.Reset(ctx, courseDir); err != nil {
+		s.logger.Error(
+			"failed to reset progress",
+			zap.String("course_dir", courseDir),
+			zap.String("course_slug", courseSlug),
+			zap.Error(err),
+		)
+
+		return fmt.Errorf("reset progress: %w", err)
+	}
+
+	return nil
+}
+
+func (s *ProgressService) MarkUndone(ctx context.Context, courseDir, courseSlug, taskSlug string) error {
+	if err := s.repo.MarkUndone(ctx, courseDir, courseSlug, taskSlug); err != nil {
 		s.logger.Error(
 			"failed to mark task undone",
 			zap.String("course_dir", courseDir),

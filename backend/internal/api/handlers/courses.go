@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -8,7 +9,34 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/paintingpromisesss/courseforge/internal/api/dto"
+	"github.com/paintingpromisesss/courseforge/internal/domain"
 )
+
+// doneCount returns how many of c's tasks and theories are completed, counting
+// only items that still exist in the course — progress.json may hold stale
+// slugs from removed or renamed tasks. A theory is done when marked read
+// (TheoryPage/TaskPage store the unit slug in completed_tasks).
+func (h *Handler) doneCount(ctx context.Context, c *domain.Course) (tasksDone, theoryDone int) {
+	p, err := h.progress.Load(ctx, c.Dir, c.Slug)
+	if err != nil {
+		return 0, 0
+	}
+	for _, t := range c.Tracks {
+		for _, topic := range t.Topics {
+			for _, u := range topic.Units {
+				for _, task := range u.Tasks {
+					if p.CompletedTasks[task.Slug] {
+						tasksDone++
+					}
+				}
+				if u.Theory != "" && p.CompletedTasks[u.Slug] {
+					theoryDone++
+				}
+			}
+		}
+	}
+	return tasksDone, theoryDone
+}
 
 // @Summary List all courses
 // @Tags courses
@@ -27,6 +55,7 @@ func (h *Handler) listCourses(w http.ResponseWriter, r *http.Request) {
 	for _, c := range h.courses {
 		item := dto.ToCourseItem(c)
 		item.CatalogSlug = courseCatalog[c.Slug]
+		item.DoneCount, item.TheoryDone = h.doneCount(r.Context(), c)
 		items = append(items, item)
 	}
 	h.mu.RUnlock()
@@ -43,7 +72,13 @@ func (h *Handler) listCatalogs(w http.ResponseWriter, r *http.Request) {
 	h.mu.RLock()
 	items := make([]dto.CatalogItem, 0, len(h.catalogs))
 	for _, cat := range h.catalogs {
-		items = append(items, dto.ToCatalogItem(cat))
+		item := dto.ToCatalogItem(cat)
+		for i := range item.Courses {
+			if c := h.courses[item.Courses[i].Slug]; c != nil {
+				item.Courses[i].DoneCount, item.Courses[i].TheoryDone = h.doneCount(r.Context(), c)
+			}
+		}
+		items = append(items, item)
 	}
 	h.mu.RUnlock()
 	sort.Slice(items, func(i, j int) bool { return items[i].Slug < items[j].Slug })

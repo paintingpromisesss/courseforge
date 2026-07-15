@@ -48,7 +48,8 @@ type Topic struct {
 type Unit struct {
 	Slug      string   `yaml:"slug"`
 	Title     string   `yaml:"title"`
-	Theory    string   `yaml:"theory"` // path relative to unit folder, or ""
+	Theory    string   `yaml:"theory"`    // path relative to unit folder, or ""
+	VideoURL  string   `yaml:"video_url"` // optional intro video shown above theory
 	TaskSlugs []string `yaml:"tasks"`
 
 	Tasks []*Task `yaml:"-"`
@@ -58,17 +59,19 @@ type Unit struct {
 type Task struct {
 	Slug      string              `yaml:"slug"`
 	Title     string              `yaml:"title"`
-	Statement string              `yaml:"statement"` // path relative to task folder
-	Languages map[string]Language `yaml:"languages"`
+	Statement    string              `yaml:"statement"` // path relative to task folder
+	EditorialURL string              `yaml:"editorial_url"`
+	Languages    map[string]Language `yaml:"languages"`
 	Limits    *Limits             `yaml:"limits"`
 }
 
 // Language holds files for one language; paths are relative to the language subfolder (e.g. go/).
-// Solution and Tests are optional.
+// Solution and Tests are optional. Schema is used by the postgres driver.
 type Language struct {
 	Template string `yaml:"template"`
 	Solution string `yaml:"solution"`
 	Tests    string `yaml:"tests"`
+	Schema   string `yaml:"schema,omitempty"`
 }
 
 // Limits overrides global sandbox defaults for a heavy task.
@@ -111,4 +114,19 @@ func (u *Unit) FindTask(slug string) *Task {
 		}
 	}
 	return nil
+}
+
+// FindTaskPath locates a task by slug anywhere in the course, returning the
+// track/topic/unit it lives under (needed to build its on-disk path).
+func (c *Course) FindTaskPath(taskSlug string) (*Track, *Topic, *Unit, *Task) {
+	for _, tr := range c.Tracks {
+		for _, tp := range tr.Topics {
+			for _, u := range tp.Units {
+				if t := u.FindTask(taskSlug); t != nil {
+					return tr, tp, u, t
+				}
+			}
+		}
+	}
+	return nil, nil, nil, nil
 }

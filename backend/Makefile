@@ -1,4 +1,4 @@
-GOCACHE ?= ../.cache/go-build
+GOCACHE ?= $(abspath ../.cache/go-build)
 
 .PHONY: run test swagger
 

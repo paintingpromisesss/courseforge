@@ -1,4 +1,4 @@
-import type { CatalogItem, CourseItem, CourseDetail, LangDriver, Progress, RunResp, RunnerStatus, Submission } from './types';
+import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission } from './types';
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api';
 
@@ -63,6 +63,7 @@ export const api = {
   getProgress: (courseSlug: string) => get<Progress>(`/progress/${courseSlug}`),
   markDone: (courseSlug: string, taskSlug: string, done: boolean) =>
     put(`/progress/${courseSlug}/tasks/${taskSlug}`, { done }),
+  resetProgress: (courseSlug: string) => del(`/progress/${courseSlug}`),
 
   getTheory: (courseSlug: string, trackSlug: string, topicSlug: string, unitSlug: string) =>
     getText(`/courses/${courseSlug}/tracks/${trackSlug}/topics/${topicSlug}/units/${unitSlug}/theory`),
@@ -79,16 +80,13 @@ export const api = {
   getSolution: (courseSlug: string, trackSlug: string, topicSlug: string, unitSlug: string, taskSlug: string, lang: string) =>
     getText(`/courses/${courseSlug}/tracks/${trackSlug}/topics/${topicSlug}/units/${unitSlug}/tasks/${taskSlug}/template?lang=${lang}&solution=1`),
 
-  run: (language: string, code: string, testCode: string) =>
-    post<RunResp>('/run', { language, code, test_code: testCode, timeout_sec: 30 }),
-
   listSubmissions: (courseSlug: string, taskSlug: string) =>
     get<Submission[]>(`/submissions?courseSlug=${courseSlug}&taskSlug=${taskSlug}`),
 
-  createSubmission: (body: Omit<Submission, 'id' | 'created_at'>) =>
-    post<Submission>('/submissions', body),
+  createSubmission: (body: CreateSubmissionReq) => post<Submission>('/submissions', body),
 
   listRunners: () => get<Record<string, LangDriver>>('/runners'),
+  listRunnerDefaults: () => get<Record<string, LangDriver>>('/runners/defaults'),
   patchRunner: (lang: string, body: { run_cmd: string[]; test_cmd: string[] }) =>
     patch<void>(`/runners/${lang}`, body),
   detectRunner: (lang: string) => post<RunnerStatus>(`/runners/${lang}/detect`, {}),
