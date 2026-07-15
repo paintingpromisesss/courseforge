@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useParams, useNavigate, Outlet } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { api } from '../api/client';
@@ -10,6 +10,7 @@ import type { TrackItem } from '../api/types';
 import { buildTree, initialOpen, type TreeNode, type NavTarget } from '../lib/buildTree';
 
 interface SidebarProps {
+  title: string;
   tracks: TrackItem[];
   done: Record<string, boolean>;
   activeTaskSlug?: string;
@@ -95,16 +96,27 @@ function TreeRow({ node, depth, open, toggle, activeTaskSlug, activeUnitSlug, on
   );
 }
 
-function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheory, onResetProgress }: SidebarProps) {
+function Sidebar({ title, tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheory, onResetProgress }: SidebarProps) {
   const tree = buildTree(tracks, done);
   const [open, setOpen] = useState<Record<string, boolean>>(() =>
     initialOpen(tree, activeTaskSlug, activeUnitSlug),
   );
   const toggle = (id: string) => setOpen((m) => ({ ...m, [id]: !m[id] }));
   const hasProgress = Object.keys(done).length > 0;
+  const totalDone = tree.reduce((a, n) => a + n.done, 0);
+  const total = tree.reduce((a, n) => a + n.total, 0);
 
   return (
     <nav className="w-64 shrink-0 border-r border-bdr bg-bg-2 h-full flex flex-col">
+      <div className="px-4 pt-4 pb-3 border-b border-bdr">
+        <h2 className="text-sm font-semibold text-tx-1 leading-snug">{title}</h2>
+        {total > 0 && (
+          <>
+            <ProgressBar value={totalDone} max={total} className="mt-2.5" />
+            <p className="text-xs text-tx-3 mt-1.5">{totalDone}/{total} выполнено</p>
+          </>
+        )}
+      </div>
       <div className="p-3 space-y-1 flex-1 overflow-y-auto">
         {tree.map((node) => (
           <TreeRow
@@ -159,6 +171,28 @@ export function CoursePage() {
 
   const done = progress?.completed_tasks ?? {};
   const { taskSlug, unitSlug } = useParams<{ taskSlug?: string; unitSlug?: string }>();
+  const location = useLocation();
+
+  // Remember the last visited spot for the "Продолжить обучение" banner on the home page.
+  useEffect(() => {
+    if (!course || !courseSlug) return;
+    // During the exit animation this component is still mounted while
+    // useLocation already points at the next route — don't record foreign paths.
+    if (!location.pathname.startsWith(`/courses/${courseSlug}`)) return;
+    let label: string | undefined;
+    for (const tr of course.tracks) {
+      for (const tp of tr.topics) {
+        for (const u of tp.units) {
+          if (unitSlug && u.slug === unitSlug && !taskSlug) label = u.title;
+          for (const t of u.tasks) if (taskSlug && t.slug === taskSlug) label = t.title;
+        }
+      }
+    }
+    localStorage.setItem(
+      'cf:last-visit',
+      JSON.stringify({ slug: courseSlug, title: course.title, label, path: location.pathname }),
+    );
+  }, [course, courseSlug, taskSlug, unitSlug, location.pathname]);
 
   const resetMut = useMutation({
     mutationFn: () => api.resetProgress(courseSlug!),
@@ -196,6 +230,7 @@ export function CoursePage() {
         transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
       >
         <Sidebar
+          title={course.title}
           tracks={course.tracks}
           done={done}
           activeTaskSlug={taskSlug}

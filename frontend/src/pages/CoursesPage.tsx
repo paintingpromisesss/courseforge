@@ -4,7 +4,15 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { api } from '../api/client';
-import { CardDoneMark, CardProgressStrip } from '../components/ui/ProgressBar';
+import { CardDoneMark, CardProgressStrip, CourseDoneBadge } from '../components/ui/ProgressBar';
+
+// "24 теории · 41 задача", zero parts omitted
+function courseMeta(course: { theory_count: number; task_count: number }): string {
+  return [
+    course.theory_count > 0 && `${course.theory_count} ${pluralTheory(course.theory_count)}`,
+    course.task_count > 0 && `${course.task_count} ${pluralTask(course.task_count)}`,
+  ].filter(Boolean).join(' · ');
+}
 
 function FolderIcon() {
   return (
@@ -53,6 +61,16 @@ function PlusIcon() {
 const catKey = (slug: string) => `cat:${slug}`;
 const crsKey = (slug: string) => `crs:${slug}`;
 
+interface LastVisit { slug: string; title: string; label?: string; path: string; }
+
+function readLastVisit(): LastVisit | null {
+  try {
+    return JSON.parse(localStorage.getItem('cf:last-visit') ?? 'null');
+  } catch {
+    return null;
+  }
+}
+
 // "Thanos snap" — card dissolves: blurs, drifts up, scales out and fades, with a
 // small per-card delay so a batch deletion cascades into dust instead of vanishing.
 const dustExit = (i: number) => ({
@@ -83,6 +101,7 @@ export function CoursesPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [purge, setPurge] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [lastVisit] = useState(readLastVisit);
 
   const { data: catalogs, isLoading: catsLoading } = useQuery({
     queryKey: ['catalogs'],
@@ -152,6 +171,22 @@ export function CoursesPage() {
     <div className="overflow-auto h-full">
       <div className="max-w-5xl mx-auto px-6 py-12">
         <h1 className="text-2xl font-semibold text-tx-1 mb-8">Курсы</h1>
+
+        {lastVisit && !editMode && (courses ?? []).some((c) => c.slug === lastVisit.slug) && (
+          <Link
+            to={lastVisit.path}
+            className="flex items-center justify-between gap-4 mb-8 px-5 py-4 rounded-xl border border-brand/30 bg-brand/5 hover:bg-brand/10 hover:border-brand/50 transition-colors"
+          >
+            <span className="min-w-0">
+              <span className="block text-xs text-tx-3 mb-0.5">Продолжить обучение</span>
+              <span className="block text-sm font-medium text-tx-1 truncate">
+                {lastVisit.title}
+                {lastVisit.label && <span className="text-tx-2"> — {lastVisit.label}</span>}
+              </span>
+            </span>
+            <span className="shrink-0 text-brand text-sm font-medium">Продолжить →</span>
+          </Link>
+        )}
 
         {(hasCatalogs || editMode) && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 auto-rows-fr gap-4 mb-8">
@@ -223,13 +258,13 @@ export function CoursesPage() {
                 const sel = selected.has(key);
                 const content = (
                   <>
-                    {editMode && <SelectMark on={sel} />}
+                    {editMode ? <SelectMark on={sel} /> : <CourseDoneBadge course={course} />}
                     <h2 className="text-tx-1 font-medium text-sm leading-snug mb-2">{course.title}</h2>
                     {course.description && (
                       <p className="text-tx-3 text-xs line-clamp-2">{course.description}</p>
                     )}
                     <p className="text-tx-3 text-xs mt-auto pt-3">
-                      {course.theory_count} {pluralTheory(course.theory_count)} · {course.task_count} {pluralTask(course.task_count)}
+                      {courseMeta(course)}
                       <CardDoneMark course={course} />
                     </p>
                     <CardProgressStrip

@@ -4,7 +4,15 @@ import { Link, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { api } from '../api/client';
-import { CardDoneMark, CardProgressStrip } from '../components/ui/ProgressBar';
+import { CardDoneMark, CardProgressStrip, CourseDoneBadge } from '../components/ui/ProgressBar';
+
+// "24 теории · 41 задача", zero parts omitted
+function courseMeta(course: { theory_count: number; task_count: number }): string {
+  return [
+    course.theory_count > 0 && `${course.theory_count} ${pluralTheory(course.theory_count)}`,
+    course.task_count > 0 && `${course.task_count} ${pluralTask(course.task_count)}`,
+  ].filter(Boolean).join(' · ');
+}
 import type { CourseItem, CatalogItem } from '../api/types';
 
 function PencilIcon() {
@@ -220,13 +228,13 @@ export function CatalogPage() {
             const sel = selected.has(course.slug);
             const card = (
               <>
-                {editMode && <SelectMark on={sel} />}
+                {editMode ? <SelectMark on={sel} /> : <CourseDoneBadge course={course} />}
                 <h2 className="text-tx-1 font-medium text-sm leading-snug mb-2">{course.title}</h2>
                 {course.description && (
                   <p className="text-tx-3 text-xs line-clamp-2">{course.description}</p>
                 )}
                 <p className="text-tx-3 text-xs mt-auto pt-3">
-                  {course.theory_count} {pluralTheory(course.theory_count)} · {course.task_count} {pluralTask(course.task_count)}
+                  {courseMeta(course)}
                   <CardDoneMark course={course} />
                 </p>
                 <CardProgressStrip

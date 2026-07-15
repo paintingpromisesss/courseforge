@@ -3,11 +3,24 @@ import type { CourseItem } from '../../api/types';
 interface Props { value: number; max: number; className?: string; }
 
 // "· N/M ✓" suffix for a course card's meta line: tasks + theory combined.
+// Fully completed courses show the CourseDoneBadge instead.
 export function CardDoneMark({ course }: { course: CourseItem }) {
   const done = course.done_count + course.theory_done_count;
   const max = course.task_count + course.theory_count;
-  if (done === 0 || max === 0) return null;
-  return <span className={done >= max ? 'text-ok' : 'text-brand'}> · {done}/{max} ✓</span>;
+  if (done === 0 || max === 0 || done >= max) return null;
+  return <span className="text-brand"> · {done}/{max} ✓</span>;
+}
+
+// "✓ Пройден" chip in a fully completed course card's top-right corner.
+// Callers hide it in edit mode, where SelectMark occupies the same spot.
+export function CourseDoneBadge({ course }: { course: CourseItem }) {
+  const max = course.task_count + course.theory_count;
+  if (max === 0 || course.done_count + course.theory_done_count < max) return null;
+  return (
+    <span className="absolute top-3 right-3 text-[10px] font-medium px-2 py-0.5 rounded-full bg-ok/15 text-ok">
+      ✓ Пройден
+    </span>
+  );
 }
 
 // Thin progress strip flush with the bottom edge of a card. Parent must be
