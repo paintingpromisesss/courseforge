@@ -1,9 +1,12 @@
 GOCACHE ?= $(abspath ../.cache/go-build)
 
-.PHONY: run test swagger
+.PHONY: run run-pprof test swagger
 
 run: swagger
 	GOCACHE=$(GOCACHE) go run -tags swagger ./cmd/server
+
+run-pprof: swagger
+	GOCACHE=$(GOCACHE) go run -tags "swagger pprof" ./cmd/server
 
 test:
 	GOCACHE=$(GOCACHE) go test ./...

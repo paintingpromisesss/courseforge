@@ -26,6 +26,7 @@ func NewRouter(h *handlers.Handler, opts RouterOptions) (http.Handler, error) {
 	r.Use(corsMiddleware)
 
 	registerSwagger(r)
+	registerPprof(r)
 
 	r.Route("/api", func(r chi.Router) {
 		h.RegisterRoutes(r)
@@ -71,7 +72,7 @@ func newFrontendHandler(dir string) (http.Handler, error) {
 	files := http.FileServer(http.FS(fsys))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api") || strings.HasPrefix(r.URL.Path, "/swagger") {
+		if strings.HasPrefix(r.URL.Path, "/api") || strings.HasPrefix(r.URL.Path, "/swagger") || strings.HasPrefix(r.URL.Path, "/debug/pprof") {
 			http.NotFound(w, r)
 			return
 		}
