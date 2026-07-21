@@ -69,7 +69,6 @@ function TreeRow({ node, depth, open, toggle, activeTaskSlug, activeUnitSlug, on
                 onTheory={onTheory}
               />
             ))}
-            {topLevel && node.total > 0 && <ProgressBar value={node.done} max={node.total} className="mx-2 mt-1 mb-2" />}
           </div>
         )}
       </div>

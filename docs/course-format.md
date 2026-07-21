@@ -1,77 +1,59 @@
-## 1. Understanding Summary
+# Course Format
 
-- **Что:** формат папок + YAML/Markdown-манифестов, по которому платформа парсит
-  курсы. Файлы — канонический источник правды.
-- **Зачем:** хранить курсы версионируемо (git → review/PR), парсить их бэкендом,
-  и дать возможность авторам добавлять свои задачи/разделы к существующим курсам.
-- **Для кого:** авторы курсов (правят файлы в репо сейчас; веб-админка позже,
-  с round-trip в тот же формат) и платформа (парсит и отдаёт пользователям).
-- **Ключевые ограничения:** иерархия фиксирована; юнит самодостаточен
-  (co-located медиа); задачи мультиязычны по дизайну; валидация = тест-файл на
-  языке курса в сандбоксе.
-- **Не-цели:** перевод контента на разные естественные языки (i18n UI);
-  проектирование самого сандбокса исполнения кода (отдельная подсистема);
-  детальная проработка типов блоков кроме теории и задач.
+CourseForge reads courses from plain files on disk — YAML manifests plus
+Markdown content. This is the canonical, git-friendly source of truth; there
+is no database record of course structure.
 
-### Стек
-
-Бэкенд на **Go**. Манифесты парсятся через `gopkg.in/yaml.v3` + валидация
-struct-тегами. Сандбокс для `go test` — нативный. Текущий бэкенд —
-пустой каркаc (`backend/`, стандартная раскладка `cmd/` + `internal/`).
-
----
-
-## 2. Иерархия
-
-Полная иерархия с опциональным верхним уровнем группировки:
+## Hierarchy
 
 ```
-Каталог (catalog)  →  Курс (course)  →  Трек (track)  →  Тема (topic)  →  Юнит (unit)
+Catalog (optional)  →  Course  →  Track  →  Topic  →  Unit
 ```
 
-- **Каталог** — опциональная группа курсов одной тематики (например, все
-  `algo-interview-*`). Описывается `catalog.yaml` в папке группы; дочерние
-  курсы лежат в подпапках. Одиночные курсы без группы лежат напрямую в `courses/`
-  и `catalog.yaml` не имеют.
-- **Трек** — неделя / крупный модуль. Плоский курс = курс с одним треком.
-- **Тема** — раздел внутри трека.
-- **Юнит** — единица обучения. **Контейнер, не лист:** содержит опциональную
-  теорию и/или список задач (в UI — вкладки «Теория» и «Задачи»).
+- **Catalog** — an optional group of related courses (e.g. all
+  `algo-interview-*` courses). Described by `catalog.yaml` in the group
+  folder; child courses live in subfolders. A standalone course with no
+  catalog lives directly under `courses/` and has no `catalog.yaml`.
+- **Track** — a week or a major module. A single-track course is just a
+  course with one track.
+- **Topic** — a section within a track.
+- **Unit** — the unit of learning. A **container, not a leaf**: it holds
+  optional theory and/or a list of tasks (rendered as "Theory" / "Tasks"
+  tabs in the UI).
 
-Каждый контейнерный уровень описан своим манифестом и **явно** перечисляет детей
-по порядку. Порядок не кодируется именами папок.
+Every container level is described by its own manifest and **explicitly**
+lists its children, in order. Order is never inferred from folder names.
 
----
+## Conventions
 
-## 3. Соглашения
+- **`slug` must equal the folder name** at every level. The parser walks the
+  manifest's child list and opens the matching subfolder directly — it does
+  not scan the directory.
+- `slug` is also duplicated **inside** the manifest as a self-contained,
+  checked field; the parser verifies it against the folder name and fails
+  with an error on mismatch.
+- **Fixed manifest filenames:** `course.yaml`, `track.yaml`, `topic.yaml`,
+  `unit.yaml`, `task.yaml`. The level's type is determined by which manifest
+  is present.
+- `schema_version` is set **only** in `course.yaml` and applies to the whole
+  course.
+- Encoding is **UTF-8 without BOM**.
+- An invalid course fails with a specific error (which file, which field),
+  never silently.
 
-- **`slug` строго равен имени папки** на всех уровнях. Парсер идёт по списку
-  детей и открывает одноимённую подпапку — без сканирования.
-- `slug` также дублируется **внутри** манифеста как самодостаточное и проверочное
-  поле; парсер сверяет его с именем папки и падает с ошибкой при рассинхроне.
-- **Фиксированные имена манифестов:** `course.yaml`, `track.yaml`, `topic.yaml`,
-  `unit.yaml`, `task.yaml`. Тип уровня определяется наличием манифеста.
-- `schema_version` указывается **только** в `course.yaml` и распространяется на
-  весь курс.
-- Кодировка — **UTF-8 без BOM**.
-- Невалидный курс должен падать с понятной ошибкой (какой файл / какое поле),
-  а не молча.
-
----
-
-## 4. Структура на диске
+## Directory Layout
 
 ```
 courses/
-  algo-interview/                   # папка каталога (slug == имя папки)
+  algo-interview/                   # catalog folder (slug == folder name)
     catalog.yaml
-    core/                           # подкурс
+    core/                           # nested course
       course.yaml
       ...
     arrays-and-matrices/
       course.yaml
       ...
-  go-interview/                     # одиночный курс без каталога
+  go-interview/                     # standalone course, no catalog
     course.yaml
     week-1/
       track.yaml
@@ -81,8 +63,8 @@ courses/
           unit.yaml
           theory.md
           assets/
-            chunking.png            # co-located, ссылка ![](assets/chunking.png)
-          chunk/                    # папка задачи (slug == имя папки)
+            chunking.png            # co-located, referenced as ![](assets/chunking.png)
+          chunk/                    # task folder (slug == folder name)
             task.yaml
             statement.md
             go/
@@ -94,232 +76,168 @@ courses/
             ...
 ```
 
----
+## Manifests
 
-## 5. Манифесты
+### `catalog.yaml`
 
-### 5.0 `catalog.yaml`
-
-Опциональный манифест группы курсов. Присутствие файла определяет папку как
-каталог; его отсутствие означает одиночный курс.
+Optional manifest for a group of courses. Its presence marks the folder as a
+catalog; its absence means a standalone course.
 
 ```yaml
 slug: algo-interview
-title: Алго-интервью
-description: Подготовка к алгоритмическим секциям технических интервью.
-courses:               # упорядоченный список slug'ов дочерних курсов
+title: Algo Interview
+description: Preparation for algorithmic technical interview rounds.
+courses:               # ordered list of child course slugs
   - core
   - arrays-and-matrices
   - binary-search
 ```
 
-- `slug` строго равен имени папки каталога.
-- `courses` — явный упорядоченный список; порядок определяет навигацию в UI.
-- Дочерние курсы лежат в подпапках каталога и имеют обычный `course.yaml`.
+- `slug` must equal the catalog folder name.
+- `courses` is an explicit, ordered list; the order drives UI navigation.
+- Child courses live in subfolders of the catalog and have a normal
+  `course.yaml`.
 
-### 5.1 `course.yaml`
+### `course.yaml`
 
 ```yaml
 schema_version: 1
 slug: go-interview
-title: Go для собеседований
+title: Go for Interviews
 description: |
-  Подготовка к Go-секциям технических интервью.
-language: ru                 # естественный язык контента
-tracks:                      # порядок треков — список slug'ов
+  Preparation for Go technical interview rounds.
+language: en                 # natural language of the content
+tracks:                      # track order — list of slugs
   - week-1
   - week-2
 ```
 
-### 5.2 `track.yaml`
+### `track.yaml`
 
 ```yaml
 slug: week-1
-title: "Неделя 1. Основы"
-description: Слайсы, указатели, строки, defer.
+title: "Week 1. Basics"
+description: Slices, pointers, strings, defer.
 topics:
   - slices
   - pointers
 ```
 
-### 5.3 `topic.yaml`
+### `topic.yaml`
 
 ```yaml
 slug: slices
-title: Слайсы
-description: Устройство, длина и ёмкость, подводные камни.
+title: Slices
+description: Internals, length vs capacity, common pitfalls.
 units:
   - 01-slices-theory
   - 02-chunk
 ```
 
-### 5.4 `unit.yaml`
+### `unit.yaml`
 
-Юнит = опциональная **одна** теория + опциональный **список задач**. Юнит обязан
-иметь хотя бы одно из двух, иначе парсер падает.
+A unit is optional **one** theory lesson plus an optional **list** of tasks.
+A unit must have at least one of the two, or the parser fails.
 
 ```yaml
 slug: 02-chunk
-title: Слайсы — базовые операции
-theory: theory.md            # опц.; markdown теории (одна на юнит)
-video_url: https://youtu.be/dQw4w9WgXcQ  # опц.; вводное видео над теорией
-tasks:                       # опц.; упорядоченный список slug'ов задач
+title: Slices — Basic Operations
+theory: theory.md            # optional; theory content for the unit
+video_url: https://youtu.be/dQw4w9WgXcQ  # optional; intro video above the theory
+tasks:                       # optional; ordered list of task slugs
   - chunk
   - stack
   - remove-inplace
 ```
 
-- **Теория** — один markdown-файл. Медиа — в `assets/` юнита, относительные ссылки.
-  Ссылки на YouTube/archive.org/видеофайлы рендерятся как встроенный плеер.
-- **`video_url`** — опциональная ссылка на вводное видео. Рендерится как встроенный
-  плеер перед содержимым `theory.md`. Поддерживаются те же форматы, что и в
-  `editorial_url` задачи (YouTube, archive.org, `.mp4`/`.webm`/`.ogg`).
-- **Задачи** — список; в UI это одна вкладка «Задачи» с навигацией по списку.
-  Каждая задача — подпапка со своим `task.yaml`.
+- **Theory** is a single Markdown file. Media goes in the unit's `assets/`,
+  referenced with relative links. YouTube / archive.org / video file links
+  render as an embedded player.
+- **`video_url`** — optional intro video link, rendered as an embedded player
+  above `theory.md`'s content. Supports the same formats as a task's
+  `editorial_url` (YouTube, archive.org, `.mp4`/`.webm`/`.ogg`).
+- **Tasks** — an ordered list; the UI renders one "Tasks" tab with list
+  navigation. Each task is a subfolder with its own `task.yaml`.
 
-#### Правило: теория и задачи одной темы — в одном юните
+#### Rule: theory and its tasks belong in the same unit
 
-Задачи, относящиеся к теме, должны лежать в том же юните, что и её теория —
-не в отдельных юнитах. Отдельный юнит создаётся только когда начинается
-**новая** самостоятельная тема с собственной теорией.
+Tasks that belong to a topic must live in the same unit as its theory — not
+in separate units. A new unit is only created when a **new**, independent
+topic with its own theory begins.
 
 ```
-# Правильно: одна тема — один юнит
+# Correct: one topic — one unit
 units:
-  - 01-stroki        # theory: theory.md, tasks: [razvorot, dobavlenie]
-  - 02-runy          # theory: theory.md, tasks: [palindrom]
+  - 01-strings        # theory: theory.md, tasks: [reverse, append]
+  - 02-runes          # theory: theory.md, tasks: [palindrome]
 
-# Неправильно: теория и задачи разбиты по разным юнитам
+# Incorrect: theory and tasks split across units
 units:
-  - 01-stroki        # theory only
-  - 02-razvorot      # task only
-  - 03-dobavlenie    # task only
-  - 04-runy          # theory only
-  - 05-palindrom     # task only
+  - 01-strings        # theory only
+  - 02-reverse         # task only
+  - 03-append          # task only
+  - 04-runes           # theory only
+  - 05-palindrome       # task only
 ```
 
-### 5.5 `task.yaml`
+### `task.yaml`
 
-Задача мультиязычна: общее условие + per-language набор файлов.
+A task is multilingual: one shared statement plus a per-language set of
+files.
 
 ```yaml
 slug: chunk
-title: Chunk-функция
-statement: statement.md          # условие, общее для всех языков
-editorial_url: https://youtu.be/dQw4w9WgXcQ  # опц.; ссылка на видео-разбор
-languages:                       # карта: язык → набор файлов
+title: Chunk Function
+statement: statement.md          # statement, shared across all languages
+editorial_url: https://youtu.be/dQw4w9WgXcQ  # optional; video walkthrough
+languages:                       # map: language key → file set
   go:
-    template: template.go        # стартовый код в редакторе пользователя
-    solution: solution.go        # эталон — для офлайн-проверки тестов при импорте
-    tests: solution_test.go      # файл-валидатор
+    template: template.go        # starting code shown in the user's editor
+    solution: solution.go        # reference solution — for offline test validation on import
+    tests: solution_test.go      # test file that grades a submission
   # python:
   #   template: template.py
   #   solution: solution.py
   #   tests: test_solution.py
-limits:                          # опц.; переопределяет глобальные дефолты сандбокса
+limits:                          # optional; overrides sandbox defaults
   timeout_sec: 10
   memory_mb: 256
 ```
 
-- `editorial_url` — опциональная ссылка на видео-разбор задачи. Поддерживаются
-  YouTube (`youtube.com/watch?v=…`, `youtu.be/…`), Internet Archive
-  (`archive.org/details/…`) и прямые видеофайлы (`.mp4`, `.webm`, `.ogg`).
-  При наличии поля в UI появляется вкладка «Видео-разбор».
+- `editorial_url` — optional link to a video walkthrough of the task.
+  Supports YouTube (`youtube.com/watch?v=…`, `youtu.be/…`), Internet Archive
+  (`archive.org/details/…`), and direct video files (`.mp4`, `.webm`,
+  `.ogg`). When set, a "Video Walkthrough" tab appears in the UI.
+- `statement.md` is one per task; the (language-specific) function signature
+  is visible from `template`, not from the statement.
+- `languages` — the key selects the runner/sandbox for that language. Adding
+  a language means adding a key and a folder, without touching anything
+  else.
+- File names (`template`, `solution`, `tests`) are **relative to the
+  language's subfolder** — e.g. `go/` for the `go` key. Do not prefix the
+  value with the language folder: `template: template.go` is correct,
+  `template: go/template.go` is wrong.
+- File names are set by the manifest; conventions differ per language
+  (`*_test.go`, `test_*.py`, etc.) and are not hardcoded by the parser.
 
-- `statement.md` — один на задачу; сигнатура функции (языко-зависимая) видна из
-  `template`, не из условия.
-- `languages` — ключ выбирает раннер/сандбокс. Добавить язык = добавить ключ +
-  папку, не трогая остальное.
-- Имена файлов (`template`, `solution`, `tests`) — **относительно подпапки языка**,
-  т.е. `go/` для ключа `go`. Писать префикс языка в значении **не нужно**:
-  `template: template.go` — правильно, `template: go/template.go` — ошибка.
-- Имена файлов заданы в манифесте (у языков свои конвенции: `*_test.go`,
-  `test_*.py`).
+## Solution Grading
 
----
+- The user edits the **whole file**, starting from `template`.
+- In the sandbox: the user's file plus `tests` are placed side by side and
+  the language's runner executes (`go test` for Go, etc.). `solution` is
+  never shipped into the user's sandbox run.
+- `solution` is used separately — on course import, the platform can run
+  `tests` against `solution` and refuse to publish a task whose tests don't
+  pass against its own reference solution.
+- Sandbox limits: global defaults live in the platform config; an optional
+  `limits` block in `task.yaml` overrides them for heavier tasks.
+- The sandbox itself (isolation mechanism, process/container setup) is a
+  separate subsystem — the course format only specifies the language and
+  file names.
 
-## 6. Валидация решений
+### Progress
 
-- Пользователь редактирует **целый файл**, начиная с `template`.
-- В сандбоксе: файл пользователя + `tests` кладутся рядом, запускается раннер
-  языка (`go test` для Go). `solution` в сандбокс с пользователем **не** идёт.
-- `solution` используется отдельно — при импорте курса платформа может прогнать
-  `tests` против `solution` и отказаться публиковать задачу с битыми тестами.
-- Лимиты сандбокса: глобальные дефолты в конфиге платформы; опциональный
-  `limits` в `task.yaml` переопределяет их для тяжёлых задач.
-- Сам сандбокс (изоляция, Docker, cgroups) — отдельная подсистема; формат лишь
-  указывает язык и файлы.
-
-### Прогресс
-
-Прогресс юнита = решённые задачи / всего задач (в процентах). Теория в проценте
-не участвует. Прогресс задачи адресуется по `(unit_slug, task_slug)` — стабильно
-при переупорядочивании.
-
----
-
-## 7. Assumptions
-
-1. Контент-роли: теория (markdown) и задачи (код + тесты). Видео-разбор к задаче —
-   через `editorial_url` в `task.yaml`. Квиз — расширяемо, сейчас не проектируется.
-2. Метаданные — YAML; контент — Markdown.
-3. Тексты на русском; i18n естественных языков контента — не цель.
-4. Масштаб: десятки курсов, тысячи юнитов — тривиально для файлового парсинга.
-   Парсинг при импорте/изменении + кеш, не на каждый запрос.
-5. Сандбокс исполнения кода — отдельная подсистема; здесь не проектируется.
-
----
-
-## 8. Risks
-
-- **Дробность манифестов:** много мелких YAML-файлов. Принято осознанно ради
-  явного порядка, co-located медиа и чистого round-trip.
-- **Ручное добавление юнита** требует дописать slug в `topic.yaml` (и т.д. по
-  уровням). Будущая админка автоматизирует.
-- **Строгое slug == имя папки:** переименование slug = переименование папки.
-  Принято ради простоты парсера.
-- **Битые тесты:** митигируется офлайн-проверкой `tests` против `solution` при
-  импорте.
-
----
-
-## 9. Decision Log
-
-| #   | Решение | Альтернативы | Почему |
-|-----|---------|--------------|--------|
-| D1  | Источник правды — файлы, git-driven | БД-first; гибрид-оверлеи | Self-hosted; версии/review через git; админка позже round-trip |
-| D2  | Иерархия Курс→Трек→Тема→Юнит, фиксирована | Произвольная вложенность; 3 уровня | Предсказуемый парсинг, прогресс по трекам |
-| D3  | Юнит — контейнер, не лист | Юнит = 1 файл | Вкладки теория+задачи в одном юните |
-| D4  | Валидация = полный тест-файл на языке в сандбоксе | input/expected; stdin/stdout | Максимум гибкости, совпадает с go-interview |
-| D5  | Мультиязычность задачи заложена в формат | Один язык на задачу | Не ломать структуру потом |
-| D6  | Manifest на контейнерах + frontmatter на листьях (Вар. A) | Один большой манифест; только соглашения | Явный порядок, round-trip, co-located медиа |
-| D7  | `slug` строго == имя папки | Развязка через скан | Парсер идёт по списку напрямую |
-| D8  | `schema_version` в корневом манифесте | Без версии | Эволюция формата без слома |
-| D9  | `schema_version` только в `course.yaml` | Версия в каждом файле | Меньше шума |
-| D10 | Фиксированные имена манифестов | Произвольные имена | Тип уровня = наличие файла |
-| D11 | `slug` дублируется в манифесте (проверочное поле) | Брать из имени папки | Самодостаточность + защита от рассинхрона |
-| D12 | Юнит описывает свой контент в `unit.yaml` | — | Явная структура вкладок |
-| D13 | Юнит = опц. одна теория + N задач | Произвольные блоки; макс 1 каждого типа | Теория одна, задач может быть много |
-| D14 | Новый тип контента = ветка парсера, структура неизменна | — | Расширяемость без слома |
-| D15 | N задач → одна вкладка «Задачи» со списком | Вкладка на задачу | Каждой задаче нужен title+slug, вкладка одна |
-| D16 | Прогресс юнита = решённые/всего задач | Бинарный зачёт | Частичный прогресс |
-| D17 | Каждая задача имеет стабильный `slug` | Адресация по индексу | Переупорядочивание не ломает прогресс |
-| D18 | `statement.md` один на задачу | Условие на язык | Текст языко-независим; сигнатура из template |
-| D19 | `languages` — карта язык→{template,solution,tests} | Фикс. имена файлов | У языков свои конвенции имён |
-| D20 | `solution` — для офлайн-проверки тестов | Не хранить эталон | Защита от битых тестов |
-| D21 | Решение пользователя = целый файл (замена template) | Фрагмент в маркерах | Прозрачно; совпадает с текущим контентом |
-| D22 | Сандбокс: файл юзера + тесты → раннер языка | — | Нативно для Go |
-| D23 | Лимиты: глобальные дефолты + опц. `limits` в task.yaml | На каждой задаче; не закладывать | Без шума, но тяжёлые тюнятся |
-| D24 | Видео-разбор: опц. `editorial_url` в `task.yaml` | Отдельный тип юнита; хранить в БД | Ссылка в манифесте — минимально; вкладка появляется только при наличии |
-| D25 | Вводное видео юнита: опц. `video_url` в `unit.yaml`; рендерится над теорией | Отдельный тип блока; отдельная вкладка | Встроенный плеер перед md — единое полотно, без переключения таб |
-
----
-
-## 10. Открытые вопросы для реализации
-
-Не блокеры дизайна; решаются на этапе кода:
-
-- Список поддерживаемых идентификаторов языков (`go`, `python`, `sql`, …) и
-  привязка раннера к каждому.
-- Точная схема глобального конфига лимитов сандбокса.
-- Конвертация существующих курсов (`coding/`) в этот формат — отдельным скиллом.
+A unit's progress is solved tasks / total tasks (as a percentage). Theory
+does not count toward this ratio — it has its own separate "read" state. A
+task's progress is addressed by `(unit_slug, task_slug)`, which stays stable
+across reordering.
