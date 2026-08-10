@@ -1,5 +1,6 @@
 param(
-  [switch]$SkipDeps
+  [switch]$SkipDeps,
+  [switch]$Console
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,7 +50,8 @@ New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 Push-Location $BackendDir
 try {
   Invoke-CheckedNative go @('run', 'github.com/swaggo/swag/cmd/swag', 'init', '-g', 'main.go', '-d', './cmd/server,./internal/api/handlers,./internal/api/dto', '-o', './docs', '--exclude', './courses')
-  Invoke-CheckedNative go @('build', '-tags', 'swagger', '-o', $BinaryPath, './cmd/courseforge')
+  $LdFlags = if ($Console) { '' } else { '-H=windowsgui' }
+  Invoke-CheckedNative go @('build', '-tags', 'swagger', '-ldflags', $LdFlags, '-o', $BinaryPath, './cmd/courseforge')
 } finally {
   Pop-Location
 }

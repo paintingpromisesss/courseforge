@@ -18,6 +18,7 @@ func main() {
 	dataDir := flag.String("data-dir", "./data", "directory for app state")
 	dbPath := flag.String("db-path", "", "path to submissions sqlite db")
 	frontendDir := flag.String("frontend-dir", defaultFrontendDir(), "directory with built frontend assets")
+	enableTray := flag.Bool("tray", true, "show system tray icon")
 	flag.Parse()
 
 	cfg := &config.Config{
@@ -27,6 +28,7 @@ func main() {
 		FrontendDir: *frontendDir,
 		Addr:        *host + ":" + strconv.Itoa(*port),
 		DBPath:      *dbPath,
+		EnableTray:  *enableTray,
 	}
 	if cfg.DBPath == "" {
 		cfg.DBPath = config.DefaultDBPath(*dataDir)

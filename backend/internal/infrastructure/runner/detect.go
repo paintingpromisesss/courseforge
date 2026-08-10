@@ -93,7 +93,7 @@ func probeVersion(ctx context.Context, path string, p langProbe) string {
 		return ""
 	}
 	// CombinedOutput: some toolchains (e.g. javac -version) print to stderr.
-	out, err := exec.CommandContext(ctx, path, p.versionArgs...).CombinedOutput()
+	out, err := newCommandContext(ctx, path, p.versionArgs...).CombinedOutput()
 	if err != nil {
 		return ""
 	}
@@ -167,7 +167,7 @@ func (r *Runner) detectPostgres(ctx context.Context, bin, path string) DetectRes
 	if host == "" {
 		return DetectResult{Status: StatusMissing, Binary: bin, Path: path, Message: "postgres cluster not running"}
 	}
-	out, err := exec.CommandContext(ctx, "psql", "-h", host, "-p", strconv.Itoa(port), "-d", "postgres",
+	out, err := newCommandContext(ctx, "psql", "-h", host, "-p", strconv.Itoa(port), "-d", "postgres",
 		"-tAc", "SHOW server_version").CombinedOutput()
 	if err != nil {
 		return DetectResult{Status: StatusBroken, Binary: bin, Path: path, Message: truncate(strings.TrimSpace(string(out)), 300)}

@@ -131,7 +131,7 @@ func newSchemaName() (string, error) {
 // createSchema creates an isolated schema for one run in the shared
 // "courseforge" database.
 func createSchema(ctx context.Context, host string, port int, name string) error {
-	out, err := exec.CommandContext(ctx, "psql", "-h", host, "-p", strconv.Itoa(port), "-d", "courseforge",
+	out, err := newCommandContext(ctx, "psql", "-h", host, "-p", strconv.Itoa(port), "-d", "courseforge",
 		"-v", "ON_ERROR_STOP=1", "-c", "CREATE SCHEMA "+name).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("create schema: %w: %s", err, out)
@@ -143,7 +143,7 @@ func createSchema(ctx context.Context, host string, port int, name string) error
 // process is being killed), PostgresManager's startup reaper catches it
 // next boot — the database never accumulates permanent clutter.
 func dropSchema(host string, port int, name string) {
-	_ = exec.Command("psql", "-h", host, "-p", strconv.Itoa(port), "-d", "courseforge",
+	_ = newCommand("psql", "-h", host, "-p", strconv.Itoa(port), "-d", "courseforge",
 		"-c", "DROP SCHEMA IF EXISTS "+name+" CASCADE").Run()
 }
 
@@ -231,7 +231,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	cmd := exec.Command(args[0], args[1:]...)
+	cmd := newCommand(args[0], args[1:]...)
 	cmd.Dir = dir
 	if schemaName != "" {
 		cmd.Env = append(os.Environ(),

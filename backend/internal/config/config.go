@@ -12,6 +12,7 @@ type Config struct {
 	FrontendDir string
 	Addr        string
 	DBPath      string
+	EnableTray  bool
 }
 
 func Load() *Config {

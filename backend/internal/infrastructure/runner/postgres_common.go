@@ -3,7 +3,6 @@ package runner
 import (
 	"context"
 	"fmt"
-	"os/exec"
 )
 
 // NewPostgresManager returns a manager for a cluster rooted at dataDir.
@@ -14,7 +13,7 @@ func NewPostgresManager(dataDir string) *PostgresManager {
 
 // Stop shuts the cluster down cleanly.
 func (m *PostgresManager) Stop() error {
-	out, err := exec.Command("pg_ctl", "-D", m.dataDir, "-w", "-m", "fast", "stop").CombinedOutput()
+	out, err := newCommand("pg_ctl", "-D", m.dataDir, "-w", "-m", "fast", "stop").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("pg_ctl stop: %w: %s", err, out)
 	}
@@ -30,7 +29,7 @@ func (m *PostgresManager) reapOrphanSchemas(ctx context.Context) error {
 
 func (m *PostgresManager) psql(ctx context.Context, stmt string) error {
 	args := append(m.connArgs(), "-d", "courseforge", "-v", "ON_ERROR_STOP=1", "-c", stmt)
-	out, err := exec.CommandContext(ctx, "psql", args...).CombinedOutput()
+	out, err := newCommandContext(ctx, "psql", args...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("psql: %w: %s", err, out)
 	}

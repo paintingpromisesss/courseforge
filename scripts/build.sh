@@ -33,6 +33,11 @@ fi
 
 mkdir -p "$BIN_DIR"
 (cd "$BACKEND_DIR" && go run github.com/swaggo/swag/cmd/swag init -g main.go -d ./cmd/server,./internal/api/handlers,./internal/api/dto -o ./docs --exclude ./courses)
-(cd "$BACKEND_DIR" && go build -tags swagger -o "$BINARY_PATH" ./cmd/courseforge)
+LDFLAGS=""
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) LDFLAGS="-H=windowsgui" ;;
+esac
+
+(cd "$BACKEND_DIR" && go build -tags swagger -ldflags "$LDFLAGS" -o "$BINARY_PATH" ./cmd/courseforge)
 
 echo "Built $BINARY_PATH"

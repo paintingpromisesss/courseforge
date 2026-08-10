@@ -20,6 +20,7 @@ import (
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/parser/course"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
+	"github.com/paintingpromisesss/courseforge/internal/tray"
 	"github.com/paintingpromisesss/courseforge/logger"
 )
 
@@ -96,9 +97,41 @@ func Run(cfg *config.Config) error {
 		log.Printf("frontend dir: %s", cfg.FrontendDir)
 	}
 
-	// Wait for Ctrl+C/SIGTERM and shut the HTTP server down before returning,
-	// so the deferred pgMgr.Stop()/sr.Close() above actually run — otherwise
-	// the postgres cluster is left running and the next start hits a stale lock.
+	if cfg.EnableTray {
+		return runWithTray(cfg, srv)
+	}
+	return runHeadless(srv)
+}
+
+// runWithTray delegates the application lifecycle to the system tray icon.
+// systray.Run blocks the main goroutine; the HTTP server starts inside onReady.
+func runWithTray(cfg *config.Config, srv *http.Server) error {
+	var serverErr error
+
+	tray.Run(displayAddr(cfg.Addr), func() {
+		// onServerStart — launch HTTP in a background goroutine.
+		go func() {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				serverErr = err
+				log.Printf("server error: %v", err)
+				tray.Quit()
+			}
+		}()
+	}, func() {
+		// onQuit — graceful HTTP shutdown.
+		log.Printf("shutting down...")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("shutdown error: %v", err)
+		}
+	})
+
+	return serverErr
+}
+
+// runHeadless keeps the original signal-based lifecycle (no tray icon).
+func runHeadless(srv *http.Server) error {
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()
 

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 )
@@ -65,13 +64,13 @@ func (m *PostgresManager) Start(ctx context.Context) error {
 	m.port = port
 
 	if _, err := os.Stat(filepath.Join(m.dataDir, "PG_VERSION")); os.IsNotExist(err) {
-		out, err := exec.CommandContext(ctx, "initdb", "-D", m.dataDir, "--auth=trust", "--no-sync").CombinedOutput()
+		out, err := newCommandContext(ctx, "initdb", "-D", m.dataDir, "--auth=trust", "--no-sync").CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("initdb: %w: %s", err, out)
 		}
 	}
 
-	out, err := exec.CommandContext(ctx, "pg_ctl", "-D", m.dataDir, "-w",
+	out, err := newCommandContext(ctx, "pg_ctl", "-D", m.dataDir, "-w",
 		"-o", fmt.Sprintf("-c listen_addresses=127.0.0.1 -c port=%d", m.port),
 		"-l", filepath.Join(m.dataDir, "server.log"),
 		"start").CombinedOutput()
@@ -79,7 +78,7 @@ func (m *PostgresManager) Start(ctx context.Context) error {
 		return fmt.Errorf("pg_ctl start: %w: %s", err, out)
 	}
 
-	if out, err := exec.CommandContext(ctx, "createdb", append(m.connArgs(), "courseforge")...).CombinedOutput(); err != nil &&
+	if out, err := newCommandContext(ctx, "createdb", append(m.connArgs(), "courseforge")...).CombinedOutput(); err != nil &&
 		!bytes.Contains(out, []byte("already exists")) {
 		return fmt.Errorf("createdb: %w: %s", err, out)
 	}
