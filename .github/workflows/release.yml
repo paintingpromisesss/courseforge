@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-amd64
+            bin: bin/courseforge
+            archive_ext: tar.gz
+          - os: windows-latest
+            name: windows-amd64
+            bin: bin/courseforge.exe
+            archive_ext: zip
+          - os: macos-latest
+            name: macos-amd64
+            bin: bin/courseforge
+            archive_ext: tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # tray icon (getlantern/systray) needs cgo + GTK/appindicator headers on Linux
+      - name: Install Linux tray deps
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev
+
+      - name: Build
+        shell: bash
+        run: ./scripts/build.sh
+
+      - name: Package
+        shell: bash
+        run: |
+          stage="courseforge-${{ matrix.name }}"
+          mkdir -p "$stage"
+          cp "${{ matrix.bin }}" "$stage/"
+          cp -r frontend/dist "$stage/frontend-dist"
+          if [ "${{ matrix.archive_ext }}" = "zip" ]; then
+            7z a "$stage.zip" "$stage" >/dev/null
+          else
+            tar czf "$stage.tar.gz" "$stage"
+          fi
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: courseforge-${{ matrix.name }}.${{ matrix.archive_ext }}
+          generate_release_notes: true
