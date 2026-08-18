@@ -35,6 +35,40 @@ function ResultsOverlay({
   const allPassed = results.passed === results.total;
   const pct = results.total > 0 ? Math.round((results.passed / results.total) * 100) : 0;
 
+  const [testSidebarWidth, setTestSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('cf:test-sidebar-width');
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= 160 && parsed <= 500) return parsed;
+    }
+    return 240;
+  });
+
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    const startX = e.clientX;
+    const startWidth = testSidebarWidth;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const newWidth = Math.min(Math.max(startWidth + delta, 160), 500);
+      setTestSidebarWidth(newWidth);
+      localStorage.setItem('cf:test-sidebar-width', String(newWidth));
+    };
+
+    const onMouseUp = () => {
+      setIsDragging(false);
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [testSidebarWidth]);
+
   // sync selected when tests list changes (e.g. new submission)
   useEffect(() => {
     setSelected(sortedTests[0]?.name);
@@ -48,24 +82,31 @@ function ResultsOverlay({
 
   return (
     <motion.div
-      className="absolute bottom-0 left-0 right-0 bg-bg-2 border-t border-bdr z-30 shadow-lg"
-      initial={{ y: '100%' }}
-      animate={{ y: 0 }}
-      exit={{ y: '100%' }}
-      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+      className="shrink-0 bg-bg-2 border-t border-bdr z-10"
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: 'auto', opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      transition={{ duration: 0.2 }}
     >
       {/* Header — clickable to collapse / expand */}
       <div
         onClick={onToggleCollapse}
-        className="flex items-center gap-3 px-4 py-2.5 border-b border-bdr cursor-pointer hover:bg-bg-3/50 select-none transition-colors"
+        className={clsx(
+          'flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-bg-3/50 select-none transition-colors',
+          !collapsed && 'border-b border-bdr',
+        )}
       >
-        <span className={clsx(
-          'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-sm font-semibold',
-          allPassed ? 'bg-ok/15 text-ok' : 'bg-err/15 text-err',
-        )}>
+        <span
+          className={clsx(
+            'inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold',
+            allPassed ? 'bg-ok/15 text-ok' : 'bg-err/15 text-err',
+          )}
+        >
           {allPassed ? '✓ Принято' : '✗ Ошибка'}
         </span>
-        <span className="text-tx-2 text-sm font-medium">{results.passed}/{results.total} тестов ({pct}%)</span>
+        <span className="text-tx-2 text-xs font-medium">
+          {results.passed}/{results.total} тестов ({pct}%)
+        </span>
         {timedOut && <Badge variant="warn">Timeout</Badge>}
         <span className="text-tx-3 text-xs">{durationMs}ms</span>
 
@@ -80,9 +121,18 @@ function ResultsOverlay({
           className="ml-auto text-tx-3 hover:text-tx-1 p-1 rounded hover:bg-bg-4 transition-colors"
         >
           <svg
-            width="16" height="16" viewBox="0 0 16 16" fill="none"
-            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            style={{ transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{
+              transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s',
+            }}
           >
             <polyline points="4 10 8 6 12 10" />
           </svg>
@@ -95,43 +145,72 @@ function ResultsOverlay({
           <motion.div
             key="body"
             initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 260, opacity: 1 }}
+            animate={{ height: 230, opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
             style={{ overflow: 'hidden' }}
           >
-            <div className="flex" style={{ height: 260 }}>
-              <div className="w-56 border-r border-bdr overflow-y-auto py-1">
+            <div className="flex overflow-hidden relative" style={{ height: 230 }}>
+              {/* Left column: test list */}
+              <div
+                style={{ width: testSidebarWidth }}
+                className={clsx(
+                  'shrink-0 overflow-y-auto overflow-x-hidden',
+                  isDragging && 'select-none',
+                )}
+              >
                 {sortedTests.map((t) => (
                   <button
                     key={t.name}
                     onClick={() => setSelected(t.name)}
+                    title={displayName(t.name)}
                     className={clsx(
-                      'w-full flex items-center gap-2 px-3 py-2 text-left transition-colors',
+                      'w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors text-xs',
                       selected === t.name ? 'bg-bg-4 text-tx-1' : 'text-tx-2 hover:bg-bg-3',
                     )}
                   >
-                    <span className={clsx(
-                      'shrink-0 w-5 h-5 flex items-center justify-center rounded text-[11px] font-bold',
-                      t.passed ? 'bg-ok/15 text-ok' : 'bg-err/15 text-err',
-                    )}>
+                    <span
+                      className={clsx(
+                        'shrink-0 w-4 h-4 flex items-center justify-center rounded text-[10px] font-bold',
+                        t.passed ? 'bg-ok/15 text-ok' : 'bg-err/15 text-err',
+                      )}
+                    >
                       {t.passed ? '✓' : '✗'}
                     </span>
-                    <span className="truncate text-sm font-medium">{displayName(t.name)}</span>
+                    <span className="truncate flex-1 font-medium">{displayName(t.name)}</span>
                   </button>
                 ))}
               </div>
-              <div className="flex-1 overflow-auto p-4">
+
+              {/* Standalone Splitter Handle */}
+              <div
+                onMouseDown={handleMouseDown}
+                onDoubleClick={() => {
+                  setTestSidebarWidth(240);
+                  localStorage.setItem('cf:test-sidebar-width', '240');
+                }}
+                className={clsx(
+                  'w-px shrink-0 bg-bdr cursor-col-resize z-20 transition-colors relative',
+                  isDragging ? 'bg-brand shadow-[0_0_8px_rgba(124,58,237,0.5)]' : 'hover:bg-brand/60',
+                )}
+              >
+                <div className="absolute inset-y-0 left-0 w-1.5 z-30" />
+              </div>
+
+              {/* Right column: test details */}
+              <div className="flex-1 overflow-y-auto overflow-x-hidden p-3">
                 {(() => {
                   const t = sortedTests.find((t) => t.name === selected);
                   if (!t) return null;
                   return t.detail ? (
-                    <pre className="text-[13px] leading-6 text-tx-2 font-mono whitespace-pre-wrap">
+                    <pre className="text-xs leading-5 text-tx-2 font-mono whitespace-pre-wrap break-words">
                       {t.detail}
                     </pre>
                   ) : (
-                    <div className="flex items-center gap-2 text-sm text-tx-3">
-                      <span className={t.passed ? 'text-ok' : 'text-err'}>{t.passed ? '✓' : '✗'}</span>
+                    <div className="flex items-center gap-2 text-xs text-tx-3">
+                      <span className={t.passed ? 'text-ok' : 'text-err'}>
+                        {t.passed ? '✓' : '✗'}
+                      </span>
                       {t.passed ? 'Тест пройден, вывод отсутствует' : 'Нет данных об ошибке'}
                     </div>
                   );

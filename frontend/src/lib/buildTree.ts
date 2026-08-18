@@ -87,15 +87,27 @@ function buildTrack(tr: TrackItem, done: Done): TreeNode {
   return group(tr.slug, tr.title, topics);
 }
 
-// collapse hides any group that is the only child of its parent; the surviving
-// row keeps the topmost (outermost) node's title. Outer overwrites inner, so the
-// topmost wins up the chain. Empty groups are dropped.
+// collapse hides any group that is the only child of its parent, or flattens
+// a solitary sub-group so its tasks bubble up to the topic level.
 function collapse(node: TreeNode): TreeNode {
   if (node.kind !== 'group') return node;
   const children = node.children.map(collapse);
+
+  // 1) If this group is the only child of its parent, unwrap it
   if (children.length === 1) {
     return { ...children[0], title: node.title };
   }
+
+  // 2) If there is only 1 sub-group among children (e.g. 1 sub-folder + stray tasks),
+  // flatten that single sub-group's tasks directly into this parent
+  const groupChildren = children.filter((c) => c.kind === 'group');
+  if (groupChildren.length === 1) {
+    const flattened = children.flatMap((c) =>
+      c.kind === 'group' ? c.children : [c],
+    );
+    return { ...node, children: flattened };
+  }
+
   return { ...node, children };
 }
 
