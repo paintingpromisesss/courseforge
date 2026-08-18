@@ -167,3 +167,16 @@ body {
 .light .hljs-title, .light .hljs-title.function_, .light .hljs-function .hljs-title, .light .hljs-section { color: #4078f2; }
 .light .hljs-attr, .light .hljs-attribute, .light .hljs-variable, .light .hljs-template-variable, .light .hljs-property { color: #e45649; }
 .light .hljs-tag, .light .hljs-name { color: #e45649; }
+
+/* CodeMirror selection fix: drawSelection() renders .cm-selectionBackground at
+   z-index:-2 behind line elements, so it's hidden by any line background.
+   Disable that layer and use native ::selection which paints at text level. */
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background-color: transparent !important;
+}
+.cm-editor .cm-content ::selection,
+.cm-editor .cm-line::selection,
+.cm-editor .cm-line ::selection {
+  background-color: rgba(130, 81, 238, 0.30) !important;
+}

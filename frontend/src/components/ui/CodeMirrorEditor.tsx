@@ -86,6 +86,8 @@ const editorTheme = EditorView.theme({
     overflow: 'auto',
     fontFamily: '"JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace',
     lineHeight: '1.6',
+    fontVariantLigatures: 'none',
+    fontFeatureSettings: '"liga" 0, "calt" 0',
   },
   '.cm-content': { paddingTop: '14px', paddingBottom: '14px', caretColor: BRAND },
   '.cm-focused': { outline: 'none' },
@@ -94,8 +96,6 @@ const editorTheme = EditorView.theme({
   '.cm-lineNumbers .cm-gutterElement': { paddingRight: '14px' },
   '.cm-activeLineGutter': { backgroundColor: 'var(--bg-3)', color: 'var(--tx-2)' },
   '.cm-activeLine': { backgroundColor: 'var(--bg-2)' },
-  '.cm-selectionBackground, .cm-content ::selection': { backgroundColor: 'rgba(130,81,238,0.25) !important' },
-  '&.cm-focused .cm-selectionBackground': { backgroundColor: 'rgba(130,81,238,0.3) !important' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: BRAND, borderLeftWidth: '2px' },
   '.cm-matchingBracket, .cm-nonmatchingBracket': {
     backgroundColor: 'rgba(130,81,238,0.2)',

@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -21,102 +21,464 @@ function ResultsOverlay({
   results,
   durationMs,
   timedOut,
-  onClose,
+  collapsed,
+  onToggleCollapse,
 }: {
   results: ParsedResults;
   durationMs: number;
   timedOut: boolean;
-  onClose: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }) {
   const sortedTests = [...results.tests].sort((a, b) => Number(b.passed) - Number(a.passed));
   const [selected, setSelected] = useState(sortedTests[0]?.name);
   const allPassed = results.passed === results.total;
+  const pct = results.total > 0 ? Math.round((results.passed / results.total) * 100) : 0;
+
+  // sync selected when tests list changes (e.g. new submission)
+  useEffect(() => {
+    setSelected(sortedTests[0]?.name);
+  }, [results]);
+
+  /** Strip prefix up to last "/" and replace "_" with spaces */
+  const displayName = (raw: string) => {
+    const last = raw.lastIndexOf('/');
+    return (last >= 0 ? raw.slice(last + 1) : raw).replaceAll('_', ' ');
+  };
 
   return (
     <motion.div
-      className="absolute bottom-0 left-0 right-0 bg-bg-2 border-t border-bdr z-30"
+      className="absolute bottom-0 left-0 right-0 bg-bg-2 border-t border-bdr z-30 shadow-lg"
       initial={{ y: '100%' }}
       animate={{ y: 0 }}
       exit={{ y: '100%' }}
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
     >
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-bdr">
-        <span className={clsx('text-sm font-medium', allPassed ? 'text-ok' : 'text-err')}>
+      {/* Header — clickable to collapse / expand */}
+      <div
+        onClick={onToggleCollapse}
+        className="flex items-center gap-3 px-4 py-2.5 border-b border-bdr cursor-pointer hover:bg-bg-3/50 select-none transition-colors"
+      >
+        <span className={clsx(
+          'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-sm font-semibold',
+          allPassed ? 'bg-ok/15 text-ok' : 'bg-err/15 text-err',
+        )}>
           {allPassed ? '✓ Принято' : '✗ Ошибка'}
         </span>
-        <span className="text-tx-3 text-sm">{results.passed}/{results.total} тестов</span>
+        <span className="text-tx-2 text-sm font-medium">{results.passed}/{results.total} тестов ({pct}%)</span>
         {timedOut && <Badge variant="warn">Timeout</Badge>}
         <span className="text-tx-3 text-xs">{durationMs}ms</span>
-        <button onClick={onClose} className="ml-auto text-tx-3 hover:text-tx-1 text-lg leading-none">×</button>
+
+        {/* Collapse / expand toggle button */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleCollapse();
+          }}
+          title={collapsed ? 'Развернуть' : 'Свернуть'}
+          className="ml-auto text-tx-3 hover:text-tx-1 p-1 rounded hover:bg-bg-4 transition-colors"
+        >
+          <svg
+            width="16" height="16" viewBox="0 0 16 16" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+          >
+            <polyline points="4 10 8 6 12 10" />
+          </svg>
+        </button>
       </div>
-      <div className="flex" style={{ height: 220 }}>
-        <div className="w-48 border-r border-bdr overflow-y-auto py-1">
-          {sortedTests.map((t) => (
-            <button
-              key={t.name}
-              onClick={() => setSelected(t.name)}
-              className={clsx(
-                'w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors',
-                selected === t.name ? 'bg-bg-4 text-tx-1' : 'text-tx-2 hover:bg-bg-3',
-              )}
-            >
-              <span className={t.passed ? 'text-ok' : 'text-err'}>{t.passed ? '✓' : '✗'}</span>
-              <span className="truncate">{t.name}</span>
-            </button>
-          ))}
-        </div>
-        <div className="flex-1 overflow-auto p-3">
-          {(() => {
-            const t = sortedTests.find((t) => t.name === selected);
-            return t && (
-              <pre className="text-xs text-tx-2 font-mono whitespace-pre-wrap">
-                {t.detail || '(нет вывода)'}
-              </pre>
-            );
-          })()}
-        </div>
-      </div>
+
+      {/* Body — hidden when collapsed */}
+      <AnimatePresence initial={false}>
+        {!collapsed && (
+          <motion.div
+            key="body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 260, opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div className="flex" style={{ height: 260 }}>
+              <div className="w-56 border-r border-bdr overflow-y-auto py-1">
+                {sortedTests.map((t) => (
+                  <button
+                    key={t.name}
+                    onClick={() => setSelected(t.name)}
+                    className={clsx(
+                      'w-full flex items-center gap-2 px-3 py-2 text-left transition-colors',
+                      selected === t.name ? 'bg-bg-4 text-tx-1' : 'text-tx-2 hover:bg-bg-3',
+                    )}
+                  >
+                    <span className={clsx(
+                      'shrink-0 w-5 h-5 flex items-center justify-center rounded text-[11px] font-bold',
+                      t.passed ? 'bg-ok/15 text-ok' : 'bg-err/15 text-err',
+                    )}>
+                      {t.passed ? '✓' : '✗'}
+                    </span>
+                    <span className="truncate text-sm font-medium">{displayName(t.name)}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1 overflow-auto p-4">
+                {(() => {
+                  const t = sortedTests.find((t) => t.name === selected);
+                  if (!t) return null;
+                  return t.detail ? (
+                    <pre className="text-[13px] leading-6 text-tx-2 font-mono whitespace-pre-wrap">
+                      {t.detail}
+                    </pre>
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-tx-3">
+                      <span className={t.passed ? 'text-ok' : 'text-err'}>{t.passed ? '✓' : '✗'}</span>
+                      {t.passed ? 'Тест пройден, вывод отсутствует' : 'Нет данных об ошибке'}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
 
-function SubmissionsList({ courseSlug, taskSlug }: { courseSlug: string; taskSlug: string }) {
+function SubmissionDetail({
+  submission,
+  onLoadCode,
+}: {
+  submission: Submission;
+  onLoadCode?: (code: string) => void;
+}) {
+  const [subTab, setSubTab] = useState<'code' | 'tests'>('code');
+  const parsed = useMemo(
+    () => parseTestOutput(submission.language, submission.stdout, submission.stderr, submission.exit_code),
+    [submission]
+  );
+  const sortedTests = useMemo(
+    () => [...parsed.tests].sort((a, b) => Number(b.passed) - Number(a.passed)),
+    [parsed]
+  );
+  const [selectedTest, setSelectedTest] = useState<string>(sortedTests[0]?.name ?? '');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setSelectedTest(sortedTests[0]?.name ?? '');
+  }, [sortedTests]);
+
+  const displayName = (raw: string) => {
+    const last = raw.lastIndexOf('/');
+    return (last >= 0 ? raw.slice(last + 1) : raw).replaceAll('_', ' ');
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(submission.code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="bg-bg-1 border-t border-bdr-s">
+      {/* Sub-tabs header */}
+      <div className="flex items-center justify-between px-4 pt-1 border-b border-bdr-s bg-bg-2/40">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setSubTab('code')}
+            className={clsx(
+              'px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors',
+              subTab === 'code' ? 'border-brand text-tx-1' : 'border-transparent text-tx-3 hover:text-tx-2'
+            )}
+          >
+            Код
+          </button>
+          <button
+            onClick={() => setSubTab('tests')}
+            className={clsx(
+              'px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors',
+              subTab === 'tests' ? 'border-brand text-tx-1' : 'border-transparent text-tx-3 hover:text-tx-2'
+            )}
+          >
+            Тесты ({parsed.passed}/{parsed.total})
+          </button>
+        </div>
+
+        {subTab === 'code' && (
+          <div className="flex items-center gap-1.5 pb-1">
+            {onLoadCode && (
+              <button
+                onClick={() => onLoadCode(submission.code)}
+                className="px-2 py-0.5 text-[11px] font-medium text-tx-3 hover:text-tx-1 hover:bg-bg-4 rounded transition-colors"
+                title="Загрузить этот код в редактор"
+              >
+                Вставить в редактор
+              </button>
+            )}
+            <button
+              onClick={handleCopy}
+              className="px-2 py-0.5 text-[11px] font-medium text-tx-3 hover:text-tx-1 hover:bg-bg-4 rounded transition-colors"
+            >
+              {copied ? 'Скопировано!' : 'Скопировать'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {subTab === 'code' && (
+        <div className="p-4 max-h-[650px] overflow-auto [&_pre]:my-0 [&_pre]:bg-transparent [&_pre]:border-0 [&_pre]:p-0">
+          <Markdown content={`\`\`\`${submission.language}\n${submission.code}\n\`\`\``} />
+        </div>
+      )}
+
+      {subTab === 'tests' && (
+        <div className="flex flex-col sm:flex-row max-h-[650px]">
+          {/* Test list */}
+          <div className="sm:w-52 border-b sm:border-b-0 sm:border-r border-bdr-s overflow-y-auto py-1 shrink-0 bg-bg-2/20 max-h-[650px]">
+            {sortedTests.map((t) => (
+              <button
+                key={t.name}
+                onClick={() => setSelectedTest(t.name)}
+                className={clsx(
+                  'w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors',
+                  selectedTest === t.name ? 'bg-bg-4 text-tx-1 font-medium' : 'text-tx-2 hover:bg-bg-3'
+                )}
+              >
+                <span className={clsx(
+                  'shrink-0 w-4 h-4 flex items-center justify-center rounded text-[10px] font-bold',
+                  t.passed ? 'bg-ok/15 text-ok' : 'bg-err/15 text-err'
+                )}>
+                  {t.passed ? '✓' : '✗'}
+                </span>
+                <span className="truncate">{displayName(t.name)}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Test output */}
+          <div className="flex-1 overflow-auto p-3 bg-bg-1 max-h-[650px]">
+            {(() => {
+              const current = sortedTests.find((t) => t.name === selectedTest) ?? sortedTests[0];
+              if (!current) return <div className="text-xs text-tx-3">Нет данных о тестах</div>;
+              return current.detail ? (
+                <pre className="text-xs leading-5 text-tx-2 font-mono whitespace-pre-wrap">
+                  {current.detail}
+                </pre>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-tx-3">
+                  <span className={current.passed ? 'text-ok' : 'text-err'}>{current.passed ? '✓' : '✗'}</span>
+                  {current.passed ? 'Тест пройден, вывод отсутствует' : 'Нет данных об ошибке'}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SolutionView({
+  solution,
+  lang,
+  onLoadCode,
+}: {
+  solution: string;
+  lang: string;
+  onLoadCode?: (code: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(solution);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div>
+      {/* Pinned header toolbar */}
+      <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 border-b border-bdr bg-bg-2 shadow-sm text-xs">
+        <div className="flex items-center gap-2">
+          <span className="text-ok font-semibold">✓</span>
+          <span className="font-semibold text-tx-1">Эталонное решение</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {onLoadCode && (
+            <button
+              onClick={() => onLoadCode(solution)}
+              className="px-2.5 py-1 font-medium text-tx-2 hover:text-tx-1 hover:bg-bg-4 rounded transition-colors"
+              title="Загрузить это решение в редактор"
+            >
+              Вставить в редактор
+            </button>
+          )}
+          <button
+            onClick={handleCopy}
+            className="px-2.5 py-1 font-medium text-tx-2 hover:text-tx-1 hover:bg-bg-4 rounded transition-colors"
+          >
+            {copied ? 'Скопировано!' : 'Скопировать'}
+          </button>
+        </div>
+      </div>
+
+      {/* Code body */}
+      <div className="p-4 [&_pre]:my-0 [&_pre]:bg-transparent [&_pre]:border-0 [&_pre]:p-0">
+        <Markdown content={`\`\`\`${lang}\n${solution}\n\`\`\``} />
+      </div>
+    </div>
+  );
+}
+
+function SubmissionsList({
+  courseSlug,
+  taskSlug,
+  onLoadCode,
+}: {
+  courseSlug: string;
+  taskSlug: string;
+  onLoadCode?: (code: string) => void;
+}) {
   const { data: subs, isLoading } = useQuery({
     queryKey: ['submissions', courseSlug, taskSlug],
     queryFn: () => api.listSubmissions(courseSlug, taskSlug),
   });
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [filter, setFilter] = useState<'all' | 'success' | 'failed'>('all');
+
+  // Count occurrences of identical code among successful submissions
+  const successCodeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (!subs) return counts;
+    for (const s of subs) {
+      if (s.total_tests > 0 && s.passed_tests === s.total_tests) {
+        const key = `${s.language}:::${s.code.trim()}`;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [subs]);
 
   if (isLoading) return <div className="p-4 text-tx-3 text-sm">Загрузка...</div>;
   if (!subs?.length) return <div className="p-4 text-tx-3 text-sm">Нет посылок</div>;
 
+  const successCount = subs.filter((s) => s.total_tests > 0 && s.passed_tests === s.total_tests).length;
+  const failedCount = subs.length - successCount;
+
+  const filteredSubs = subs.filter((s) => {
+    const isSuccess = s.total_tests > 0 && s.passed_tests === s.total_tests;
+    if (filter === 'success') return isSuccess;
+    if (filter === 'failed') return !isSuccess;
+    return true;
+  });
+
   return (
-    <div className="divide-y divide-bdr-s">
-      {subs.map((s: Submission) => {
-        const allPassed = s.passed_tests === s.total_tests;
-        const date = new Date(s.created_at).toLocaleString('ru', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-        return (
-          <div key={s.id}>
-            <button
-              onClick={() => setExpanded(expanded === s.id ? null : s.id)}
-              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-bg-3 transition-colors text-left"
-            >
-              <span className={clsx('text-xs font-medium w-16 shrink-0', allPassed ? 'text-ok' : 'text-err')}>
-                {allPassed ? 'Принято' : 'Ошибка'}
-              </span>
-              <span className="text-tx-3 text-xs">{s.passed_tests}/{s.total_tests}</span>
-              <span className="text-tx-3 text-xs">{s.duration_ms}ms</span>
-              <Badge variant="neutral" className="shrink-0">{s.language}</Badge>
-              <span className="ml-auto text-tx-3 text-xs shrink-0">{date}</span>
-            </button>
-            {expanded === s.id && (
-              <div className="bg-bg-1 border-t border-bdr-s px-4 py-3">
-                <Markdown content={`<!-- code-snippets -->\n\`\`\`${s.language}\n${s.code}\n\`\`\``} />
+    <div>
+      {/* Filter toolbar — pinned sticky at the top */}
+      <div className="sticky top-0 z-10 flex items-center gap-1.5 p-2.5 border-b border-bdr bg-bg-2 shadow-sm text-xs">
+        <button
+          onClick={() => setFilter('all')}
+          className={clsx(
+            'px-2.5 py-1 rounded transition-colors font-medium',
+            filter === 'all' ? 'bg-bg-4 text-tx-1 shadow-sm' : 'text-tx-3 hover:text-tx-2 hover:bg-bg-3'
+          )}
+        >
+          Все ({subs.length})
+        </button>
+        <button
+          onClick={() => setFilter('success')}
+          className={clsx(
+            'px-2.5 py-1 rounded transition-colors font-medium flex items-center gap-1',
+            filter === 'success' ? 'bg-ok/15 text-ok font-semibold shadow-sm' : 'text-tx-3 hover:text-tx-2 hover:bg-bg-3'
+          )}
+        >
+          <span>✓</span> Успешные ({successCount})
+        </button>
+        <button
+          onClick={() => setFilter('failed')}
+          className={clsx(
+            'px-2.5 py-1 rounded transition-colors font-medium flex items-center gap-1',
+            filter === 'failed' ? 'bg-err/15 text-err font-semibold shadow-sm' : 'text-tx-3 hover:text-tx-2 hover:bg-bg-3'
+          )}
+        >
+          <span>✗</span> С ошибками ({failedCount})
+        </button>
+      </div>
+
+      {filteredSubs.length === 0 ? (
+        <div className="p-6 text-center text-tx-3 text-sm">
+          {filter === 'success' ? 'Нет успешных посылок' : 'Нет посылок с ошибками'}
+        </div>
+      ) : (
+        <div className="divide-y divide-bdr-s">
+          {filteredSubs.map((s: Submission) => {
+            const allPassed = s.total_tests > 0 && s.passed_tests === s.total_tests;
+            const isDuplicate = allPassed && (successCodeCounts.get(`${s.language}:::${s.code.trim()}`) ?? 0) > 1;
+            const date = new Date(s.created_at).toLocaleString('ru', {
+              day: '2-digit',
+              month: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+
+            return (
+              <div key={s.id}>
+                <button
+                  onClick={() => setExpanded(expanded === s.id ? null : s.id)}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-bg-3 transition-colors text-left group"
+                >
+                  <span className={clsx('text-xs font-semibold w-16 shrink-0 flex items-center gap-1', allPassed ? 'text-ok' : 'text-err')}>
+                    {allPassed ? '✓ Принято' : '✗ Ошибка'}
+                  </span>
+                  <span className="text-tx-2 text-xs font-medium shrink-0">{s.passed_tests}/{s.total_tests}</span>
+                  <span className="text-tx-3 text-xs shrink-0">{s.duration_ms}ms</span>
+                  <Badge variant="neutral" className="shrink-0">{s.language}</Badge>
+                  {isDuplicate && (
+                    <span
+                      className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-bg-4 text-tx-3 border border-bdr shrink-0"
+                      title="Есть другие успешные посылки с идентичным кодом"
+                    >
+                      Повтор кода
+                    </span>
+                  )}
+                  <span className="ml-auto text-tx-3 text-xs shrink-0">{date}</span>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={clsx(
+                      'text-tx-3 group-hover:text-tx-1 transition-transform shrink-0',
+                      expanded === s.id ? 'rotate-180' : 'rotate-0'
+                    )}
+                  >
+                    <polyline points="4 6 8 10 12 6" />
+                  </svg>
+                </button>
+
+                <AnimatePresence initial={false}>
+                  {expanded === s.id && (
+                    <motion.div
+                      key="detail"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.22, ease: 'easeInOut' }}
+                      style={{ overflow: 'hidden' }}
+                    >
+                      <SubmissionDetail submission={s} onLoadCode={onLoadCode} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
-            )}
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -158,6 +520,7 @@ export function TaskPage() {
   const [solutionRevealed, setSolutionRevealed] = useState(false);
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<{ parsed: ParsedResults; durationMs: number; timedOut: boolean } | null>(null);
+  const [resultsCollapsed, setResultsCollapsed] = useState(false);
   const [markingTheoryDone, setMarkingTheoryDone] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollPanelRef = useRef<HTMLDivElement>(null);
@@ -208,10 +571,22 @@ export function TaskPage() {
   const solved = !!submissions?.some((s) => s.total_tests > 0 && s.passed_tests === s.total_tests);
   const solutionUnlocked = solved || solutionRevealed;
 
-  // reset the manual peek when switching tasks
+  // Reset results and peek state when switching tasks
   useEffect(() => {
     setSolutionRevealed(false);
+    setResults(null);
   }, [taskSlug]);
+
+  // When submissions load for current task — load last submission result (collapsed by default)
+  useEffect(() => {
+    if (!submissions || submissions.length === 0) return;
+    if (!results) {
+      const last = submissions[0]; // API returns newest first
+      const parsed = parseTestOutput(last.language, last.stdout, last.stderr, last.exit_code);
+      setResults({ parsed, durationMs: last.duration_ms, timedOut: last.timed_out });
+      setResultsCollapsed(true); // start collapsed when loaded from previous submissions
+    }
+  }, [taskSlug, submissions, results]);
 
   const { data: solution } = useQuery({
     queryKey: ['solution', courseSlug, trackSlug, topicSlug, unitSlug, taskSlug, lang],
@@ -298,6 +673,7 @@ export function TaskPage() {
       });
       const parsed = parseTestOutput(lang, sub.stdout, sub.stderr, sub.exit_code);
       setResults({ parsed, durationMs: sub.duration_ms, timedOut: sub.timed_out });
+      setResultsCollapsed(false); // expand panel after a fresh submit
 
       if (sub.total_tests > 0 && sub.passed_tests === sub.total_tests) {
         await api.markDone(courseSlug!, taskSlug!, true);
@@ -361,7 +737,7 @@ export function TaskPage() {
       <div ref={splitRef} className="flex flex-1 overflow-hidden">
         <div style={{ width: `${leftPct}%` }} className="flex flex-col overflow-hidden shrink-0">
           <Tabs tabs={leftTabs} active={activeTab} onChange={handleTabChange} />
-          <div ref={scrollPanelRef} className="flex-1 overflow-y-auto p-4">
+          <div ref={scrollPanelRef} className={clsx('flex-1 overflow-y-auto', (activeTab === 'submissions' || activeTab === 'solution') ? 'p-0' : 'p-4')}>
             {activeTab === 'theory' && (() => {
               const BASE = import.meta.env.VITE_API_URL ?? '/api';
               const assetBase = `${BASE}/courses/${courseSlug}/tracks/${trackSlug}/topics/${topicSlug}/units/${unitSlug}`;
@@ -398,12 +774,26 @@ export function TaskPage() {
               <VideoEmbed href={task.editorial_url} />
             )}
             {activeTab === 'submissions' && (
-              <SubmissionsList courseSlug={courseSlug!} taskSlug={taskSlug!} />
+              <SubmissionsList
+                courseSlug={courseSlug!}
+                taskSlug={taskSlug!}
+                onLoadCode={(c) => {
+                  setCode(c);
+                  if (taskSlug && lang) saveCode(taskSlug, lang, c);
+                }}
+              />
             )}
             {activeTab === 'solution' && solutionUnlocked && (
               solution
-                ? <Markdown content={`<!-- code-snippets -->\n\`\`\`${lang}\n${solution}\n\`\`\``} />
-                : <div className="text-tx-3 text-sm">Загрузка...</div>
+                ? <SolutionView
+                    solution={solution}
+                    lang={lang}
+                    onLoadCode={(c) => {
+                      setCode(c);
+                      if (taskSlug && lang) saveCode(taskSlug, lang, c);
+                    }}
+                  />
+                : <div className="p-4 text-tx-3 text-sm">Загрузка...</div>
             )}
           </div>
         </div>
@@ -464,7 +854,8 @@ export function TaskPage() {
                 results={results.parsed}
                 durationMs={results.durationMs}
                 timedOut={results.timedOut}
-                onClose={() => setResults(null)}
+                collapsed={resultsCollapsed}
+                onToggleCollapse={() => setResultsCollapsed((v) => !v)}
               />
             )}
           </AnimatePresence>
