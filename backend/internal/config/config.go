@@ -27,12 +27,10 @@ func Load() *Config {
 	}
 }
 
-// DefaultRunnersJSON returns the default runners config path under dataDir.
 func DefaultRunnersJSON(dataDir string) string {
 	return filepath.Join(dataDir, "runners.json")
 }
 
-// DefaultDBPath returns the default submissions database path under dataDir.
 func DefaultDBPath(dataDir string) string {
 	return filepath.Join(dataDir, "courseforge.db")
 }
