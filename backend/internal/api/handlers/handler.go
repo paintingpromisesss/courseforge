@@ -8,29 +8,44 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/paintingpromisesss/courseforge/internal/application/service"
 	"github.com/paintingpromisesss/courseforge/internal/domain"
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
 )
 
 type Handler struct {
-	mu          sync.RWMutex
-	coursesDir  string
-	courses     map[string]*domain.Course
-	catalogs    map[string]*domain.Catalog
-	runner      *runner.Runner
-	progress    *service.ProgressService
-	submissions *service.SubmissionService
-	ai          *service.AIService
+	mu            sync.RWMutex
+	coursesDir    string
+	dataDir       string
+	courses       map[string]*domain.Course
+	catalogs      map[string]*domain.Catalog
+	runner        *runner.Runner
+	progress      *service.ProgressService
+	submissions   *service.SubmissionService
+	ai            *service.AIService
+	mcpConfigRepo *repo.MCPConfigRepository
 }
 
-func New(coursesDir string, courses map[string]*domain.Course, catalogs map[string]*domain.Catalog, r *runner.Runner, ps *service.ProgressService, ss *service.SubmissionService, aiService *service.AIService) *Handler {
+func New(
+	coursesDir string,
+	dataDir string,
+	courses map[string]*domain.Course,
+	catalogs map[string]*domain.Catalog,
+	r *runner.Runner,
+	ps *service.ProgressService,
+	ss *service.SubmissionService,
+	aiService *service.AIService,
+	mcpConfigRepo *repo.MCPConfigRepository,
+) *Handler {
 	return &Handler{
-		coursesDir:  coursesDir,
-		courses:     courses,
-		catalogs:    catalogs,
-		runner:      r,
-		progress:    ps,
-		submissions: ss,
-		ai:          aiService,
+		coursesDir:    coursesDir,
+		dataDir:       dataDir,
+		courses:       courses,
+		catalogs:      catalogs,
+		runner:        r,
+		progress:      ps,
+		submissions:   ss,
+		ai:            aiService,
+		mcpConfigRepo: mcpConfigRepo,
 	}
 }
 

@@ -7,6 +7,7 @@ import type { LangDriver, RunnerStatus } from '../api/types';
 import { useTheme } from '../context/ThemeContext';
 import { useSettings, type SettingsTab } from '../context/SettingsContext';
 import { AISettingsSection } from './AISettingsSection';
+import { MCPSettingsSection } from './MCPSettingsSection';
 import { splitArgs, joinArgs } from '../lib/shlex';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -907,6 +908,24 @@ function SparklesIcon() {
   );
 }
 
+function CpuIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <rect x="9" y="9" width="6" height="6" />
+      <line x1="9" y1="1" x2="9" y2="4" />
+      <line x1="15" y1="1" x2="15" y2="4" />
+      <line x1="9" y1="20" x2="9" y2="23" />
+      <line x1="15" y1="20" x2="15" y2="23" />
+      <line x1="20" y1="9" x2="23" y2="9" />
+      <line x1="20" y1="14" x2="23" y2="14" />
+      <line x1="1" y1="9" x2="4" y2="9" />
+      <line x1="1" y1="14" x2="4" y2="14" />
+    </svg>
+  );
+}
+
+
 function RunnersSection() {
   const [filterText, setFilterText] = useState('');
   const { data: runners = {} } = useQuery({
@@ -1030,6 +1049,13 @@ const TABS: TabConfig[] = [
     subtitle: 'Настройка провайдера, моделей и системного промпта для учебного помощника',
     icon: <SparklesIcon />,
   },
+  {
+    id: 'mcp',
+    label: 'MCP-сервер',
+    title: 'Model Context Protocol (MCP)',
+    subtitle: 'Подключение внешних AI-ассистентов (Claude, Cursor, Antigravity) к инструментам CourseForge',
+    icon: <CpuIcon />,
+  },
 ];
 
 export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -1131,6 +1157,7 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
                 {activeTab === 'courses' && <CoursesSection />}
                 {activeTab === 'runners' && <RunnersSection />}
                 {activeTab === 'ai' && <AISettingsSection />}
+                {activeTab === 'mcp' && <MCPSettingsSection />}
               </div>
             </div>
           </motion.div>

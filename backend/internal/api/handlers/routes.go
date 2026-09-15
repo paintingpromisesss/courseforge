@@ -39,4 +39,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Patch("/ai/config", h.patchAIConfig)
 	r.Post("/ai/chat", h.postAIChat)
 	r.Post("/ai/models", h.postAIModels)
+
+	r.Get("/mcp/config", h.getMCPConfig)
+	r.Patch("/mcp/config", h.patchMCPConfig)
 }
