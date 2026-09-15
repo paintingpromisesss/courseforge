@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
@@ -66,7 +68,15 @@ jobs:
             tar czf "$stage.tar.gz" "$stage"
           fi
 
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: courseforge-${{ matrix.name }}
+          path: courseforge-${{ matrix.name }}.${{ matrix.archive_ext }}
+          if-no-files-found: error
+
       - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: courseforge-${{ matrix.name }}.${{ matrix.archive_ext }}
