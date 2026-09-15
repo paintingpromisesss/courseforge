@@ -3,7 +3,7 @@ import { buildMCPSetupPrompt } from './mcpPrompt';
 import type { MCPStatusResponse } from '../api/types';
 
 describe('mcpPrompt', () => {
-  it('generates clean universal prompt for stdio transport without hardcoded JSON configs', () => {
+  it('generates directive prompt for stdio with agent guide and OpenCode reference', () => {
     const status: MCPStatusResponse = {
       enabled: true,
       transport: 'stdio',
@@ -22,16 +22,18 @@ describe('mcpPrompt', () => {
 
     const prompt = buildMCPSetupPrompt(status);
     expect(prompt).toContain('НЕ редактируй файлы репозитория');
-    expect(prompt).toContain('настроить именно СВОЁ окружение');
+    expect(prompt).toContain('ТВОЕГО СОБСТВЕННОГО окружения/клиента');
     expect(prompt).toContain('F:/Proga/courseforge/bin/courseforge.exe');
     expect(prompt).toContain('--courses-dir=F:/Proga/courseforge/courses');
     expect(prompt).toContain('--data-dir=F:/Proga/courseforge/data');
+    expect(prompt).toContain('OpenCode');
+    expect(prompt).toContain('opencode.json');
+    expect(prompt).toContain('Cursor');
+    expect(prompt).toContain('Claude Code');
     expect(prompt).toContain('list_courses');
-    expect(prompt).not.toContain('opencode.json');
-    expect(prompt).not.toContain('mcpServers');
   });
 
-  it('generates clean prompt for SSE transport without requiring launch command', () => {
+  it('generates directive prompt for SSE transport without requiring launch command', () => {
     const status: MCPStatusResponse = {
       enabled: true,
       transport: 'sse',
@@ -51,8 +53,10 @@ describe('mcpPrompt', () => {
     const prompt = buildMCPSetupPrompt(status);
     expect(prompt).toContain('http://127.0.0.1:8080/api/mcp/sse');
     expect(prompt).toContain('Команда запуска процесса не требуется');
+    expect(prompt).toContain('OpenCode');
+    expect(prompt).toContain('"type": "remote"');
+    expect(prompt).toContain('serverUrl');
     expect(prompt).toContain('list_courses');
-    expect(prompt).not.toContain('opencode.json');
   });
 
   it('includes warning when toggle is disabled', () => {
