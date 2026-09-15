@@ -322,23 +322,6 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
         </label>
       </div>
 
-      {/* Warning banner when disabled */}
-      {!enabled && (
-        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
-          <span className="text-amber-400 shrink-0 text-base leading-none mt-0.5">⚠️</span>
-          <div className="space-y-1">
-            <h4 className="text-xs font-semibold text-amber-300">
-              MCP-сервер отключен в настройках CourseForge
-            </h4>
-            <p className="text-[11px] text-amber-200/80 leading-relaxed">
-              При выключенном тоггле любые подключения внешних агентов блокируются: запросы по HTTP SSE возвращают статус 403 Forbidden,
-              а запуск через команду <code className="px-1 py-0.5 rounded bg-black/30 font-mono text-amber-200">courseforge mcp</code> завершается с ошибкой.
-              Включите тумблер выше, чтобы разрешить ассистентам доступ к задачам и тестам.
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* ── 2. Signature Action Card: Copy AI Agent Setup Prompt ────────── */}
       <div className="p-5 rounded-2xl bg-gradient-to-br from-brand/10 via-bg-2 to-bg-2 border border-brand/30 shadow-sm relative overflow-hidden group">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
