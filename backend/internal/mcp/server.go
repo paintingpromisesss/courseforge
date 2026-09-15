@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 
@@ -77,8 +78,13 @@ func (s *Server) MCPServer() *server.MCPServer {
 
 // ServeStdio starts the MCP server over standard I/O (stdin/stdout).
 func (s *Server) ServeStdio() error {
+	return s.ServeStdioWithIO(context.Background(), os.Stdin, os.Stdout)
+}
+
+// ServeStdioWithIO starts the MCP server over custom I/O streams.
+func (s *Server) ServeStdioWithIO(ctx context.Context, in io.Reader, out io.Writer) error {
 	stdioServer := server.NewStdioServer(s.mcpServer)
-	return stdioServer.Listen(context.Background(), os.Stdin, os.Stdout)
+	return stdioServer.Listen(ctx, in, out)
 }
 
 // SSEServer returns an HTTP handler for SSE connections.

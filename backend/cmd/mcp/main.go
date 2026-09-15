@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/paintingpromisesss/courseforge/internal/config"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
@@ -24,8 +27,17 @@ func main() {
 	stateFile := flag.String("state-file", "", "path to active task session json file")
 	flag.Parse()
 
-	// In stdio mode, standard logs must go to stderr to avoid corrupting JSON-RPC on stdout
-	log.SetOutput(os.Stderr)
+	_ = os.MkdirAll(*dataDir, 0755)
+	debugLogPath := filepath.Join(*dataDir, "mcp_debug.log")
+	debugFile, _ := os.OpenFile(debugLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if debugFile != nil {
+		defer debugFile.Close()
+		log.SetOutput(io.MultiWriter(os.Stderr, debugFile))
+		cwd, _ := os.Getwd()
+		fmt.Fprintf(debugFile, "[%s] Starting courseforge-mcp (args: %v, pid: %d, cwd: %s)\n", time.Now().Format(time.RFC3339), os.Args, os.Getpid(), cwd)
+	} else {
+		log.SetOutput(os.Stderr)
+	}
 
 	if *dbPath == "" {
 		*dbPath = config.DefaultDBPath(*dataDir)
@@ -77,9 +89,18 @@ func main() {
 		log.Fatalf("failed to create MCP server: %v", err)
 	}
 
+
 	switch *transport {
 	case "stdio":
-		if err := srv.ServeStdio(); err != nil {
+		var in io.Reader = os.Stdin
+		var out io.Writer = os.Stdout
+
+		if debugFile != nil {
+			in = io.TeeReader(os.Stdin, debugFile)
+			out = io.MultiWriter(os.Stdout, debugFile)
+		}
+
+		if err := srv.ServeStdioWithIO(context.Background(), in, out); err != nil {
 			log.Fatalf("MCP stdio server terminated with error: %v", err)
 		}
 	case "sse":
