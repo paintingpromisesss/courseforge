@@ -54,8 +54,8 @@ func NewServer(cfg Config, provider Provider, session SessionManager) (*Server, 
 	mcpSrv := server.NewMCPServer(
 		cfg.Name,
 		cfg.Version,
-		server.WithToolCapabilities(true),
-		server.WithResourceCapabilities(true, true),
+		server.WithToolCapabilities(false),
+		server.WithResourceCapabilities(false, false),
 	)
 
 	s := &Server{
