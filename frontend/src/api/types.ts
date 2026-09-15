@@ -93,3 +93,23 @@ export interface CreateSubmissionReq {
   language: string;
   code: string;
 }
+
+export interface AIConfig {
+  provider: 'openai' | 'anthropic';
+  base_url: string;
+  api_key: string;
+  model: string;
+  system_prompt: string;
+  enabled: boolean;
+  provider_keys?: Record<string, string>;
+}
+
+export interface AIMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
+export interface AIModelItem {
+  id: string;
+  available: boolean;
+}

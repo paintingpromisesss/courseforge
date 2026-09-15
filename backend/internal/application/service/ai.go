@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -91,7 +91,7 @@ func (s *AIService) IsEnabled() bool {
 	return s.client != nil
 }
 
-func (s *AIService) ChatStream(ctx context.Context, messages []domain.Message, fn func(chunk string)) error {
+func (s *AIService) ChatStream(ctx context.Context, messages []domain.Message, thinking *bool, fn func(chunk string)) error {
 	s.mu.RLock()
 	client := s.client
 	s.mu.RUnlock()
@@ -100,16 +100,16 @@ func (s *AIService) ChatStream(ctx context.Context, messages []domain.Message, f
 		return fmt.Errorf("ai service is disabled")
 	}
 
-	return client.ChatStream(ctx, messages, fn)
+	return client.ChatStream(ctx, messages, thinking, fn)
 }
 
-func (s *AIService) FetchAvailableModels(ctx context.Context, provider domain.Provider, baseURL, apiKey string) ([]string, error) {
+func (s *AIService) FetchAvailableModels(ctx context.Context, provider domain.Provider, baseURL, apiKey string, checkAvailability bool) ([]ai.ModelItem, error) {
 	switch provider {
 	case domain.ProviderAnthropic:
 		return ai.FetchAnthropicModels(ctx, baseURL, apiKey)
 	case domain.ProviderOpenAI:
-		return ai.FetchOpenAIAvailableModels(ctx, baseURL, apiKey)
+		return ai.FetchOpenAIAvailableModels(ctx, baseURL, apiKey, checkAvailability)
 	default:
-		return ai.FetchOpenAIAvailableModels(ctx, baseURL, apiKey)
+		return ai.FetchOpenAIAvailableModels(ctx, baseURL, apiKey, checkAvailability)
 	}
 }

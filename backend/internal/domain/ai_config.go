@@ -3,12 +3,13 @@ package domain
 import "encoding/json"
 
 type AIConfig struct {
-	Provider     Provider `json:"provider"`
-	BaseURL      string   `json:"base_url"`
-	APIKey       string   `json:"api_key"`
-	Model        string   `json:"model"`
-	SystemPrompt string   `json:"system_prompt"`
-	Enabled      bool     `json:"enabled"`
+	Provider     Provider          `json:"provider"`
+	BaseURL      string            `json:"base_url"`
+	APIKey       string            `json:"api_key"`
+	Model        string            `json:"model"`
+	SystemPrompt string            `json:"system_prompt"`
+	Enabled      bool              `json:"enabled"`
+	ProviderKeys map[string]string `json:"provider_keys,omitempty"`
 }
 
 type Provider int

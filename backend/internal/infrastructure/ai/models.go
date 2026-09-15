@@ -8,12 +8,13 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
 var errStatusNotOK = errors.New("provider returned error")
 
-var openAIFetchTimeout = 10 * time.Second
+var openAIFetchTimeout = 30 * time.Second
 
 const (
 	defaultOpenAIBaseURL    = "https://api.openai.com/v1"
@@ -21,13 +22,45 @@ const (
 	anthropicVersion        = "2023-06-01" // latest stable
 )
 
-func FetchOpenAIAvailableModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
-	ctx, cancel := context.WithTimeout(ctx, openAIFetchTimeout)
-	defer cancel()
+type ModelItem struct {
+	ID        string `json:"id"`
+	Available bool   `json:"available"`
+}
 
+type cachedModels struct {
+	items     []ModelItem
+	expiresAt time.Time
+}
+
+var (
+	modelsCacheMu sync.RWMutex
+	modelsCache   = make(map[string]cachedModels)
+)
+
+type openRouterEndpointsResponse struct {
+	Data struct {
+		Endpoints []struct {
+			Status int `json:"status"`
+		} `json:"endpoints"`
+	} `json:"data"`
+}
+
+func FetchOpenAIAvailableModels(ctx context.Context, baseURL, apiKey string, checkAvailability bool) ([]ModelItem, error) {
 	if baseURL == "" {
 		baseURL = defaultOpenAIBaseURL
 	}
+
+	cacheKey := fmt.Sprintf("%s::%s::avail=%t", baseURL, apiKey, checkAvailability)
+	modelsCacheMu.RLock()
+	if entry, ok := modelsCache[cacheKey]; ok && time.Now().Before(entry.expiresAt) {
+		modelsCacheMu.RUnlock()
+		return entry.items, nil
+	}
+	modelsCacheMu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(ctx, openAIFetchTimeout)
+	defer cancel()
+
 	endpoint := strings.TrimRight(baseURL, "/") + "/models"
 
 	client := &http.Client{Timeout: openAIFetchTimeout}
@@ -36,6 +69,10 @@ func FetchOpenAIAvailableModels(ctx context.Context, baseURL, apiKey string) ([]
 	if err != nil {
 		return nil, err
 	}
+
+	req.Header.Set("User-Agent", "CourseForge/1.0")
+	req.Header.Set("HTTP-Referer", "https://courseforge.dev")
+	req.Header.Set("X-Title", "CourseForge")
 
 	if apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -60,24 +97,109 @@ func FetchOpenAIAvailableModels(ctx context.Context, baseURL, apiKey string) ([]
 		return nil, err
 	}
 
-	var modelIDs []string
-	for _, modelInfo := range result.Data {
-		modelIDs = append(modelIDs, modelInfo.ID)
+	var items []ModelItem
+	if checkAvailability && strings.Contains(baseURL, "openrouter.ai") {
+		items = fetchOpenRouterModelsWithAvailability(ctx, baseURL, apiKey, result.Data)
+	} else {
+		items = make([]ModelItem, 0, len(result.Data))
+		for _, m := range result.Data {
+			items = append(items, ModelItem{ID: m.ID, Available: true})
+		}
 	}
 
-	return modelIDs, nil
+	modelsCacheMu.Lock()
+	modelsCache[cacheKey] = cachedModels{
+		items:     items,
+		expiresAt: time.Now().Add(2 * time.Minute),
+	}
+	modelsCacheMu.Unlock()
+
+	return items, nil
+}
+
+func fetchOpenRouterModelsWithAvailability(ctx context.Context, baseURL, apiKey string, rawModels []openAIModelInfo) []ModelItem {
+	items := make([]ModelItem, len(rawModels))
+	var wg sync.WaitGroup
+
+	tr := &http.Transport{
+		MaxIdleConns:        500,
+		MaxIdleConnsPerHost: 500,
+		MaxConnsPerHost:     500,
+	}
+	epClient := &http.Client{
+		Transport: tr,
+		Timeout:   10 * time.Second,
+	}
+
+	for i, m := range rawModels {
+		wg.Add(1)
+		go func(idx int, modelID string) {
+			defer wg.Done()
+			if ctx.Err() != nil {
+				items[idx] = ModelItem{ID: modelID, Available: false}
+				return
+			}
+			avail := checkOpenRouterModelAvailability(ctx, epClient, baseURL, modelID, apiKey)
+			items[idx] = ModelItem{ID: modelID, Available: avail}
+		}(i, m.ID)
+	}
+
+	wg.Wait()
+	return items
+}
+
+func checkOpenRouterModelAvailability(ctx context.Context, client *http.Client, baseURL, modelID, apiKey string) bool {
+	epURL := strings.TrimRight(baseURL, "/") + "/models/" + modelID + "/endpoints"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, epURL, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("User-Agent", "CourseForge/1.0")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+
+	var epData openRouterEndpointsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&epData); err != nil {
+		return false
+	}
+
+	for _, ep := range epData.Data.Endpoints {
+		if ep.Status == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // FetchAnthropicModels calls GET /v1/models to fetch all models
 // available to the provided API key. Requires x-api-key + anthropic-version headers.
-func FetchAnthropicModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+func FetchAnthropicModels(ctx context.Context, baseURL, apiKey string) ([]ModelItem, error) {
 	ctx, cancel := context.WithTimeout(ctx, openAIFetchTimeout)
 	defer cancel()
 
+	baseURL = strings.TrimRight(baseURL, "/")
 	if baseURL == "" {
 		baseURL = defaultAnthropicBaseURL
 	}
-	endpoint := strings.TrimRight(baseURL, "/") + "/v1/models"
+	var endpoint string
+	if strings.HasSuffix(baseURL, "/models") {
+		endpoint = baseURL
+	} else if strings.HasSuffix(baseURL, "/v1") {
+		endpoint = baseURL + "/models"
+	} else {
+		endpoint = baseURL + "/v1/models"
+	}
 
 	client := &http.Client{Timeout: openAIFetchTimeout}
 
@@ -109,9 +231,9 @@ func FetchAnthropicModels(ctx context.Context, baseURL, apiKey string) ([]string
 		return nil, err
 	}
 
-	var modelIDs []string
+	var items []ModelItem
 	for _, m := range result.Data {
-		modelIDs = append(modelIDs, m.ID)
+		items = append(items, ModelItem{ID: m.ID, Available: true})
 	}
 
 	// Paginate forward — use last_id as after_id cursor.
@@ -147,13 +269,13 @@ func FetchAnthropicModels(ctx context.Context, baseURL, apiKey string) ([]string
 		resp2.Body.Close()
 
 		for _, m := range result2.Data {
-			modelIDs = append(modelIDs, m.ID)
+			items = append(items, ModelItem{ID: m.ID, Available: true})
 		}
 		after = result2.LastID
 		hasMore = result2.HasMore
 	}
 
-	return modelIDs, nil
+	return items, nil
 }
 
 // anthropicModelsResponse is the response schema for GET /v1/models.

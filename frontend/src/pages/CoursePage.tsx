@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useParams, useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useOutlet } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { api } from '../api/client';
-import { ProgressBar } from '../components/ui/ProgressBar';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { ProgressBar } from '../components/ui/ProgressBar';
 import type { TrackItem } from '../api/types';
-import { buildTree, initialOpen, type TreeNode, type NavTarget } from '../lib/buildTree';
+import { buildTree, type TreeNode, type NavTarget } from '../lib/buildTree';
 
 function TreeRow({
   node,
@@ -278,8 +278,21 @@ function computeAutoFitWidth(tree: TreeNode[], open: Record<string, boolean>): n
   return Math.min(Math.max(Math.ceil(maxW), 260), 650);
 }
 
-function Sidebar({ title, tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheory, onResetProgress }: SidebarProps) {
+interface SidebarProps {
+  title: string;
+  tracks: TrackItem[];
+  done: Record<string, boolean>;
+  activeTaskSlug?: string;
+  activeUnitSlug?: string;
+  onTask: (t: NavTarget) => void;
+  onTheory: (t: NavTarget) => void;
+  onResetProgress: () => void;
+}
+
+function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheory, onResetProgress }: SidebarProps) {
   const tree = useMemo(() => buildTree(tracks, done), [tracks, done]);
+  const totalDone = useMemo(() => tree.reduce((a, n) => a + n.done, 0), [tree]);
+  const total = useMemo(() => tree.reduce((a, n) => a + n.total, 0), [tree]);
   const treeRef = useRef<HTMLDivElement>(null);
 
   const [open, setOpen] = useState<Record<string, boolean>>(() => {
@@ -414,15 +427,23 @@ function Sidebar({ title, tracks, done, activeTaskSlug, activeUnitSlug, onTask, 
   const toggleAll = () => {
     const nextState = !allExpanded;
     const nextOpen: Record<string, boolean> = {};
-    for (const id of trackIds) {
-      nextOpen[id] = nextState;
+    const containsActive = (n: TreeNode): boolean => {
+      if (n.kind === 'task') return n.nav?.task === activeTaskSlug;
+      if (n.kind === 'theory') return n.nav?.unit === activeUnitSlug;
+      return n.children.some(containsActive);
+    };
+    for (const node of tree) {
+      if (node.kind !== 'group') continue;
+      if (!nextState && containsActive(node)) {
+        nextOpen[node.id] = open[node.id] ?? true;
+        continue;
+      }
+      nextOpen[node.id] = nextState;
     }
     setOpen(nextOpen);
   };
 
   const hasProgress = Object.keys(done).length > 0;
-  const totalDone = tree.reduce((a, n) => a + n.done, 0);
-  const total = tree.reduce((a, n) => a + n.total, 0);
 
   return (
     <div className="flex h-full shrink-0">
@@ -453,18 +474,19 @@ function Sidebar({ title, tracks, done, activeTaskSlug, activeUnitSlug, onTask, 
           <button
             type="button"
             onClick={toggleAll}
-            className="flex items-center gap-1.5 text-xs font-medium text-tx-2 hover:text-tx-1 bg-bg-3 hover:bg-bg-4 px-2.5 py-1 rounded-md active:scale-95 transition-all"
+            title={allExpanded ? 'Свернуть все' : 'Развернуть все'}
+            className="w-7 h-7 flex items-center justify-center rounded-md text-tx-3 hover:text-tx-1 hover:bg-bg-3 active:scale-95 transition-all"
           >
             <svg
-              width="13"
-              height="13"
+              width="14"
+              height="14"
               viewBox="0 0 16 16"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className="text-tx-3 shrink-0"
+              className="shrink-0"
             >
               {allExpanded ? (
                 <>
@@ -478,7 +500,6 @@ function Sidebar({ title, tracks, done, activeTaskSlug, activeUnitSlug, onTask, 
                 </>
               )}
             </svg>
-            <span>{allExpanded ? 'Свернуть' : 'Развернуть'}</span>
           </button>
         </div>
 
@@ -501,37 +522,40 @@ function Sidebar({ title, tracks, done, activeTaskSlug, activeUnitSlug, onTask, 
 
         {/* Bottom Progress & Actions Panel */}
         {total > 0 && (
-          <div className="p-3 border-t border-bdr bg-bg-2 select-none space-y-2.5">
+          <div className="p-2.5 border-t border-bdr bg-bg-2 select-none space-y-1.5 shrink-0">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-tx-3 font-medium">Прогресс</span>
-              <span className={clsx('font-semibold text-xs', totalDone === total ? 'text-ok' : 'text-tx-2')}>
-                {totalDone === total ? `✓ ${totalDone}/${total}` : `${totalDone}/${total}`} ({Math.round((totalDone / total) * 100)}%)
-              </span>
-            </div>
-            <ProgressBar value={totalDone} max={total} />
+              <div className="flex items-center gap-1.5">
+                <span className="text-tx-3 text-[11px] font-medium">Прогресс</span>
+                <span className={clsx('font-semibold text-[11px]', totalDone === total ? 'text-ok' : 'text-tx-2')}>
+                  {totalDone === total ? `✓ ${totalDone}/${total}` : `${totalDone}/${total}`} ({Math.round((totalDone / total) * 100)}%)
+                </span>
+              </div>
 
-            {hasProgress && (
-              <button
-                onClick={onResetProgress}
-                className="w-full mt-2 py-1.5 px-2.5 rounded-md text-xs font-medium text-tx-3 hover:text-err bg-bg-3 hover:bg-bg-4 transition-all flex items-center justify-center gap-1.5 active:scale-98"
-              >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="shrink-0"
+              {hasProgress && (
+                <button
+                  type="button"
+                  onClick={onResetProgress}
+                  title="Сбросить прогресс"
+                  className="w-6 h-6 flex items-center justify-center rounded-md text-tx-3 hover:text-err hover:bg-bg-3 active:scale-95 transition-all"
                 >
-                  <path d="M2.5 2v4h4" />
-                  <path d="M3.5 10a6 6 0 1 0 1.5-6.5L2.5 6" />
-                </svg>
-                <span>Сбросить прогресс</span>
-              </button>
-            )}
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M2.5 2v4h4" />
+                    <path d="M3.5 10a6 6 0 1 0 1.5-6.5L2.5 6" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            <ProgressBar value={totalDone} max={total} />
           </div>
         )}
       </nav>
@@ -555,12 +579,51 @@ export interface CoursePageContext {
   mainRef: React.RefObject<HTMLElement | null>;
 }
 
+const taskTransitionVariants = {
+  initial: (fromEmpty: boolean) =>
+    fromEmpty
+      ? { opacity: 0, y: 16 }
+      : { opacity: 0 },
+  animate: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.18,
+      ease: 'easeOut' as const,
+    },
+  },
+  exit: (fromEmpty: boolean) =>
+    fromEmpty
+      ? { opacity: 0, y: -10, transition: { duration: 0.14 } }
+      : { opacity: 0, transition: { duration: 0.14 } },
+};
+
 export function CoursePage() {
-  const { courseSlug } = useParams<{ courseSlug: string }>();
+  const { courseSlug, trackSlug, topicSlug, unitSlug, taskSlug } = useParams<{
+    courseSlug: string;
+    trackSlug?: string;
+    topicSlug?: string;
+    unitSlug?: string;
+    taskSlug?: string;
+  }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
   const qc = useQueryClient();
   const [resetOpen, setResetOpen] = useState(false);
+
+  // Group key unites tasks within the same unit (common theory).
+  // Navigating between tasks in the same unit does NOT unmount TaskPage,
+  // allowing theory to stay completely untouched and avoid auto-switching.
+  const currentGroupKey = unitSlug
+    ? `group:${trackSlug ?? ''}/${topicSlug ?? ''}/${unitSlug}${taskSlug ? ':task' : ':theory'}`
+    : 'empty';
+  const prevGroupKeyRef = useRef<string>('empty');
+  const wasEmpty = prevGroupKeyRef.current === 'empty';
+
+  useEffect(() => {
+    prevGroupKeyRef.current = currentGroupKey;
+  }, [currentGroupKey]);
 
   const { data: course, isLoading } = useQuery({
     queryKey: ['course', courseSlug],
@@ -575,8 +638,6 @@ export function CoursePage() {
   });
 
   const done = progress?.completed_tasks ?? {};
-  const { taskSlug, unitSlug } = useParams<{ taskSlug?: string; unitSlug?: string }>();
-  const location = useLocation();
 
   // Remember the last visited spot for the "Продолжить обучение" banner on the home page.
   useEffect(() => {
@@ -609,6 +670,8 @@ export function CoursePage() {
       qc.invalidateQueries({ queryKey: ['catalogs'] });
     },
   });
+
+  const outlet = useOutlet({ mainRef } satisfies CoursePageContext);
 
   if (isLoading) return <div className="p-8 text-tx-3">Загрузка...</div>;
   if (!course) return <div className="p-8 text-err">Курс не найден</div>;
@@ -653,16 +716,24 @@ export function CoursePage() {
         onConfirm={() => resetMut.mutate()}
         onCancel={() => setResetOpen(false)}
       />
-      <motion.main
+      <main
         ref={mainRef}
-        className="flex-1 overflow-auto"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 12, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
-        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1], delay: 0.06 }}
+        className="flex-1 h-full overflow-hidden relative"
       >
-        <Outlet context={{ mainRef } satisfies CoursePageContext} />
-      </motion.main>
+        <AnimatePresence mode="wait" custom={wasEmpty} initial={false}>
+          <motion.div
+            key={currentGroupKey}
+            custom={wasEmpty}
+            variants={taskTransitionVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className="h-full overflow-auto"
+          >
+            {outlet}
+          </motion.div>
+        </AnimatePresence>
+      </main>
     </div>
   );
 }

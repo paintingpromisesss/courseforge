@@ -9,6 +9,7 @@ import { Tabs } from '../components/ui/Tabs';
 import { Markdown, VideoEmbed } from '../components/ui/Markdown';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Badge } from '../components/ui/Badge';
+import { AIAssist } from '../components/ui/AIAssist';
 import { loadCode, saveCode } from '../lib/editorStorage';
 import { CodeMirrorEditor } from '../components/ui/CodeMirrorEditor';
 import { LangSelect } from '../components/ui/LangSelect';
@@ -592,8 +593,9 @@ export function TaskPage() {
   const [lang, setLang] = useState<string>('');
   const [code, setCode] = useState<string>('');
   const [leftTab, setLeftTab] = useState<LeftTab | null>(null);
-  const initialTabSet = useRef(false);
+  const prevUnitSlug = useRef<string | undefined>(undefined);
   const prevTaskSlug = useRef<string | undefined>(undefined);
+  const prevUnitForScroll = useRef<string | undefined>(undefined);
   const [showSolutionDialog, setShowSolutionDialog] = useState(false);
   // manual peek before solving; reset per task so the lock is unique per task
   const [solutionRevealed, setSolutionRevealed] = useState(false);
@@ -603,10 +605,23 @@ export function TaskPage() {
   const [markingTheoryDone, setMarkingTheoryDone] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollPanelRef = useRef<HTMLDivElement>(null);
+  const [editorFading, setEditorFading] = useState(false);
+  const prevTaskForFade = useRef(taskSlug);
 
   useEffect(() => {
-    if (task?.languages?.length && !lang) {
-      setLang(task.languages[0]);
+    if (prevTaskForFade.current !== taskSlug) {
+      prevTaskForFade.current = taskSlug;
+      setEditorFading(true);
+      const timer = setTimeout(() => setEditorFading(false), 140);
+      return () => clearTimeout(timer);
+    }
+  }, [taskSlug]);
+
+  useEffect(() => {
+    if (task?.languages?.length) {
+      if (!lang || !task.languages.includes(lang)) {
+        setLang(task.languages[0]);
+      }
     }
   }, [task, lang]);
 
@@ -623,10 +638,17 @@ export function TaskPage() {
   });
 
   useEffect(() => {
-    if (!taskSlug || !lang || !template) return;
+    if (!taskSlug || !lang) return;
     const saved = loadCode(taskSlug, lang);
-    setCode(saved ?? template);
-  }, [taskSlug, lang, template]);
+    if (saved !== null) {
+      setCode(saved);
+    } else if (template) {
+      setCode(template);
+    } else {
+      const cached = qc.getQueryData<string>(['template', courseSlug, trackSlug, topicSlug, unitSlug, taskSlug, lang]);
+      setCode(cached ?? '');
+    }
+  }, [taskSlug, lang, template, courseSlug, trackSlug, topicSlug, unitSlug, qc]);
 
   const { data: theory } = useQuery({
     queryKey: ['theory', courseSlug, trackSlug, topicSlug, unitSlug],
@@ -670,7 +692,7 @@ export function TaskPage() {
   const { data: solution } = useQuery({
     queryKey: ['solution', courseSlug, trackSlug, topicSlug, unitSlug, taskSlug, lang],
     queryFn: () => api.getSolution(courseSlug!, trackSlug!, topicSlug!, unitSlug!, taskSlug!, lang),
-    enabled: solutionUnlocked && !!(courseSlug && trackSlug && topicSlug && unitSlug && taskSlug && lang),
+    enabled: !!(courseSlug && trackSlug && topicSlug && unitSlug && taskSlug && lang),
   });
 
   const { data: progress } = useQuery({
@@ -693,14 +715,28 @@ export function TaskPage() {
 
   useEffect(() => {
     if (!unit || progress === undefined) return;
-    if (prevTaskSlug.current !== taskSlug) {
-      prevTaskSlug.current = taskSlug;
-      initialTabSet.current = false;
+
+    const isNewUnit = prevUnitSlug.current !== unitSlug;
+    const isNewTask = prevTaskSlug.current !== taskSlug;
+
+    prevUnitSlug.current = unitSlug;
+    prevTaskSlug.current = taskSlug;
+
+    if (isNewUnit) {
+      // First load or navigated to a different unit (different group)
+      setLeftTab(unit.has_theory && !theoryDone ? 'theory' : 'statement');
+    } else if (isNewTask) {
+      // Switched tasks within the SAME unit/group:
+      // 1. If theory is open, keep it untouched ("если открыта теория - она никуда не девается")
+      // 2. Do NOT jump/auto-switch to theory ("автовыбор задачи не должен соскакивать на теорию")
+      setLeftTab((currentTab) => {
+        if (currentTab === 'theory') return 'theory';
+        if (currentTab === 'statement') return 'statement';
+        if (currentTab === 'video' && task?.editorial_url) return 'video';
+        return 'statement';
+      });
     }
-    if (initialTabSet.current) return;
-    initialTabSet.current = true;
-    setLeftTab(unit.has_theory && !theoryDone ? 'theory' : 'statement');
-  }, [taskSlug, unit, progress, theoryDone]);
+  }, [unitSlug, taskSlug, unit, progress, theoryDone, task?.editorial_url]);
 
   const activeTab = leftTab ?? 'statement';
 
@@ -719,8 +755,15 @@ export function TaskPage() {
   }, [courseSlug, unitSlug, theoryDone, qc]);
 
   useLayoutEffect(() => {
-    if (scrollPanelRef.current) scrollPanelRef.current.scrollTop = 0;
-  }, [taskSlug]);
+    const isNewUnit = prevUnitForScroll.current !== unitSlug;
+    prevUnitForScroll.current = unitSlug;
+
+    // Reset scroll when switching units or when viewing task statement/tabs,
+    // but keep scroll untouched if staying on theory within the same unit!
+    if (isNewUnit || activeTab !== 'theory') {
+      if (scrollPanelRef.current) scrollPanelRef.current.scrollTop = 0;
+    }
+  }, [taskSlug, unitSlug, activeTab]);
 
   const handleCodeChange = useCallback((val: string) => {
     setCode(val);
@@ -784,9 +827,64 @@ export function TaskPage() {
     }
   };
 
+  const MIN_CODE_WIDTH = 360;
+
   const [leftPct, setLeftPct] = useState(45);
   const splitRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+
+  const [aiDocked, setAiDocked] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem('cf_ai_mode') === 'docked';
+      } catch {
+        /* ignore */
+      }
+    }
+    return false;
+  });
+  const [aiWidth, setAiWidth] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = Number(localStorage.getItem('cf_ai_width'));
+        if (!isNaN(saved) && saved >= 360 && saved <= 800) return saved;
+      } catch {
+        /* ignore */
+      }
+    }
+    return 440;
+  });
+
+  const handleAiDockChange = useCallback((docked: boolean, width: number) => {
+    setAiDocked(docked);
+    setAiWidth(width);
+  }, []);
+
+  const getMaxAiWidth = useCallback(() => {
+    if (!splitRef.current) return 800;
+    const containerWidth = splitRef.current.clientWidth;
+    const leftWidth = (leftPct / 100) * containerWidth;
+    // Leave at least MIN_CODE_WIDTH for code editor and 8px for splitters
+    const available = containerWidth - leftWidth - MIN_CODE_WIDTH - 8;
+    return Math.max(360, Math.min(800, available));
+  }, [leftPct]);
+
+  // Keep leftPct within bounds so code editor always gets at least MIN_CODE_WIDTH
+  useEffect(() => {
+    const clampLeftPct = () => {
+      if (!splitRef.current) return;
+      const containerWidth = splitRef.current.clientWidth;
+      if (containerWidth <= 0) return;
+      const reservedRight = (aiDocked ? aiWidth : 0) + MIN_CODE_WIDTH + (aiDocked ? 8 : 4);
+      const maxLeftWidth = Math.max(0, containerWidth - reservedRight);
+      const maxPct = Math.min(80, (maxLeftWidth / containerWidth) * 100);
+      setLeftPct((prev) => (prev > maxPct ? Math.max(15, maxPct) : prev));
+    };
+
+    clampLeftPct();
+    window.addEventListener('resize', clampLeftPct);
+    return () => window.removeEventListener('resize', clampLeftPct);
+  }, [aiDocked, aiWidth]);
 
   const onDividerMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -797,8 +895,14 @@ export function TaskPage() {
     const onMove = (ev: MouseEvent) => {
       if (!dragging.current || !splitRef.current) return;
       const rect = splitRef.current.getBoundingClientRect();
-      const pct = ((ev.clientX - rect.left) / rect.width) * 100;
-      setLeftPct(Math.min(80, Math.max(20, pct)));
+      const containerWidth = rect.width;
+      const reservedRight = (aiDocked ? aiWidth : 0) + MIN_CODE_WIDTH + (aiDocked ? 8 : 4);
+      const maxLeftWidth = Math.max(0, containerWidth - reservedRight);
+      const maxPct = Math.min(80, (maxLeftWidth / containerWidth) * 100);
+      const minPct = Math.min(maxPct, Math.max(15, (200 / containerWidth) * 100));
+
+      const pct = ((ev.clientX - rect.left) / containerWidth) * 100;
+      setLeftPct(Math.min(maxPct, Math.max(minPct, pct)));
     };
     const onUp = () => {
       dragging.current = false;
@@ -809,7 +913,7 @@ export function TaskPage() {
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
-  }, []);
+  }, [aiDocked, aiWidth]);
 
   return (
     <div className="flex flex-col h-full">
@@ -846,7 +950,14 @@ export function TaskPage() {
               const BASE = import.meta.env.VITE_API_URL ?? '/api';
               const assetBase = `${BASE}/courses/${courseSlug}/tracks/${trackSlug}/topics/${topicSlug}/units/${unitSlug}/tasks/${taskSlug}`;
               return statement
-                ? <Markdown content={statement} assetBase={assetBase} />
+                ? <motion.div
+                    key={`statement-${taskSlug}`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.16, ease: 'easeOut' }}
+                  >
+                    <Markdown content={statement} assetBase={assetBase} />
+                  </motion.div>
                 : <div className="text-tx-3 text-sm">Загрузка...</div>;
             })()}
             {activeTab === 'video' && task?.editorial_url && (
@@ -882,7 +993,7 @@ export function TaskPage() {
           className="w-1 shrink-0 bg-bdr hover:bg-brand cursor-col-resize transition-colors"
         />
 
-        <div className="flex-1 flex flex-col overflow-hidden relative">
+        <div className="flex-1 min-w-[360px] flex flex-col overflow-hidden relative">
           <div className="flex items-center gap-2 px-3 h-11 shrink-0 border-b border-bdr bg-bg-2">
             <LangSelect
               languages={task?.languages ?? []}
@@ -918,7 +1029,12 @@ export function TaskPage() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-hidden">
+          <div
+            className={clsx(
+              'flex-1 overflow-hidden transition-opacity duration-150 ease-out',
+              editorFading ? 'opacity-40' : 'opacity-100'
+            )}
+          >
             <CodeMirrorEditor
               value={code}
               language={lang}
@@ -939,6 +1055,29 @@ export function TaskPage() {
             )}
           </AnimatePresence>
         </div>
+
+        {/* AI Assistant: Docked column or Floating/Closed portal */}
+        <AIAssist
+          taskSlug={taskSlug!}
+          unitSlug={unitSlug!}
+          taskTitle={task?.title}
+          taskDescription={statement}
+          language={lang}
+          currentCode={code}
+          templateCode={template}
+          testsCode={testCode}
+          solutionCode={solution}
+          testOutput={
+            results
+              ? `Тесты (${results.parsed.passed}/${results.parsed.total} пройдено, время ${results.durationMs}ms${results.timedOut ? ', ТАЙМАУТ' : ''}):\n` +
+                results.parsed.tests
+                  .map((t) => `- [${t.passed ? 'PASS' : 'FAIL'}] ${t.name}${t.detail ? `:\n  ${t.detail.replace(/\n/g, '\n  ')}` : ''}`)
+                  .join('\n')
+              : undefined
+          }
+          onDockChange={handleAiDockChange}
+          maxDockedWidth={getMaxAiWidth}
+        />
       </div>
 
       <ConfirmDialog

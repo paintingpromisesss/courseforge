@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Routes, Route, Navigate, Link, useOutlet, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,9 +8,10 @@ import { CoursePage } from './pages/CoursePage';
 import { TaskPage } from './pages/TaskPage';
 import { TheoryPage } from './pages/TheoryPage';
 import { SettingsPanel } from './components/SettingsPanel';
+import { useSettings } from './context/SettingsContext';
 import { api } from './api/client';
 
-function GearIcon() {
+export function GearIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
@@ -44,7 +44,7 @@ function Logo() {
 
 function AppLayout() {
   const { courseSlug, catalogSlug } = useParams<{ courseSlug?: string; catalogSlug?: string }>();
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { isSettingsOpen, openSettings, closeSettings } = useSettings();
 
   const { data: course } = useQuery({
     queryKey: ['course', courseSlug],
@@ -92,9 +92,11 @@ function AppLayout() {
             </span>
           );
         })}
+
         <button
-          onClick={() => setSettingsOpen(true)}
+          onClick={() => openSettings()}
           className="ml-auto text-tx-3 hover:text-tx-1 transition-colors p-1 rounded hover:bg-bg-4"
+          title="Настройки"
         >
           <GearIcon />
         </button>
@@ -109,7 +111,7 @@ function AppLayout() {
           </motion.div>
         </AnimatePresence>
       </div>
-      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsPanel open={isSettingsOpen} onClose={closeSettings} />
     </div>
   );
 }
