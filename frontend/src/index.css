@@ -37,6 +37,16 @@ body {
   min-height: 100vh;
 }
 
+/* Disable programming font ligatures (<- -> != == <= >= := etc.) so code characters never merge */
+*, ::before, ::after {
+  font-variant-ligatures: none;
+}
+
+code, pre, kbd, samp, input, textarea, .font-mono, [class*="font-mono"], .cm-editor, .cm-editor * {
+  font-variant-ligatures: none !important;
+  font-feature-settings: "liga" 0, "calt" 0, "dlig" 0, "hlig" 0 !important;
+}
+
 *:focus-visible {
   @apply outline-none ring-2 ring-brand ring-offset-2 ring-offset-bg-1;
 }

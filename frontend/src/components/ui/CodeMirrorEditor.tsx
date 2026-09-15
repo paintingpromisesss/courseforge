@@ -89,7 +89,17 @@ const editorTheme = EditorView.theme({
     fontVariantLigatures: 'none',
     fontFeatureSettings: '"liga" 0, "calt" 0',
   },
-  '.cm-content': { paddingTop: '14px', paddingBottom: '14px', caretColor: BRAND },
+  '.cm-content': {
+    paddingTop: '14px',
+    paddingBottom: '14px',
+    caretColor: BRAND,
+    fontVariantLigatures: 'none',
+    fontFeatureSettings: '"liga" 0, "calt" 0, "dlig" 0',
+  },
+  '.cm-line': {
+    fontVariantLigatures: 'none',
+    fontFeatureSettings: '"liga" 0, "calt" 0, "dlig" 0',
+  },
   '.cm-focused': { outline: 'none' },
   '.cm-editor': { height: '100%' },
   '.cm-gutters': { backgroundColor: 'var(--bg-1)', color: 'var(--tx-3)', border: 'none' },

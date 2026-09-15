@@ -907,7 +907,8 @@ function SparklesIcon() {
   );
 }
 
-function RunnersSection({ filterText = '' }: { filterText?: string }) {
+function RunnersSection() {
+  const [filterText, setFilterText] = useState('');
   const { data: runners = {} } = useQuery({
     queryKey: ['runners'],
     queryFn: api.listRunners,
@@ -940,7 +941,7 @@ function RunnersSection({ filterText = '' }: { filterText?: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h3 className="text-sm font-semibold text-tx-1">
             Среды выполнения {filterText.trim() ? `(${filteredRunners.length})` : ''}
@@ -950,6 +951,29 @@ function RunnersSection({ filterText = '' }: { filterText?: string }) {
           </p>
         </div>
         <SetupPromptButton statuses={statuses} drivers={runners} />
+      </div>
+
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-tx-3 pointer-events-none">
+          <SearchIcon />
+        </span>
+        <input
+          type="text"
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          placeholder="Поиск языка или среды выполнения (напр. Python, Go, PostgreSQL)..."
+          className="w-full bg-bg-2 hover:bg-bg-3 focus:bg-bg-1 border border-bdr focus:border-brand/60 rounded-xl pl-9 pr-8 py-2 text-xs text-tx-1 placeholder:text-tx-3 outline-none transition-all"
+        />
+        {filterText && (
+          <button
+            type="button"
+            onClick={() => setFilterText('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-tx-3 hover:text-tx-1 text-xs leading-none cursor-pointer"
+            aria-label="Очистить поиск"
+          >
+            ×
+          </button>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -1010,7 +1034,6 @@ const TABS: TabConfig[] = [
 
 export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { activeTab, setActiveTab } = useSettings();
-  const [searchQuery, setSearchQuery] = useState('');
 
   // Close on Escape
   useEffect(() => {
@@ -1021,35 +1044,6 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [open, onClose]);
-
-  // Reset search when opened
-  useEffect(() => {
-    if (open) {
-      setSearchQuery('');
-    }
-  }, [open]);
-
-  // Auto-switch tabs when search clearly points to one category
-  const handleSearchChange = (query: string) => {
-    setSearchQuery(query);
-    const q = query.toLowerCase().trim();
-    if (!q) return;
-
-    if (/тем|свет|dark|light|theme|дизайн|внешн/i.test(q)) {
-      setActiveTab('general');
-    } else if (/курс|каталог|импорт|манифест|папк|course|import/i.test(q)) {
-      setActiveTab('courses');
-    } else if (
-      /ai|ии|нейрос|ассист|gpt|openai|claude|gemini|ollama|deepseek|модел|промпт|freetoken|openrouter|мышлени|рассужден|think|reason/i.test(q)
-    ) {
-      setActiveTab('ai');
-    } else if (
-      /раннер|компил|тест|runner|go|python|node|ts|postgres|sql|rust|bash|драйвер/i.test(q) ||
-      RUNNERS.some((r) => r.id.includes(q) || r.name.toLowerCase().includes(q))
-    ) {
-      setActiveTab('runners');
-    }
-  };
 
   const currentTab = TABS.find((t) => t.id === activeTab) ?? TABS[0];
 
@@ -1080,32 +1074,8 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
           >
             {/* Left Sidebar */}
             <div className="w-60 shrink-0 bg-bg-2/50 border-r border-bdr flex flex-col p-4 select-none">
-              {/* Search */}
-              <div className="relative mb-4">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-tx-3 pointer-events-none">
-                  <SearchIcon />
-                </span>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  placeholder="Поиск..."
-                  className="w-full bg-bg-3/70 hover:bg-bg-3 focus:bg-bg-1 border border-bdr focus:border-brand/60 rounded-lg pl-8 pr-7 py-1.5 text-xs text-tx-1 placeholder-tx-3 outline-none transition-all"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-tx-3 hover:text-tx-1 text-xs leading-none"
-                    aria-label="Очистить поиск"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-
               {/* Category label */}
-              <div className="text-[11px] font-semibold text-tx-3 uppercase tracking-wider px-2.5 mb-1.5">
+              <div className="text-[11px] font-semibold text-tx-3 uppercase tracking-wider px-2.5 mb-2">
                 Настройки
               </div>
 
@@ -1159,7 +1129,7 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
               <div className="flex-1 overflow-y-auto p-6">
                 {activeTab === 'general' && <ThemeSection />}
                 {activeTab === 'courses' && <CoursesSection />}
-                {activeTab === 'runners' && <RunnersSection filterText={searchQuery} />}
+                {activeTab === 'runners' && <RunnersSection />}
                 {activeTab === 'ai' && <AISettingsSection />}
               </div>
             </div>

@@ -1006,6 +1006,7 @@ export function TaskPage() {
             >
               Сброс
             </button>
+
             {runnerStatus && !runnerReady && (
               <span className="ml-auto flex items-center gap-1.5 text-warn text-xs" title={runnerStatus.message}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -1077,6 +1078,8 @@ export function TaskPage() {
           }
           onDockChange={handleAiDockChange}
           maxDockedWidth={getMaxAiWidth}
+          resultsOpen={!!results}
+          resultsCollapsed={resultsCollapsed}
         />
       </div>
 

@@ -170,7 +170,67 @@ export function CoursesPage() {
   return (
     <div className="overflow-auto h-full">
       <div className="max-w-5xl mx-auto px-6 py-12">
-        <h1 className="text-2xl font-semibold text-tx-1 mb-8">Курсы</h1>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-2xl font-semibold text-tx-1">Курсы</h1>
+            {editMode && (
+              <p className="text-xs text-tx-3 mt-1">
+                Выберите группы или курсы для удаления
+              </p>
+            )}
+          </div>
+
+          {hasAny && (
+            <div className="flex items-center gap-2 shrink-0">
+              {editMode ? (
+                <>
+                  {delMut.isError && (
+                    <span className="px-2.5 py-1 rounded-lg bg-err/10 border border-err/30 text-err text-xs">
+                      {(delMut.error as Error).message}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => { setPurge(false); setConfirmOpen(true); }}
+                    disabled={selected.size === 0}
+                    className={clsx(
+                      'px-3.5 h-9 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all',
+                      selected.size === 0
+                        ? 'bg-bg-2 border border-bdr text-tx-3 cursor-not-allowed opacity-60'
+                        : 'bg-err text-white hover:opacity-90 shadow-sm',
+                    )}
+                  >
+                    <TrashIcon />
+                    {`Удалить${selected.size ? ` (${selected.size})` : ''}`}
+                  </button>
+                  <button
+                    onClick={exitMode}
+                    className="px-3.5 h-9 rounded-lg border border-brand bg-brand text-white text-xs font-medium hover:bg-brand-hover transition-colors cursor-pointer"
+                  >
+                    Готово
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setCreating(true)}
+                    className="px-3.5 h-9 rounded-lg border border-brand/40 bg-brand/10 hover:bg-brand/20 text-brand text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <PlusIcon />
+                    <span>Новая группа</span>
+                  </button>
+                  <button
+                    onClick={() => setEditMode(true)}
+                    className="px-3 h-9 rounded-lg border border-bdr bg-bg-2 hover:bg-bg-3 text-tx-3 hover:text-tx-1 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Управление и удаление курсов"
+                  >
+                    <PencilIcon />
+                    <span>Управление</span>
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         {lastVisit && !editMode && (courses ?? []).some((c) => c.slug === lastVisit.slug) && (
           <Link
@@ -301,66 +361,7 @@ export function CoursesPage() {
         )}
       </div>
 
-      {/* exit (×) — top right, below header */}
-      <AnimatePresence>
-        {editMode && (
-          <motion.button
-            key="exit"
-            onClick={exitMode}
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            className="fixed top-[68px] right-6 z-40 w-9 h-9 rounded-full bg-bg-2 border border-bdr text-tx-2 hover:text-tx-1 hover:border-bdr-e flex items-center justify-center shadow-md text-lg leading-none transition-colors"
-            aria-label="Выйти из режима редактирования"
-          >
-            ×
-          </motion.button>
-        )}
-      </AnimatePresence>
 
-      {/* bottom-right action */}
-      {hasAny && (
-        <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2">
-          {editMode && delMut.isError && (
-            <span className="px-3 py-1.5 rounded-lg bg-bg-2 border border-err text-err text-xs shadow-md">
-              {(delMut.error as Error).message}
-            </span>
-          )}
-          <AnimatePresence mode="wait">
-            {editMode ? (
-              <motion.button
-                key="delete"
-                onClick={() => { setPurge(false); setConfirmOpen(true); }}
-                disabled={selected.size === 0}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 12 }}
-                className={clsx(
-                  'px-4 h-11 rounded-full text-sm font-medium shadow-lg flex items-center gap-2 transition-colors',
-                  selected.size === 0
-                    ? 'bg-bg-2 border border-bdr text-tx-3 cursor-not-allowed'
-                    : 'bg-err text-white hover:opacity-90',
-                )}
-              >
-                <TrashIcon />
-                {`Удалить${selected.size ? ` (${selected.size})` : ''}`}
-              </motion.button>
-            ) : (
-              <motion.button
-                key="enter"
-                onClick={() => setEditMode(true)}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 12 }}
-                className="w-11 h-11 rounded-full bg-bg-2 border border-bdr text-tx-3 hover:text-brand hover:border-brand/50 shadow-lg flex items-center justify-center transition-colors"
-                aria-label="Режим редактирования"
-              >
-                <PencilIcon />
-              </motion.button>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
 
       <AnimatePresence>
         {creating && (

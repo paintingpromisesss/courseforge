@@ -773,6 +773,8 @@ export function AIAssist({
   testOutput,
   onDockChange,
   maxDockedWidth,
+  resultsOpen,
+  resultsCollapsed,
 }: {
   taskSlug: string;
   unitSlug: string;
@@ -786,6 +788,8 @@ export function AIAssist({
   testOutput?: string;
   onDockChange?: (docked: boolean, width: number) => void;
   maxDockedWidth?: number | (() => number);
+  resultsOpen?: boolean;
+  resultsCollapsed?: boolean;
 }) {
   const storageKey = `cf_ai_chat_${taskSlug || 'global'}`;
 
@@ -830,6 +834,8 @@ export function AIAssist({
       }
     }
   }, []);
+
+
 
   const getMaxWidth = useCallback(() => {
     const fromProp = typeof maxDockedWidth === 'function' ? maxDockedWidth() : maxDockedWidth;
@@ -1228,7 +1234,10 @@ export function AIAssist({
             {aiMode === 'closed' && (
               <motion.div
                 key="closed-ai-launcher"
-                className="fixed bottom-6 right-6 z-30 pointer-events-auto"
+                style={{
+                  bottom: !resultsOpen ? '24px' : resultsCollapsed ? '62px' : '290px',
+                }}
+                className="fixed right-6 z-30 pointer-events-auto transition-[bottom] duration-200"
                 initial={{ scale: 0, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0, opacity: 0 }}
