@@ -42,4 +42,6 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 
 	r.Get("/mcp/config", h.getMCPConfig)
 	r.Patch("/mcp/config", h.patchMCPConfig)
+	r.Get("/mcp/sse", h.handleMCPSSE)
+	r.Post("/mcp/message", h.handleMCPMessage)
 }

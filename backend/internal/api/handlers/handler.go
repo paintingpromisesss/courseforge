@@ -6,10 +6,12 @@ import (
 	"sync"
 
 	"github.com/go-chi/chi/v5"
+	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/paintingpromisesss/courseforge/internal/application/service"
 	"github.com/paintingpromisesss/courseforge/internal/domain"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
+	"github.com/paintingpromisesss/courseforge/internal/mcp"
 )
 
 type Handler struct {
@@ -23,6 +25,8 @@ type Handler struct {
 	submissions   *service.SubmissionService
 	ai            *service.AIService
 	mcpConfigRepo *repo.MCPConfigRepository
+	mcpServer     *mcp.Server
+	sseServer     *mcpserver.SSEServer
 }
 
 func New(
@@ -35,7 +39,17 @@ func New(
 	ss *service.SubmissionService,
 	aiService *service.AIService,
 	mcpConfigRepo *repo.MCPConfigRepository,
+	mcpServer *mcp.Server,
 ) *Handler {
+	var sseServer *mcpserver.SSEServer
+	if mcpServer != nil {
+		sseServer = mcpServer.NewSSEServer(
+			"",
+			mcpserver.WithSSEEndpoint("/api/mcp/sse"),
+			mcpserver.WithMessageEndpoint("/api/mcp/message"),
+		)
+	}
+
 	return &Handler{
 		coursesDir:    coursesDir,
 		dataDir:       dataDir,
@@ -46,6 +60,8 @@ func New(
 		submissions:   ss,
 		ai:            aiService,
 		mcpConfigRepo: mcpConfigRepo,
+		mcpServer:     mcpServer,
+		sseServer:     sseServer,
 	}
 }
 

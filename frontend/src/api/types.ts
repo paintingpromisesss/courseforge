@@ -125,8 +125,12 @@ export interface MCPConfig {
 
 export interface MCPStatusResponse extends MCPConfig {
   binary_path: string;
+  command?: string;
+  args?: string[];
+  sse_url?: string;
   platform: string;
   tools_count: number;
   available: boolean;
 }
+
 

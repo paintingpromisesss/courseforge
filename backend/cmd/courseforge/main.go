@@ -9,9 +9,15 @@ import (
 
 	"github.com/paintingpromisesss/courseforge/internal/config"
 	"github.com/paintingpromisesss/courseforge/internal/di"
+	"github.com/paintingpromisesss/courseforge/internal/mcp"
 )
 
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "mcp" || os.Args[1] == "--mcp") {
+		mcp.RunCLI(os.Args[2:])
+		return
+	}
+
 	host := flag.String("host", "127.0.0.1", "host to bind")
 	port := flag.Int("port", 8080, "port to listen on")
 	coursesDir := flag.String("courses-dir", "./courses", "directory with course files")
@@ -50,6 +56,7 @@ func defaultFrontendDir() string {
 		candidates = append(candidates,
 			filepath.Join(exeDir, "frontend", "dist"),
 			filepath.Join(exeDir, "..", "frontend", "dist"),
+			filepath.Join(exeDir, "frontend-dist"),
 		)
 	}
 
@@ -59,5 +66,6 @@ func defaultFrontendDir() string {
 		}
 	}
 
-	return "./frontend/dist"
+	return ""
 }
+

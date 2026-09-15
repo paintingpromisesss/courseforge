@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/paintingpromisesss/courseforge/internal/api/dto"
 	"github.com/paintingpromisesss/courseforge/internal/domain"
@@ -43,9 +46,15 @@ func (h *Handler) getMCPConfig(w http.ResponseWriter, r *http.Request) {
 		dataDir = absData
 	}
 
-	// Detect binary path
-	binaryPath := findMCPBinary()
-	available := binaryPath != ""
+	// Detect binary command and args
+	command, args, available := findMCPCommand(coursesDir, dataDir)
+
+	// SSE URL on current host
+	host := r.Host
+	if host == "" {
+		host = "127.0.0.1:8080"
+	}
+	sseURL := fmt.Sprintf("http://%s/api/mcp/sse", host)
 
 	resp := dto.MCPStatusResp{
 		Enabled:    cfg.Enabled,
@@ -54,7 +63,10 @@ func (h *Handler) getMCPConfig(w http.ResponseWriter, r *http.Request) {
 		Port:       cfg.Port,
 		CoursesDir: coursesDir,
 		DataDir:    dataDir,
-		BinaryPath: binaryPath,
+		BinaryPath: command,
+		Command:    command,
+		Args:       args,
+		SSEURL:     sseURL,
 		Platform:   runtime.GOOS,
 		ToolsCount: 9,
 		Available:  available,
@@ -104,42 +116,126 @@ func (h *Handler) patchMCPConfig(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, req)
 }
 
-func findMCPBinary() string {
-	binName := "courseforge-mcp"
+func (h *Handler) handleMCPSSE(w http.ResponseWriter, r *http.Request) {
+	if !h.isMCPEnabled(r.Context()) {
+		h.writeError(w, http.StatusForbidden, "MCP server is disabled in CourseForge settings")
+		return
+	}
+	if h.sseServer == nil {
+		h.writeError(w, http.StatusServiceUnavailable, "MCP server is not configured")
+		return
+	}
+	h.sseServer.SSEHandler().ServeHTTP(w, r)
+}
+
+func (h *Handler) handleMCPMessage(w http.ResponseWriter, r *http.Request) {
+	if !h.isMCPEnabled(r.Context()) {
+		h.writeError(w, http.StatusForbidden, "MCP server is disabled in CourseForge settings")
+		return
+	}
+	if h.sseServer == nil {
+		h.writeError(w, http.StatusServiceUnavailable, "MCP server is not configured")
+		return
+	}
+	h.sseServer.MessageHandler().ServeHTTP(w, r)
+}
+
+func (h *Handler) isMCPEnabled(ctx context.Context) bool {
+	if h.mcpConfigRepo == nil {
+		return true
+	}
+	cfg, err := h.mcpConfigRepo.Get(ctx)
+	if err != nil || cfg == nil {
+		return true
+	}
+	return cfg.Enabled
+}
+
+func findMCPCommand(coursesDir, dataDir string) (string, []string, bool) {
+	exeExt := ""
 	if runtime.GOOS == "windows" {
-		binName += ".exe"
+		exeExt = ".exe"
 	}
 
-	// 1. Check in system PATH
-	if p, err := exec.LookPath(binName); err == nil {
-		if abs, err := filepath.Abs(p); err == nil {
-			return abs
-		}
-		return p
-	}
-
-	// 2. Check in bin/ relative to CWD
-	candidates := []string{
-		filepath.Join("bin", binName),
-		filepath.Join("..", "bin", binName),
-	}
-
+	// 1. Check current running executable
 	if exe, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exe)
-		candidates = append(candidates,
-			filepath.Join(exeDir, binName),
-			filepath.Join(exeDir, "..", "bin", binName),
-		)
+		cleanExe := filepath.Clean(exe)
+		isTemp := strings.Contains(cleanExe, "go-build") ||
+			strings.Contains(cleanExe, "\\Temp\\") ||
+			strings.Contains(cleanExe, "/tmp/")
+
+		if !isTemp {
+			base := strings.ToLower(filepath.Base(cleanExe))
+			if strings.Contains(base, "mcp") {
+				// Standalone courseforge-mcp binary
+				return cleanExe, []string{
+					"--courses-dir=" + coursesDir,
+					"--data-dir=" + dataDir,
+				}, true
+			}
+			// Main courseforge binary with 'mcp' subcommand
+			return cleanExe, []string{
+				"mcp",
+				"--courses-dir=" + coursesDir,
+				"--data-dir=" + dataDir,
+			}, true
+		}
+	}
+
+	// 2. Check for compiled binary in bin/ or ../bin/
+	candidates := []string{
+		filepath.Join("bin", "courseforge"+exeExt),
+		filepath.Join("..", "bin", "courseforge"+exeExt),
+		filepath.Join("bin", "courseforge-mcp"+exeExt),
+		filepath.Join("..", "bin", "courseforge-mcp"+exeExt),
 	}
 
 	for _, c := range candidates {
-		if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
-			if abs, err := filepath.Abs(c); err == nil {
-				return abs
+		if abs, err := filepath.Abs(c); err == nil {
+			if fi, err := os.Stat(abs); err == nil && !fi.IsDir() {
+				base := strings.ToLower(filepath.Base(abs))
+				if strings.Contains(base, "mcp") {
+					return abs, []string{
+						"--courses-dir=" + coursesDir,
+						"--data-dir=" + dataDir,
+					}, true
+				}
+				return abs, []string{
+					"mcp",
+					"--courses-dir=" + coursesDir,
+					"--data-dir=" + dataDir,
+				}, true
 			}
-			return c
 		}
 	}
 
-	return binName
+	// 3. Check system PATH
+	for _, name := range []string{"courseforge" + exeExt, "courseforge-mcp" + exeExt} {
+		if p, err := exec.LookPath(name); err == nil {
+			abs, err := filepath.Abs(p)
+			if err != nil {
+				abs = p
+			}
+			base := strings.ToLower(filepath.Base(abs))
+			if strings.Contains(base, "mcp") {
+				return abs, []string{
+					"--courses-dir=" + coursesDir,
+					"--data-dir=" + dataDir,
+				}, true
+			}
+			return abs, []string{
+				"mcp",
+				"--courses-dir=" + coursesDir,
+				"--data-dir=" + dataDir,
+			}, true
+		}
+	}
+
+	// Default fallback: main binary with subcommand
+	fallbackCmd := "courseforge" + exeExt
+	return fallbackCmd, []string{
+		"mcp",
+		"--courses-dir=" + coursesDir,
+		"--data-dir=" + dataDir,
+	}, false
 }

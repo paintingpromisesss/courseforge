@@ -20,6 +20,7 @@ import (
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/parser/course"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
+	"github.com/paintingpromisesss/courseforge/internal/mcp"
 	"github.com/paintingpromisesss/courseforge/internal/tray"
 	"github.com/paintingpromisesss/courseforge/internal/web"
 	"github.com/paintingpromisesss/courseforge/logger"
@@ -89,7 +90,31 @@ func Run(cfg *config.Config) error {
 
 	mcpRepo := repo.NewMCPConfigRepository(cfg.DataDir)
 
-	h := handlers.New(cfg.CoursesDir, cfg.DataDir, courses, catalogs, r, ps, ss, aiService, mcpRepo)
+	mcpProvider, err := mcp.NewCourseForgeProvider(cfg.CoursesDir, pr, sr, r)
+	if err != nil {
+		log.Printf("warning: init mcp provider: %v", err)
+	}
+	mcpSession, err := mcp.NewFileSessionManager(filepath.Join(cfg.DataDir, "mcp_session.json"))
+	if err != nil {
+		log.Printf("warning: init mcp session: %v", err)
+	}
+
+	var mcpServer *mcp.Server
+	if mcpProvider != nil && mcpSession != nil {
+		mcpServer, err = mcp.NewServer(mcp.Config{
+			Name:        "courseforge",
+			Version:     "1.0.0",
+			CoursesDir:  cfg.CoursesDir,
+			DataDir:     cfg.DataDir,
+			DBPath:      cfg.DBPath,
+			RunnersJSON: cfg.RunnersJSON,
+		}, mcpProvider, mcpSession)
+		if err != nil {
+			log.Printf("warning: init mcp server: %v", err)
+		}
+	}
+
+	h := handlers.New(cfg.CoursesDir, cfg.DataDir, courses, catalogs, r, ps, ss, aiService, mcpRepo, mcpServer)
 
 	router, err := api.NewRouter(h, api.RouterOptions{FrontendDir: cfg.FrontendDir})
 	if err != nil {

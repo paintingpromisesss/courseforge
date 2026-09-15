@@ -87,9 +87,14 @@ func (s *Server) ServeStdioWithIO(ctx context.Context, in io.Reader, out io.Writ
 	return stdioServer.Listen(ctx, in, out)
 }
 
-// SSEServer returns an HTTP handler for SSE connections.
-func (s *Server) NewSSEServer(baseURL string) *server.SSEServer {
-	return server.NewSSEServer(s.mcpServer, server.WithBaseURL(baseURL))
+// NewSSEServer returns an HTTP handler for SSE connections.
+func (s *Server) NewSSEServer(baseURL string, opts ...server.SSEOption) *server.SSEServer {
+	allOpts := make([]server.SSEOption, 0, len(opts)+1)
+	if baseURL != "" {
+		allOpts = append(allOpts, server.WithBaseURL(baseURL))
+	}
+	allOpts = append(allOpts, opts...)
+	return server.NewSSEServer(s.mcpServer, allOpts...)
 }
 
 // StartSSE starts an HTTP server serving SSE on the given address.
