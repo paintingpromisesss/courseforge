@@ -3,7 +3,7 @@ import { buildMCPSetupPrompt } from './mcpPrompt';
 import type { MCPStatusResponse } from '../api/types';
 
 describe('mcpPrompt', () => {
-  it('generates clean universal prompt with command, args and sseUrl', () => {
+  it('generates clean universal prompt for stdio transport', () => {
     const status: MCPStatusResponse = {
       enabled: true,
       transport: 'stdio',
@@ -21,13 +21,35 @@ describe('mcpPrompt', () => {
     };
 
     const prompt = buildMCPSetupPrompt(status);
-    expect(prompt).toContain('Настройка MCP-сервера CourseForge');
+    expect(prompt).toContain('Настройка MCP-сервера CourseForge (stdio)');
     expect(prompt).toContain('F:/Proga/courseforge/bin/courseforge.exe');
     expect(prompt).toContain('--courses-dir=F:/Proga/courseforge/courses');
     expect(prompt).toContain('--data-dir=F:/Proga/courseforge/data');
-    expect(prompt).toContain('http://127.0.0.1:8080/api/mcp/sse');
     expect(prompt).toContain('list_courses');
-    expect(prompt).not.toContain('переключатель MCP сейчас ВЫКЛЮЧЕН');
+  });
+
+  it('generates clean prompt for SSE transport without requiring launch command', () => {
+    const status: MCPStatusResponse = {
+      enabled: true,
+      transport: 'sse',
+      host: '127.0.0.1',
+      port: 8090,
+      courses_dir: 'F:/Proga/courseforge/courses',
+      data_dir: 'F:/Proga/courseforge/data',
+      binary_path: 'F:/Proga/courseforge/bin/courseforge.exe',
+      command: 'F:/Proga/courseforge/bin/courseforge.exe',
+      args: ['mcp', '--courses-dir=F:/Proga/courseforge/courses', '--data-dir=F:/Proga/courseforge/data'],
+      sse_url: 'http://127.0.0.1:8080/api/mcp/sse',
+      platform: 'windows',
+      tools_count: 9,
+      available: true,
+    };
+
+    const prompt = buildMCPSetupPrompt(status);
+    expect(prompt).toContain('Настройка MCP-сервера CourseForge (SSE / HTTP)');
+    expect(prompt).toContain('http://127.0.0.1:8080/api/mcp/sse');
+    expect(prompt).toContain('Команда запуска не требуется');
+    expect(prompt).toContain('list_courses');
   });
 
   it('includes warning when toggle is disabled', () => {

@@ -37,14 +37,8 @@ func (h *Handler) getMCPConfig(w http.ResponseWriter, r *http.Request) {
 		dataDir = h.dataDir
 	}
 
-	absCourses, err := filepath.Abs(coursesDir)
-	if err == nil {
-		coursesDir = absCourses
-	}
-	absData, err := filepath.Abs(dataDir)
-	if err == nil {
-		dataDir = absData
-	}
+	coursesDir = resolveExistingDir(coursesDir)
+	dataDir = resolveExistingDir(dataDir)
 
 	// Detect binary command and args
 	command, args, available := findMCPCommand(coursesDir, dataDir)
@@ -151,10 +145,37 @@ func (h *Handler) isMCPEnabled(ctx context.Context) bool {
 	return cfg.Enabled
 }
 
+func resolveExistingDir(dir string) string {
+	if filepath.IsAbs(dir) {
+		return dir
+	}
+	if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
+		if abs, err := filepath.Abs(dir); err == nil {
+			return abs
+		}
+	}
+	parentCandidate := filepath.Join("..", dir)
+	if fi, err := os.Stat(parentCandidate); err == nil && fi.IsDir() {
+		if abs, err := filepath.Abs(parentCandidate); err == nil {
+			return abs
+		}
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		return abs
+	}
+	return dir
+}
+
 func findMCPCommand(coursesDir, dataDir string) (string, []string, bool) {
 	exeExt := ""
 	if runtime.GOOS == "windows" {
 		exeExt = ".exe"
+	}
+
+	args := []string{
+		"mcp",
+		"--courses-dir=" + coursesDir,
+		"--data-dir=" + dataDir,
 	}
 
 	// 1. Check current running executable
@@ -166,76 +187,35 @@ func findMCPCommand(coursesDir, dataDir string) (string, []string, bool) {
 
 		if !isTemp {
 			base := strings.ToLower(filepath.Base(cleanExe))
-			if strings.Contains(base, "mcp") {
-				// Standalone courseforge-mcp binary
-				return cleanExe, []string{
-					"--courses-dir=" + coursesDir,
-					"--data-dir=" + dataDir,
-				}, true
+			if strings.HasPrefix(base, "courseforge") {
+				return cleanExe, args, true
 			}
-			// Main courseforge binary with 'mcp' subcommand
-			return cleanExe, []string{
-				"mcp",
-				"--courses-dir=" + coursesDir,
-				"--data-dir=" + dataDir,
-			}, true
 		}
 	}
 
-	// 2. Check for compiled binary in bin/ or ../bin/
+	// 2. Check for compiled courseforge binary in bin/ or ../bin/
 	candidates := []string{
 		filepath.Join("bin", "courseforge"+exeExt),
 		filepath.Join("..", "bin", "courseforge"+exeExt),
-		filepath.Join("bin", "courseforge-mcp"+exeExt),
-		filepath.Join("..", "bin", "courseforge-mcp"+exeExt),
 	}
 
 	for _, c := range candidates {
 		if abs, err := filepath.Abs(c); err == nil {
 			if fi, err := os.Stat(abs); err == nil && !fi.IsDir() {
-				base := strings.ToLower(filepath.Base(abs))
-				if strings.Contains(base, "mcp") {
-					return abs, []string{
-						"--courses-dir=" + coursesDir,
-						"--data-dir=" + dataDir,
-					}, true
-				}
-				return abs, []string{
-					"mcp",
-					"--courses-dir=" + coursesDir,
-					"--data-dir=" + dataDir,
-				}, true
+				return abs, args, true
 			}
 		}
 	}
 
-	// 3. Check system PATH
-	for _, name := range []string{"courseforge" + exeExt, "courseforge-mcp" + exeExt} {
-		if p, err := exec.LookPath(name); err == nil {
-			abs, err := filepath.Abs(p)
-			if err != nil {
-				abs = p
-			}
-			base := strings.ToLower(filepath.Base(abs))
-			if strings.Contains(base, "mcp") {
-				return abs, []string{
-					"--courses-dir=" + coursesDir,
-					"--data-dir=" + dataDir,
-				}, true
-			}
-			return abs, []string{
-				"mcp",
-				"--courses-dir=" + coursesDir,
-				"--data-dir=" + dataDir,
-			}, true
+	// 3. Check system PATH for courseforge
+	if p, err := exec.LookPath("courseforge" + exeExt); err == nil {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			abs = p
 		}
+		return abs, args, true
 	}
 
-	// Default fallback: main binary with subcommand
-	fallbackCmd := "courseforge" + exeExt
-	return fallbackCmd, []string{
-		"mcp",
-		"--courses-dir=" + coursesDir,
-		"--data-dir=" + dataDir,
-	}, false
+	// Fallback: standard command name without path
+	return "courseforge" + exeExt, args, false
 }

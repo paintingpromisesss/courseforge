@@ -242,8 +242,9 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
     if (currentStatus.transport === 'sse') {
       return JSON.stringify(
         {
-          name: 'courseforge',
-          url: sseUrl,
+          courseforge: {
+            url: sseUrl,
+          },
         },
         null,
         2,
@@ -252,9 +253,10 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
 
     return JSON.stringify(
       {
-        name: 'courseforge',
-        command,
-        args,
+        courseforge: {
+          command,
+          args,
+        },
       },
       null,
       2,
@@ -450,7 +452,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
           </div>
           <p className="text-[11px] text-tx-3 mt-1.5">
             {transport === 'stdio'
-              ? 'Агент запускает процесс courseforge-mcp напрямую через стандартный ввод/вывод.'
+              ? 'Агент запускает процесс courseforge напрямую через стандартный ввод/вывод.'
               : 'CourseForge поднимает постоянный HTTP-сервер со стримингом событий через Server-Sent Events.'}
           </p>
         </div>
@@ -518,9 +520,13 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
       <div className="p-5 rounded-2xl bg-bg-2 border border-bdr space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h4 className="text-sm font-semibold text-tx-1">Параметры запуска (для клиента или агента)</h4>
+            <h4 className="text-sm font-semibold text-tx-1">
+              {transport === 'stdio' ? 'Параметры запуска (stdio)' : 'Параметры подключения (SSE HTTP)'}
+            </h4>
             <p className="text-xs text-tx-3 mt-0.5">
-              Стандартная конфигурация: агент добавит эти параметры в свой внутренний конфиг
+              {transport === 'stdio'
+                ? 'Агент запускает бинарник напрямую через стандартный ввод/вывод'
+                : 'Агент подключается по сети к уже работающему серверу CourseForge'}
             </p>
           </div>
           <button
@@ -533,35 +539,48 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
           </button>
         </div>
 
-        <div className="space-y-2">
-          <div className="p-2.5 rounded-xl bg-bg-3/60 border border-bdr flex items-center justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <span className="text-tx-3 text-[11px] block">Команда запуска (stdio):</span>
-              <code className="text-tx-1 font-mono text-[11px] truncate block">{currentCommandStr}</code>
+        {transport === 'stdio' ? (
+          <div className="space-y-2">
+            <div className="p-2.5 rounded-xl bg-bg-3/60 border border-bdr flex items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <span className="text-tx-3 text-[11px] block">Команда запуска (stdio):</span>
+                <code className="text-tx-1 font-mono text-[11px] truncate block">{currentCommandStr}</code>
+              </div>
+              <button
+                type="button"
+                onClick={() => copyText(currentCommandStr, setCmdCopied)}
+                className="shrink-0 px-2.5 py-1 rounded-lg bg-bg-2 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer"
+              >
+                {cmdCopied ? 'Скопировано' : 'Копировать'}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => copyText(currentCommandStr, setCmdCopied)}
-              className="shrink-0 px-2.5 py-1 rounded-lg bg-bg-2 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer"
-            >
-              {cmdCopied ? 'Скопировано' : 'Копировать'}
-            </button>
+            <p className="text-[11px] text-tx-3 leading-relaxed px-1">
+              Агент сам запускает процесс CourseForge в момент обращения. Веб-интерфейс CourseForge при этом может быть закрыт.
+            </p>
           </div>
-
-          <div className="p-2.5 rounded-xl bg-bg-3/60 border border-bdr flex items-center justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <span className="text-tx-3 text-[11px] block">SSE URL (HTTP):</span>
-              <code className="text-tx-1 font-mono text-[11px] truncate block">{currentStatus.sse_url || 'http://127.0.0.1:8080/api/mcp/sse'}</code>
+        ) : (
+          <div className="space-y-2">
+            <div className="p-2.5 rounded-xl bg-bg-3/60 border border-bdr flex items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <span className="text-tx-3 text-[11px] block">SSE URL (HTTP):</span>
+                <code className="text-tx-1 font-mono text-[11px] truncate block">
+                  {currentStatus.sse_url || `http://${currentStatus.host || '127.0.0.1'}:${currentStatus.port || 8080}/api/mcp/sse`}
+                </code>
+              </div>
+              <button
+                type="button"
+                onClick={() => copyText(currentStatus.sse_url || `http://${currentStatus.host || '127.0.0.1'}:${currentStatus.port || 8080}/api/mcp/sse`, setSseCopied)}
+                className="shrink-0 px-2.5 py-1 rounded-lg bg-bg-2 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer"
+              >
+                {sseCopied ? 'Скопировано' : 'Копировать'}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => copyText(currentStatus.sse_url || 'http://127.0.0.1:8080/api/mcp/sse', setSseCopied)}
-              className="shrink-0 px-2.5 py-1 rounded-lg bg-bg-2 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer"
-            >
-              {sseCopied ? 'Скопировано' : 'Копировать'}
-            </button>
+            <p className="text-[11px] text-tx-3 leading-relaxed px-1">
+              Команда запуска не требуется: CourseForge уже запущен и обслуживает SSE-эндпоинт на текущем порту.
+              (Для автономного запуска без GUI: <code className="px-1 py-0.5 rounded bg-bg-3 font-mono text-tx-2">courseforge mcp --transport=sse --port={port}</code>)
+            </p>
           </div>
-        </div>
+        )}
 
         <pre className="p-3 rounded-xl bg-bg-3 border border-bdr text-xs font-mono text-tx-2 overflow-x-auto">
           {clientConfigSnippet}
