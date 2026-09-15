@@ -99,9 +99,9 @@ function collapse(node: TreeNode): TreeNode {
   }
 
   // 2) If there is only 1 sub-group among children (e.g. 1 sub-folder + stray tasks),
-  // flatten that single sub-group's tasks directly into this parent
+  // flatten that single sub-group's tasks directly into this parent (only inside topics/units, not top-level track)
   const groupChildren = children.filter((c) => c.kind === 'group');
-  if (groupChildren.length === 1) {
+  if (node.id.includes('/') && groupChildren.length === 1) {
     const flattened = children.flatMap((c) =>
       c.kind === 'group' ? c.children : [c],
     );

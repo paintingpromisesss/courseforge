@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useNavigate, useLocation, useOutlet } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,7 +9,7 @@ import { ProgressBar } from '../components/ui/ProgressBar';
 import type { TrackItem } from '../api/types';
 import { buildTree, type TreeNode, type NavTarget } from '../lib/buildTree';
 
-function TreeRow({
+const TreeRow = memo(function TreeRow({
   node,
   depth = 0,
   open,
@@ -229,7 +229,7 @@ function TreeRow({
       <span className="truncate flex-1">{node.title}</span>
     </button>
   );
-}
+});
 
 function computeAutoFitWidth(tree: TreeNode[], open: Record<string, boolean>): number {
   const canvas = document.createElement('canvas');
@@ -342,26 +342,26 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
     let maxNeeded = 270;
 
     const rows = container.querySelectorAll<HTMLElement>('button, .select-none');
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return computeAutoFitWidth(tree, open);
+
     rows.forEach((row) => {
       const textSpan = row.querySelector<HTMLElement>('.truncate');
       if (!textSpan || !textSpan.textContent) return;
       const rowRect = row.getBoundingClientRect();
       const leftOffset = rowRect.left - containerRect.left;
 
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        const computed = window.getComputedStyle(textSpan);
-        ctx.font = `${computed.fontWeight} ${computed.fontSize} ${computed.fontFamily}`;
-        const naturalTextWidth = ctx.measureText(textSpan.textContent).width;
-        const badge = row.querySelector<HTMLElement>('.rounded-full');
-        const badgeW = badge ? badge.offsetWidth + 12 : 0;
-        const iconW = 24;
+      const computed = window.getComputedStyle(textSpan);
+      ctx.font = `${computed.fontWeight} ${computed.fontSize} ${computed.fontFamily}`;
+      const naturalTextWidth = ctx.measureText(textSpan.textContent).width;
+      const badge = row.querySelector<HTMLElement>('.rounded-full');
+      const badgeW = badge ? badge.offsetWidth + 12 : 0;
+      const iconW = 24;
 
-        const totalNeeded = leftOffset + iconW + naturalTextWidth + badgeW + 36;
-        if (totalNeeded > maxNeeded) {
-          maxNeeded = totalNeeded;
-        }
+      const totalNeeded = leftOffset + iconW + naturalTextWidth + badgeW + 36;
+      if (totalNeeded > maxNeeded) {
+        maxNeeded = totalNeeded;
       }
     });
 

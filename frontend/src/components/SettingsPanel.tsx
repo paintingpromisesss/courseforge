@@ -1089,13 +1089,13 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
                       type="button"
                       onClick={() => setActiveTab(tab.id)}
                       className={clsx(
-                        'w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-all text-left cursor-pointer',
+                        'w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors text-left cursor-pointer',
                         isActive
-                          ? 'bg-bg-3 text-tx-1 shadow-xs border border-bdr/60'
+                          ? 'bg-bg-3 text-tx-1'
                           : 'text-tx-3 hover:text-tx-1 hover:bg-bg-3/50',
                       )}
                     >
-                      <span className={clsx('shrink-0', isActive ? 'text-brand' : 'text-tx-3')}>
+                      <span className={clsx('shrink-0 transition-colors', isActive ? 'text-brand' : 'text-tx-3')}>
                         {tab.icon}
                       </span>
                       <span>{tab.label}</span>

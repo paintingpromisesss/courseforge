@@ -592,6 +592,7 @@ export function TaskPage() {
 
   const [lang, setLang] = useState<string>('');
   const [code, setCode] = useState<string>('');
+  const codeRef = useRef<string>('');
   const [leftTab, setLeftTab] = useState<LeftTab | null>(null);
   const prevUnitSlug = useRef<string | undefined>(undefined);
   const prevTaskSlug = useRef<string | undefined>(undefined);
@@ -641,12 +642,16 @@ export function TaskPage() {
     if (!taskSlug || !lang) return;
     const saved = loadCode(taskSlug, lang);
     if (saved !== null) {
+      codeRef.current = saved;
       setCode(saved);
     } else if (template) {
+      codeRef.current = template;
       setCode(template);
     } else {
       const cached = qc.getQueryData<string>(['template', courseSlug, trackSlug, topicSlug, unitSlug, taskSlug, lang]);
-      setCode(cached ?? '');
+      const initial = cached ?? '';
+      codeRef.current = initial;
+      setCode(initial);
     }
   }, [taskSlug, lang, template, courseSlug, trackSlug, topicSlug, unitSlug, qc]);
 
@@ -766,21 +771,25 @@ export function TaskPage() {
   }, [taskSlug, unitSlug, activeTab]);
 
   const handleCodeChange = useCallback((val: string) => {
-    setCode(val);
+    codeRef.current = val;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       if (taskSlug && lang) saveCode(taskSlug, lang, val);
     }, 1000);
   }, [taskSlug, lang]);
 
+  const getCurrentCode = useCallback(() => codeRef.current, []);
+
   const handleReset = async () => {
     if (!template) return;
+    codeRef.current = template;
     setCode(template);
     if (taskSlug && lang) saveCode(taskSlug, lang, template);
   };
 
   const handleSubmit = async () => {
-    if (!lang || !code || !testCode) return;
+    const codeToSubmit = codeRef.current;
+    if (!lang || !codeToSubmit || !testCode) return;
     setRunning(true);
     setResults(null);
     try {
@@ -791,7 +800,7 @@ export function TaskPage() {
         course_slug: courseSlug!,
         task_slug: taskSlug!,
         language: lang,
-        code,
+        code: codeToSubmit,
       });
       const parsed = parseTestOutput(lang, sub.stdout, sub.stderr, sub.exit_code);
       setResults({ parsed, durationMs: sub.duration_ms, timedOut: sub.timed_out });
@@ -968,6 +977,7 @@ export function TaskPage() {
                 courseSlug={courseSlug!}
                 taskSlug={taskSlug!}
                 onLoadCode={(c) => {
+                  codeRef.current = c;
                   setCode(c);
                   if (taskSlug && lang) saveCode(taskSlug, lang, c);
                 }}
@@ -979,6 +989,7 @@ export function TaskPage() {
                     solution={solution}
                     lang={lang}
                     onLoadCode={(c) => {
+                      codeRef.current = c;
                       setCode(c);
                       if (taskSlug && lang) saveCode(taskSlug, lang, c);
                     }}
@@ -1064,7 +1075,7 @@ export function TaskPage() {
           taskTitle={task?.title}
           taskDescription={statement}
           language={lang}
-          currentCode={code}
+          currentCode={getCurrentCode}
           templateCode={template}
           testsCode={testCode}
           solutionCode={solution}

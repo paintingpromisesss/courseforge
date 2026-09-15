@@ -1,9 +1,12 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useState, memo, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import clsx from 'clsx';
 import { useTheme } from '../../context/ThemeContext';
+
+const REMARK_PLUGINS = [remarkGfm];
+const REHYPE_PLUGINS = [rehypeHighlight];
 
 interface Props {
   content: string;
@@ -186,7 +189,7 @@ const SnippetLangContext = createContext<{
   setLang: (lang: string) => void;
 }>({ lang: null, setLang: () => {} });
 
-function CodeTabs({ items }: { items: Snippet[] }) {
+const CodeTabs = memo(function CodeTabs({ items }: { items: Snippet[] }) {
   const shared = useContext(SnippetLangContext);
   const [localIdx, setLocalIdx] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -245,14 +248,14 @@ function CodeTabs({ items }: { items: Snippet[] }) {
           <CopyIcon copied={copied} />
         </button>
       </div>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
         {`\`\`\`${fenceLang(cur.lang)}\n${cur.code}\n\`\`\``}
       </ReactMarkdown>
     </div>
   );
-}
+});
 
-function Accordion({ title, body, assetBase }: { title: string; body: string; assetBase?: string }) {
+const Accordion = memo(function Accordion({ title, body, assetBase }: { title: string; body: string; assetBase?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="accordion my-4 overflow-hidden rounded-lg border border-bdr bg-bg-2">
@@ -289,9 +292,9 @@ function Accordion({ title, body, assetBase }: { title: string; body: string; as
       </div>
     </div>
   );
-}
+});
 
-export function Markdown({ content, assetBase }: Props) {
+export const Markdown = memo(function Markdown({ content, assetBase }: Props) {
   const { theme } = useTheme();
   const parts = useMemo(() => parseParts(content), [content]);
   const [snippetLang, setSnippetLang] = useState<string | null>(null);
@@ -300,7 +303,7 @@ export function Markdown({ content, assetBase }: Props) {
     [snippetLang],
   );
 
-  const components = {
+  const components = useMemo(() => ({
     img: ({ src, alt }: { src?: string; alt?: string }) => {
       const resolved = assetBase && src?.startsWith('assets/')
         ? `${assetBase}/assets/${src.slice('assets/'.length)}`
@@ -316,7 +319,7 @@ export function Markdown({ content, assetBase }: Props) {
       }
       return <a href={href}>{children}</a>;
     },
-  };
+  }), [assetBase, theme]);
 
   return (
     <SnippetLangContext.Provider value={snippetCtx}>
@@ -329,8 +332,8 @@ export function Markdown({ content, assetBase }: Props) {
           ) : (
             <ReactMarkdown
               key={i}
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeHighlight]}
+              remarkPlugins={REMARK_PLUGINS}
+              rehypePlugins={REHYPE_PLUGINS}
               components={components}
             >
               {part.text}
@@ -340,4 +343,4 @@ export function Markdown({ content, assetBase }: Props) {
       </div>
     </SnippetLangContext.Provider>
   );
-}
+});

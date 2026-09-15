@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -103,7 +103,7 @@ function parseThinking(raw: string): ParsedContent {
   return { thinking: null, content: clean, isLengthExceeded, isError: false, errorMessage: null, model, isReasoningMandatory };
 }
 
-function ChatMessage({
+const ChatMessage = memo(function ChatMessage({
   message,
   isStreaming,
 }: {
@@ -263,7 +263,7 @@ function ChatMessage({
       </div>
     </motion.div>
   );
-}
+});
 
 
 
@@ -760,7 +760,7 @@ function AIChatPanel({
   );
 }
 
-export function AIAssist({
+export const AIAssist = memo(function AIAssist({
   taskSlug,
   unitSlug,
   taskTitle,
@@ -781,7 +781,7 @@ export function AIAssist({
   taskTitle?: string;
   taskDescription?: string;
   language?: string;
-  currentCode?: string;
+  currentCode?: string | (() => string);
   templateCode?: string;
   testsCode?: string;
   solutionCode?: string;
@@ -997,16 +997,18 @@ export function AIAssist({
     const userMsg: AIMessage = { role: 'user', content };
     const allMessages = [...messages, userMsg];
 
+    const resolvedCode = (typeof currentCode === 'function' ? currentCode() : currentCode) ?? '';
+
     const contextParts = [
       `[КОНТЕКСТ ЗАДАЧИ]`,
       `Задача: ${taskTitle ? `"${taskTitle}"` : taskSlug} (unit: ${unitSlug}, slug: ${taskSlug})`,
       language ? `Язык программирования: ${language}` : null,
       taskDescription ? `Условие задачи:\n${taskDescription}` : null,
-      templateCode?.trim() && templateCode !== currentCode
+      templateCode?.trim() && templateCode !== resolvedCode
         ? `Исходный начальный шаблон (template):\n\`\`\`${language || ''}\n${templateCode}\n\`\`\``
         : null,
-      currentCode?.trim()
-        ? `Текущий код в редакторе пользователя (проанализируй его сразу, не спрашивай что написано):\n\`\`\`${language || ''}\n${currentCode}\n\`\`\``
+      resolvedCode.trim()
+        ? `Текущий код в редакторе пользователя (проанализируй его сразу, не спрашивай что написано):\n\`\`\`${language || ''}\n${resolvedCode}\n\`\`\``
         : `Код в редакторе: [пока пуст]`,
       testsCode?.trim()
         ? `Код автоматических тестов задачи (используй для понимания проверок, краевых случаев и требований):\n\`\`\`${language || ''}\n${testsCode}\n\`\`\``
@@ -1035,6 +1037,7 @@ export function AIAssist({
 
     let assistantContent = '';
     let hasStreamError = false;
+    let rafId: number | null = null;
 
     const isThinkingEnabled = (() => {
       try {
@@ -1049,9 +1052,18 @@ export function AIAssist({
         messagesWithContext,
         (chunk) => {
           assistantContent += chunk;
-          setStreamingContent(assistantContent);
+          if (rafId === null) {
+            rafId = requestAnimationFrame(() => {
+              setStreamingContent(assistantContent);
+              rafId = null;
+            });
+          }
         },
         (err) => {
+          if (rafId !== null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
           hasStreamError = true;
           setStreaming(false);
           updateMessages((prev) => [...prev, { role: 'assistant', content: `<!-- CF_ERROR -->${err}` }]);
@@ -1059,6 +1071,12 @@ export function AIAssist({
         controller.signal,
         isThinkingEnabled,
       );
+
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      setStreamingContent(assistantContent);
 
       if (!controller.signal.aborted && !hasStreamError) {
         const parsed = parseThinking(assistantContent);
@@ -1263,4 +1281,4 @@ export function AIAssist({
         )}
     </>
   );
-}
+});

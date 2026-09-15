@@ -1,7 +1,10 @@
-import { useState, useCallback, isValidElement, type ReactNode } from 'react';
+import { useState, useCallback, isValidElement, memo, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
+
+const REMARK_PLUGINS = [remarkGfm];
+const REHYPE_PLUGINS = [rehypeHighlight];
 
 interface Props {
   content: string;
@@ -133,28 +136,30 @@ function CodeBlock({ children }: { children: ReactNode }) {
   );
 }
 
-export function AIChatMarkdown({ content }: Props) {
+const CHAT_MARKDOWN_COMPONENTS = {
+  pre: ({ children }: { children?: ReactNode }) => <CodeBlock>{children}</CodeBlock>,
+  a: ({ href, children }: { href?: string; children?: ReactNode }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-brand hover:underline"
+    >
+      {children}
+    </a>
+  ),
+};
+
+export const AIChatMarkdown = memo(function AIChatMarkdown({ content }: Props) {
   return (
     <div className="chat-markdown text-[13px] leading-relaxed">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
-        components={{
-          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-brand hover:underline"
-            >
-              {children}
-            </a>
-          ),
-        }}
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
+        components={CHAT_MARKDOWN_COMPONENTS}
       >
         {content}
       </ReactMarkdown>
     </div>
   );
-}
+});
