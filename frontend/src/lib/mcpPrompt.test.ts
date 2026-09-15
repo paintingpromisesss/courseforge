@@ -3,7 +3,7 @@ import { buildMCPSetupPrompt } from './mcpPrompt';
 import type { MCPStatusResponse } from '../api/types';
 
 describe('mcpPrompt', () => {
-  it('generates clean universal prompt for stdio transport', () => {
+  it('generates clean universal prompt for stdio transport without hardcoded JSON configs', () => {
     const status: MCPStatusResponse = {
       enabled: true,
       transport: 'stdio',
@@ -21,11 +21,14 @@ describe('mcpPrompt', () => {
     };
 
     const prompt = buildMCPSetupPrompt(status);
-    expect(prompt).toContain('Настройка MCP-сервера CourseForge (stdio)');
+    expect(prompt).toContain('НЕ редактируй файлы репозитория');
+    expect(prompt).toContain('настроить именно СВОЁ окружение');
     expect(prompt).toContain('F:/Proga/courseforge/bin/courseforge.exe');
     expect(prompt).toContain('--courses-dir=F:/Proga/courseforge/courses');
     expect(prompt).toContain('--data-dir=F:/Proga/courseforge/data');
     expect(prompt).toContain('list_courses');
+    expect(prompt).not.toContain('opencode.json');
+    expect(prompt).not.toContain('mcpServers');
   });
 
   it('generates clean prompt for SSE transport without requiring launch command', () => {
@@ -46,10 +49,10 @@ describe('mcpPrompt', () => {
     };
 
     const prompt = buildMCPSetupPrompt(status);
-    expect(prompt).toContain('Настройка MCP-сервера CourseForge (SSE / HTTP)');
     expect(prompt).toContain('http://127.0.0.1:8080/api/mcp/sse');
-    expect(prompt).toContain('Команда запуска не требуется');
+    expect(prompt).toContain('Команда запуска процесса не требуется');
     expect(prompt).toContain('list_courses');
+    expect(prompt).not.toContain('opencode.json');
   });
 
   it('includes warning when toggle is disabled', () => {
@@ -69,6 +72,6 @@ describe('mcpPrompt', () => {
     };
 
     const prompt = buildMCPSetupPrompt(status);
-    expect(prompt).toContain('сервер сейчас выключен');
+    expect(prompt).toContain('сервер отключен');
   });
 });
