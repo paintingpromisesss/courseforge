@@ -1,17 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildMCPSetupPrompt, getClaudeConfigPath } from './mcpPrompt';
+import { buildMCPSetupPrompt } from './mcpPrompt';
 import type { MCPStatusResponse } from '../api/types';
 
 describe('mcpPrompt', () => {
-  it('returns appropriate config path for windows', () => {
-    expect(getClaudeConfigPath('windows')).toContain('%APPDATA%\\Claude');
-  });
-
-  it('returns appropriate config path for macos', () => {
-    expect(getClaudeConfigPath('darwin')).toContain('Application Support/Claude');
-  });
-
-  it('generates complete prompt with main binary command and args', () => {
+  it('generates clean universal prompt with command, args and sseUrl', () => {
     const status: MCPStatusResponse = {
       enabled: true,
       transport: 'stdio',
@@ -29,7 +21,7 @@ describe('mcpPrompt', () => {
     };
 
     const prompt = buildMCPSetupPrompt(status);
-    expect(prompt).toContain('Настройка CourseForge MCP для AI-ассистента');
+    expect(prompt).toContain('Настройка MCP-сервера CourseForge');
     expect(prompt).toContain('F:/Proga/courseforge/bin/courseforge.exe');
     expect(prompt).toContain('--courses-dir=F:/Proga/courseforge/courses');
     expect(prompt).toContain('--data-dir=F:/Proga/courseforge/data');
@@ -38,7 +30,7 @@ describe('mcpPrompt', () => {
     expect(prompt).not.toContain('переключатель MCP сейчас ВЫКЛЮЧЕН');
   });
 
-  it('warns when toggle is disabled', () => {
+  it('includes warning when toggle is disabled', () => {
     const status: MCPStatusResponse = {
       enabled: false,
       transport: 'stdio',
@@ -55,7 +47,6 @@ describe('mcpPrompt', () => {
     };
 
     const prompt = buildMCPSetupPrompt(status);
-    expect(prompt).toContain('переключатель MCP сейчас ВЫКЛЮЧЕН');
-    expect(prompt).toContain('Отключен (требуется включить в настройках)');
+    expect(prompt).toContain('сервер сейчас выключен');
   });
 });

@@ -4,12 +4,7 @@ import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../api/client';
 import type { MCPConfig, MCPStatusResponse } from '../api/types';
-import {
-  buildMCPSetupPrompt,
-  getClaudeConfigPath,
-  getCursorConfigPath,
-  getAntigravityConfigPath,
-} from '../lib/mcpPrompt';
+import { buildMCPSetupPrompt } from '../lib/mcpPrompt';
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
 
@@ -160,7 +155,8 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
 
   const [promptCopied, setPromptCopied] = useState(false);
   const [jsonCopied, setJsonCopied] = useState(false);
-  const [activeClientTab, setActiveClientTab] = useState<'claude' | 'cursor' | 'antigravity' | 'windsurf'>('claude');
+  const [cmdCopied, setCmdCopied] = useState(false);
+  const [sseCopied, setSseCopied] = useState(false);
   const [showPromptPreview, setShowPromptPreview] = useState(false);
   const [showToolsList, setShowToolsList] = useState(false);
 
@@ -218,6 +214,22 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
     setTimeout(() => setPromptCopied(false), 2000);
   };
 
+  const currentCommandStr = useMemo(() => {
+    const command = currentStatus.command || currentStatus.binary_path || 'courseforge';
+    const courses = currentStatus.courses_dir || './courses';
+    const data = currentStatus.data_dir || './data';
+    const args = currentStatus.args && currentStatus.args.length > 0
+      ? currentStatus.args
+      : ['mcp', `--courses-dir=${courses}`, `--data-dir=${data}`];
+    return `${command} ${args.join(' ')}`;
+  }, [currentStatus]);
+
+  const copyText = async (text: string, setCopiedState: (v: boolean) => void) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedState(true);
+    setTimeout(() => setCopiedState(false), 1500);
+  };
+
   const clientConfigSnippet = useMemo(() => {
     const command = currentStatus.command || currentStatus.binary_path || 'courseforge';
     const courses = currentStatus.courses_dir || './courses';
@@ -230,11 +242,8 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
     if (currentStatus.transport === 'sse') {
       return JSON.stringify(
         {
-          mcpServers: {
-            courseforge: {
-              url: sseUrl,
-            },
-          },
+          name: 'courseforge',
+          url: sseUrl,
         },
         null,
         2,
@@ -243,12 +252,9 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
 
     return JSON.stringify(
       {
-        mcpServers: {
-          courseforge: {
-            command,
-            args,
-          },
-        },
+        name: 'courseforge',
+        command,
+        args,
       },
       null,
       2,
@@ -508,13 +514,13 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
         </div>
       </div>
 
-      {/* ── 4. Client Config Snippets ───────────────────────────────────── */}
+      {/* ── 4. Launch Parameters for Agent / Client ─────────────────────── */}
       <div className="p-5 rounded-2xl bg-bg-2 border border-bdr space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h4 className="text-sm font-semibold text-tx-1">Конфигурация клиента (JSON)</h4>
+            <h4 className="text-sm font-semibold text-tx-1">Параметры запуска (для клиента или агента)</h4>
             <p className="text-xs text-tx-3 mt-0.5">
-              Вставьте фрагмент в конфигурационный файл вашего редактора или ассистента
+              Стандартная конфигурация: агент добавит эти параметры в свой внутренний конфиг
             </p>
           </div>
           <button
@@ -527,38 +533,34 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
           </button>
         </div>
 
-        {/* Client selector tabs */}
-        <div className="flex items-center gap-1 border-b border-bdr pb-2">
-          {[
-            { id: 'claude', label: 'Claude Desktop' },
-            { id: 'cursor', label: 'Cursor' },
-            { id: 'antigravity', label: 'Antigravity' },
-            { id: 'windsurf', label: 'Windsurf' },
-          ].map((tab) => (
+        <div className="space-y-2">
+          <div className="p-2.5 rounded-xl bg-bg-3/60 border border-bdr flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <span className="text-tx-3 text-[11px] block">Команда запуска (stdio):</span>
+              <code className="text-tx-1 font-mono text-[11px] truncate block">{currentCommandStr}</code>
+            </div>
             <button
-              key={tab.id}
               type="button"
-              onClick={() => setActiveClientTab(tab.id as typeof activeClientTab)}
-              className={clsx(
-                'px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer',
-                activeClientTab === tab.id
-                  ? 'bg-bg-3 text-tx-1 font-semibold'
-                  : 'text-tx-3 hover:text-tx-2 hover:bg-bg-3/50',
-              )}
+              onClick={() => copyText(currentCommandStr, setCmdCopied)}
+              className="shrink-0 px-2.5 py-1 rounded-lg bg-bg-2 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer"
             >
-              {tab.label}
+              {cmdCopied ? 'Скопировано' : 'Копировать'}
             </button>
-          ))}
-        </div>
+          </div>
 
-        <div className="text-[11px] text-tx-3">
-          Путь к файлу конфига:{' '}
-          <code className="px-1.5 py-0.5 rounded bg-bg-3 text-tx-2 font-mono">
-            {activeClientTab === 'claude' && getClaudeConfigPath(currentStatus.platform)}
-            {activeClientTab === 'cursor' && getCursorConfigPath()}
-            {activeClientTab === 'antigravity' && getAntigravityConfigPath()}
-            {activeClientTab === 'windsurf' && '~/.codeium/windsurf/mcp_config.json'}
-          </code>
+          <div className="p-2.5 rounded-xl bg-bg-3/60 border border-bdr flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <span className="text-tx-3 text-[11px] block">SSE URL (HTTP):</span>
+              <code className="text-tx-1 font-mono text-[11px] truncate block">{currentStatus.sse_url || 'http://127.0.0.1:8080/api/mcp/sse'}</code>
+            </div>
+            <button
+              type="button"
+              onClick={() => copyText(currentStatus.sse_url || 'http://127.0.0.1:8080/api/mcp/sse', setSseCopied)}
+              className="shrink-0 px-2.5 py-1 rounded-lg bg-bg-2 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer"
+            >
+              {sseCopied ? 'Скопировано' : 'Копировать'}
+            </button>
+          </div>
         </div>
 
         <pre className="p-3 rounded-xl bg-bg-3 border border-bdr text-xs font-mono text-tx-2 overflow-x-auto">
