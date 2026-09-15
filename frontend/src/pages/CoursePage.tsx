@@ -140,7 +140,7 @@ function TreeRow({
           </div>
 
           {/* Topic Children with very subtle guide line */}
-          <div className="ml-2 pl-2 space-y-0.5 border-l border-white/5">
+          <div className="ml-2 pl-2 space-y-0.5 border-l border-bdr-s">
             {node.children.map((c) => (
               <TreeRow
                 key={c.id}
@@ -182,7 +182,7 @@ function TreeRow({
             </span>
           )}
         </div>
-        <div className="ml-2 pl-2 space-y-0.5 border-l border-white/5">
+        <div className="ml-2 pl-2 space-y-0.5 border-l border-bdr-s">
           {node.children.map((c) => (
             <TreeRow
               key={c.id}

@@ -79,7 +79,7 @@ function AppLayout() {
           const last = i === crumbs.length - 1;
           return (
             <span key={c.to} className="flex items-center gap-2 min-w-0">
-              <span className="text-bdr shrink-0">›</span>
+              <span className="text-tx-3 shrink-0">›</span>
               <Link
                 to={c.to}
                 className={clsx(

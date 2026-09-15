@@ -198,7 +198,7 @@ export function CoursesPage() {
                 <>
                   {editMode && <SelectMark on={sel} />}
                   <div className="flex items-start gap-3 mb-2">
-                    <span className="text-accent mt-0.5 shrink-0">
+                    <span className="text-brand mt-0.5 shrink-0">
                       <FolderIcon />
                     </span>
                     <h2 className="text-tx-1 font-medium text-sm leading-snug">{catalog.title}</h2>
