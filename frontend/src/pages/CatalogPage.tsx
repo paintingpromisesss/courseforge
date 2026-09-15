@@ -196,31 +196,83 @@ export function CatalogPage() {
   return (
     <div className="overflow-auto h-full">
       <div className="max-w-5xl mx-auto px-6 py-12">
-        <div className="mb-8">
-          {editMode ? (
-            <>
-              <input
-                value={titleDraft}
-                onChange={(e) => setTitleDraft(e.target.value)}
-                placeholder="Название"
-                className="block w-full p-0 m-0 bg-transparent border-0 text-2xl font-semibold text-tx-1 placeholder:text-tx-3 focus:outline-none"
-              />
-              <textarea
-                value={descDraft}
-                onChange={(e) => setDescDraft(e.target.value)}
-                placeholder="Нет описания"
-                rows={1}
-                className="block w-full p-0 m-0 mt-2 bg-transparent border-0 text-sm text-tx-3 placeholder:text-tx-3 focus:outline-none resize-none"
-              />
-            </>
-          ) : (
-            <>
-              <h1 className="text-2xl font-semibold text-tx-1">{catalog.title}</h1>
-              <p className={clsx('text-sm mt-2', catalog.description ? 'text-tx-3' : 'text-transparent select-none')}>
-                {catalog.description || 'Нет описания'}
-              </p>
-            </>
-          )}
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
+          <div className="flex-1 min-w-0">
+            {editMode ? (
+              <div className="max-w-xl space-y-2">
+                <input
+                  autoFocus
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  placeholder="Название группы"
+                  className="w-full px-3.5 py-2 rounded-lg bg-bg-2 border border-bdr text-xl font-semibold text-tx-1 placeholder:text-tx-3 focus:border-brand focus:outline-none transition-colors"
+                />
+                <textarea
+                  value={descDraft}
+                  onChange={(e) => setDescDraft(e.target.value)}
+                  placeholder="Описание группы (необязательно)"
+                  rows={2}
+                  className="w-full px-3.5 py-2 rounded-lg bg-bg-2 border border-bdr text-sm text-tx-2 placeholder:text-tx-3 focus:border-brand focus:outline-none resize-none transition-colors"
+                />
+              </div>
+            ) : (
+              <>
+                <h1 className="text-2xl font-semibold text-tx-1">{catalog.title}</h1>
+                {catalog.description && (
+                  <p className="text-sm mt-1 text-tx-3">{catalog.description}</p>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {editMode ? (
+              <>
+                {delMut.isError && (
+                  <span className="px-2.5 py-1 rounded-lg bg-err/10 border border-err/30 text-err text-xs">
+                    {(delMut.error as Error).message}
+                  </span>
+                )}
+                <button
+                  onClick={() => { setPurge(false); setConfirmOpen(true); }}
+                  disabled={selected.size === 0}
+                  className={clsx(
+                    'px-3.5 h-9 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all',
+                    selected.size === 0
+                      ? 'bg-bg-2 border border-bdr text-tx-3 cursor-not-allowed opacity-60'
+                      : 'bg-err text-white hover:opacity-90 shadow-sm',
+                  )}
+                >
+                  <TrashIcon />
+                  {`Удалить${selected.size ? ` (${selected.size})` : ''}`}
+                </button>
+                <button
+                  onClick={exitEdit}
+                  className="px-3.5 h-9 rounded-lg border border-brand bg-brand text-white text-xs font-medium hover:bg-brand-hover transition-colors cursor-pointer"
+                >
+                  Готово
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setPicking(true)}
+                  className="px-3.5 h-9 rounded-lg border border-brand/40 bg-brand/10 hover:bg-brand/20 text-brand text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <PlusIcon />
+                  <span>Добавить курсы</span>
+                </button>
+                <button
+                  onClick={enterEdit}
+                  className="px-3 h-9 rounded-lg border border-bdr bg-bg-2 hover:bg-bg-3 text-tx-3 hover:text-tx-1 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Редактировать группу и список курсов"
+                >
+                  <PencilIcon />
+                  <span>Редактировать</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 auto-rows-fr gap-4">
@@ -268,7 +320,10 @@ export function CatalogPage() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ duration: 0.2 }}
-                className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-brand/40 bg-brand/5 text-brand hover:bg-brand/10 hover:border-brand/60 transition-colors"
+                className={clsx(
+                  'flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-brand/40 bg-brand/5 text-brand hover:bg-brand/10 hover:border-brand/60 transition-colors cursor-pointer p-4',
+                  catalog.courses.length === 0 ? 'min-h-[6.5rem]' : 'h-full min-h-[5rem]',
+                )}
               >
                 <PlusIcon />
                 <span className="text-sm font-medium">Добавить курсы</span>
@@ -276,66 +331,22 @@ export function CatalogPage() {
             )}
           </AnimatePresence>
         </div>
+
+        {catalog.courses.length === 0 && !editMode && (
+          <div className="flex flex-col items-center justify-center py-16 px-4 rounded-xl border border-dashed border-bdr text-center">
+            <p className="text-tx-3 text-sm mb-4">В этой группе пока нет курсов</p>
+            <button
+              onClick={() => setPicking(true)}
+              className="px-4 h-9 rounded-lg border border-brand/40 bg-brand/10 hover:bg-brand/20 text-brand text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <PlusIcon />
+              <span>Добавить курсы</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* exit (×) — top right, below header */}
-      <AnimatePresence>
-        {editMode && (
-          <motion.button
-            key="exit"
-            onClick={exitEdit}
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            className="fixed top-[68px] right-6 z-40 w-9 h-9 rounded-full bg-bg-2 border border-bdr text-tx-2 hover:text-tx-1 hover:border-bdr-e flex items-center justify-center shadow-md text-lg leading-none transition-colors"
-            aria-label="Выйти из режима редактирования"
-          >
-            ×
-          </motion.button>
-        )}
-      </AnimatePresence>
 
-      {/* bottom-right action */}
-      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2">
-        {editMode && delMut.isError && (
-          <span className="px-3 py-1.5 rounded-lg bg-bg-2 border border-err text-err text-xs shadow-md">
-            {(delMut.error as Error).message}
-          </span>
-        )}
-        <AnimatePresence mode="wait">
-          {editMode ? (
-            <motion.button
-              key="delete"
-              onClick={() => { setPurge(false); setConfirmOpen(true); }}
-              disabled={selected.size === 0}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 12 }}
-              className={clsx(
-                'px-4 h-11 rounded-full text-sm font-medium shadow-lg flex items-center gap-2 transition-colors',
-                selected.size === 0
-                  ? 'bg-bg-2 border border-bdr text-tx-3 cursor-not-allowed'
-                  : 'bg-err text-white hover:opacity-90',
-              )}
-            >
-              <TrashIcon />
-              {`Удалить${selected.size ? ` (${selected.size})` : ''}`}
-            </motion.button>
-          ) : (
-            <motion.button
-              key="enter"
-              onClick={enterEdit}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 12 }}
-              className="w-11 h-11 rounded-full bg-bg-2 border border-bdr text-tx-3 hover:text-brand hover:border-brand/50 shadow-lg flex items-center justify-center transition-colors"
-              aria-label="Режим редактирования"
-            >
-              <PencilIcon />
-            </motion.button>
-          )}
-        </AnimatePresence>
-      </div>
 
       <AnimatePresence>
         {picking && (

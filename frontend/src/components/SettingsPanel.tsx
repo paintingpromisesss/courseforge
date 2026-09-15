@@ -5,17 +5,11 @@ import clsx from 'clsx';
 import { api } from '../api/client';
 import type { LangDriver, RunnerStatus } from '../api/types';
 import { useTheme } from '../context/ThemeContext';
+import { useSettings, type SettingsTab } from '../context/SettingsContext';
+import { AISettingsSection } from './AISettingsSection';
 import { splitArgs, joinArgs } from '../lib/shlex';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-tx-3 text-xs font-medium uppercase tracking-wide mb-3">
-      {children}
-    </p>
-  );
-}
 
 function FormField({
   label, value, onChange, placeholder, mono,
@@ -47,23 +41,61 @@ function FormField({
 function ThemeSection() {
   const { theme, setTheme } = useTheme();
   return (
-    <div>
-      <SectionTitle>Тема</SectionTitle>
-      <div className="flex gap-2">
-        {(['dark', 'light'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTheme(t)}
-            className={clsx(
-              'flex-1 py-2 rounded text-sm transition-colors border',
-              theme === t
-                ? 'bg-brand border-brand text-white'
-                : 'bg-bg-3 border-bdr text-tx-2 hover:text-tx-1 hover:bg-bg-4',
-            )}
-          >
-            {t === 'dark' ? 'Тёмная' : 'Светлая'}
-          </button>
-        ))}
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold text-tx-1">Цветовая тема</h3>
+        <p className="text-xs text-tx-3 mt-0.5">Выберите визуальное оформление CourseForge</p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 max-w-md">
+        <button
+          type="button"
+          onClick={() => setTheme('dark')}
+          className={clsx(
+            'flex flex-col items-center gap-2.5 p-4 rounded-xl border transition-all text-center group cursor-pointer',
+            theme === 'dark'
+              ? 'border-brand bg-brand/10 text-tx-1 shadow-sm ring-1 ring-brand/40'
+              : 'border-bdr bg-bg-2 text-tx-3 hover:text-tx-1 hover:border-bdr-s hover:bg-bg-3',
+          )}
+        >
+          <div className="w-10 h-10 rounded-full bg-bg-3 border border-bdr flex items-center justify-center text-tx-2 group-hover:scale-105 transition-transform">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+          </div>
+          <div>
+            <div className="text-xs font-semibold">Тёмная тема</div>
+            <div className="text-[11px] text-tx-3">Для комфортной работы в темноте</div>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTheme('light')}
+          className={clsx(
+            'flex flex-col items-center gap-2.5 p-4 rounded-xl border transition-all text-center group cursor-pointer',
+            theme === 'light'
+              ? 'border-brand bg-brand/10 text-tx-1 shadow-sm ring-1 ring-brand/40'
+              : 'border-bdr bg-bg-2 text-tx-3 hover:text-tx-1 hover:border-bdr-s hover:bg-bg-3',
+          )}
+        >
+          <div className="w-10 h-10 rounded-full bg-bg-3 border border-bdr flex items-center justify-center text-tx-2 group-hover:scale-105 transition-transform">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="5" />
+              <line x1="12" y1="1" x2="12" y2="3" />
+              <line x1="12" y1="21" x2="12" y2="23" />
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+              <line x1="1" y1="12" x2="3" y2="12" />
+              <line x1="21" y1="12" x2="23" y2="12" />
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+            </svg>
+          </div>
+          <div>
+            <div className="text-xs font-semibold">Светлая тема</div>
+            <div className="text-[11px] text-tx-3">Классический светлый вид</div>
+          </div>
+        </button>
       </div>
     </div>
   );
@@ -195,8 +227,11 @@ function CoursesSection() {
   };
 
   return (
-    <div>
-      <SectionTitle>Импорт Курсов</SectionTitle>
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold text-tx-1">Импорт курсов</h3>
+        <p className="text-xs text-tx-3 mt-0.5">Добавляйте новые курсы или каталоги перетаскиванием папки</p>
+      </div>
 
       <input
         ref={fileInputRef}
@@ -210,19 +245,27 @@ function CoursesSection() {
         }}
       />
       <button
+        type="button"
         onClick={() => fileInputRef.current?.click()}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
         className={clsx(
-          'w-full flex flex-col items-center justify-center gap-1 px-4 py-7 rounded-lg border border-dashed text-center transition-colors',
+          'w-full flex flex-col items-center justify-center gap-2 px-6 py-12 rounded-xl border-2 border-dashed text-center transition-all cursor-pointer',
           dragOver
-            ? 'border-brand bg-brand/10 text-brand'
-            : 'border-bdr bg-bg-3 text-tx-3 hover:border-brand/50 hover:text-tx-2',
+            ? 'border-brand bg-brand/10 text-brand scale-[0.99]'
+            : 'border-bdr bg-bg-2 text-tx-3 hover:border-brand/60 hover:text-tx-2 hover:bg-bg-3/50',
         )}
       >
-        <span className="text-xs">Перетащите курсы сюда</span>
-        <span className="text-[11px] text-tx-3">или нажмите для выбора папки</span>
+        <div className="w-12 h-12 rounded-full bg-bg-3 border border-bdr flex items-center justify-center text-tx-2 mb-1">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+            <path d="M12 12v9" />
+            <path d="m16 16-4-4-4 4" />
+          </svg>
+        </div>
+        <span className="text-sm font-medium text-tx-1">Перетащите папку с курсом сюда</span>
+        <span className="text-xs text-tx-3 max-w-sm">или нажмите для выбора директории с файлом манифеста course.yaml</span>
       </button>
 
       <AnimatePresence>
@@ -804,7 +847,68 @@ function SetupPromptButton({ statuses, drivers }: { statuses: Record<string, Run
   );
 }
 
+function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+function PaletteIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+      <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+      <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+      <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2z" />
+    </svg>
+  );
+}
+
+function BookOpenIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </svg>
+  );
+}
+
+function TerminalIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="4 17 10 11 4 5" />
+      <line x1="12" y1="19" x2="20" y2="19" />
+    </svg>
+  );
+}
+
+function SparklesIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+      <path d="M5 3v4" />
+      <path d="M19 17v4" />
+      <path d="M3 5h4" />
+      <path d="M17 19h4" />
+    </svg>
+  );
+}
+
 function RunnersSection() {
+  const [filterText, setFilterText] = useState('');
   const { data: runners = {} } = useQuery({
     queryKey: ['runners'],
     queryFn: api.listRunners,
@@ -826,16 +930,62 @@ function RunnersSection() {
   });
   const statuses = Object.fromEntries(RUNNERS.map((def, i) => [def.id, detectQueries[i].data]));
 
+  const filteredRunners = RUNNERS.filter((def) => {
+    if (!filterText.trim()) return true;
+    const q = filterText.toLowerCase().trim();
+    return (
+      def.name.toLowerCase().includes(q) ||
+      def.id.toLowerCase().includes(q)
+    );
+  });
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-tx-3 text-xs font-medium uppercase tracking-wide">Раннеры</p>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-semibold text-tx-1">
+            Среды выполнения {filterText.trim() ? `(${filteredRunners.length})` : ''}
+          </h3>
+          <p className="text-xs text-tx-3 mt-0.5">
+            Конфигурация компиляторов и раннеров для проверки задач
+          </p>
+        </div>
         <SetupPromptButton statuses={statuses} drivers={runners} />
       </div>
+
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-tx-3 pointer-events-none">
+          <SearchIcon />
+        </span>
+        <input
+          type="text"
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          placeholder="Поиск языка или среды выполнения (напр. Python, Go, PostgreSQL)..."
+          className="w-full bg-bg-2 hover:bg-bg-3 focus:bg-bg-1 border border-bdr focus:border-brand/60 rounded-xl pl-9 pr-8 py-2 text-xs text-tx-1 placeholder:text-tx-3 outline-none transition-all"
+        />
+        {filterText && (
+          <button
+            type="button"
+            onClick={() => setFilterText('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-tx-3 hover:text-tx-1 text-xs leading-none cursor-pointer"
+            aria-label="Очистить поиск"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
       <div className="space-y-2">
-        {RUNNERS.map((def) => (
-          <RunnerCard key={def.id} def={def} driver={runners[def.id]} defaultDriver={defaults[def.id]} />
-        ))}
+        {filteredRunners.length === 0 ? (
+          <div className="text-center py-10 text-xs text-tx-3 border border-dashed border-bdr rounded-xl">
+            Раннеры не найдены по запросу «{filterText}»
+          </div>
+        ) : (
+          filteredRunners.map((def) => (
+            <RunnerCard key={def.id} def={def} driver={runners[def.id]} defaultDriver={defaults[def.id]} />
+          ))
+        )}
       </div>
     </div>
   );
@@ -843,38 +993,148 @@ function RunnersSection() {
 
 // ── panel ─────────────────────────────────────────────────────────────────────
 
+interface TabConfig {
+  id: SettingsTab;
+  label: string;
+  title: string;
+  subtitle: string;
+  icon: React.ReactNode;
+}
+
+const TABS: TabConfig[] = [
+  {
+    id: 'general',
+    label: 'Общие',
+    title: 'Общие настройки',
+    subtitle: 'Настройка внешнего вида и цветовой схемы приложения',
+    icon: <PaletteIcon />,
+  },
+  {
+    id: 'courses',
+    label: 'Курсы',
+    title: 'Курсы и материалы',
+    subtitle: 'Управление курсами и импорт учебных материалов в локальное хранилище',
+    icon: <BookOpenIcon />,
+  },
+  {
+    id: 'runners',
+    label: 'Раннеры',
+    title: 'Раннеры и среды выполнения',
+    subtitle: 'Настройка интерпретаторов, компиляторов и баз данных для выполнения заданий',
+    icon: <TerminalIcon />,
+  },
+  {
+    id: 'ai',
+    label: 'AI-ассистент',
+    title: 'AI-ассистент',
+    subtitle: 'Настройка провайдера, моделей и системного промпта для учебного помощника',
+    icon: <SparklesIcon />,
+  },
+];
+
 export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { activeTab, setActiveTab } = useSettings();
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
+  const currentTab = TABS.find((t) => t.id === activeTab) ?? TABS[0];
+
   return (
     <AnimatePresence>
       {open && (
-        <>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-8">
+          {/* Backdrop */}
           <motion.div
-            className="fixed inset-0 z-40 bg-black/40"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
           />
-          <motion.aside
-            className="fixed right-0 top-0 bottom-0 z-50 w-80 bg-bg-2 border-l border-bdr flex flex-col"
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+
+          {/* Dialog Container */}
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-dialog-title"
+            className="relative z-10 w-full max-w-4xl h-[640px] max-h-[90vh] rounded-2xl bg-bg-1 border border-bdr shadow-2xl flex overflow-hidden text-tx-1"
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 12 }}
+            transition={{ type: 'spring', duration: 0.28, bounce: 0 }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 h-11 border-b border-bdr shrink-0">
-              <span className="text-tx-1 text-sm font-medium">Настройки</span>
-              <button onClick={onClose} className="text-tx-3 hover:text-tx-1 text-lg leading-none">×</button>
+            {/* Left Sidebar */}
+            <div className="w-60 shrink-0 bg-bg-2/50 border-r border-bdr flex flex-col p-4 select-none">
+              {/* Category label */}
+              <div className="text-[11px] font-semibold text-tx-3 uppercase tracking-wider px-2.5 mb-2">
+                Настройки
+              </div>
+
+              {/* Tab navigation */}
+              <nav className="space-y-1 flex-1">
+                {TABS.map((tab) => {
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveTab(tab.id)}
+                      className={clsx(
+                        'w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors text-left cursor-pointer',
+                        isActive
+                          ? 'bg-bg-3 text-tx-1'
+                          : 'text-tx-3 hover:text-tx-1 hover:bg-bg-3/50',
+                      )}
+                    >
+                      <span className={clsx('shrink-0 transition-colors', isActive ? 'text-brand' : 'text-tx-3')}>
+                        {tab.icon}
+                      </span>
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </nav>
             </div>
-            <div className="overflow-y-auto flex-1 p-4 space-y-6">
-              <ThemeSection />
-              <div className="border-t border-bdr" />
-              <CoursesSection />
-              <div className="border-t border-bdr" />
-              <RunnersSection />
+
+            {/* Right Pane */}
+            <div className="flex-1 flex flex-col min-w-0 bg-bg-1">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-bdr shrink-0">
+                <div>
+                  <h2 id="settings-dialog-title" className="text-base font-semibold text-tx-1 leading-snug">
+                    {currentTab.title}
+                  </h2>
+                  <p className="text-xs text-tx-3 mt-0.5">{currentTab.subtitle}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Закрыть настройки"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-tx-3 hover:text-tx-1 hover:bg-bg-3 transition-colors cursor-pointer"
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {activeTab === 'general' && <ThemeSection />}
+                {activeTab === 'courses' && <CoursesSection />}
+                {activeTab === 'runners' && <RunnersSection />}
+                {activeTab === 'ai' && <AISettingsSection />}
+              </div>
             </div>
-          </motion.aside>
-        </>
+          </motion.div>
+        </div>
       )}
     </AnimatePresence>
   );

@@ -80,7 +80,13 @@ func Run(cfg *config.Config) error {
 
 	ss := service.NewSubmissionService(sr, logger)
 
-	h := handlers.New(cfg.CoursesDir, courses, catalogs, r, ps, ss)
+	aiRepo := repo.NewAIConfigRepository(cfg.DataDir)
+	aiService := service.NewAIService(aiRepo, logger)
+	if err := aiService.Init(context.Background()); err != nil {
+		return fmt.Errorf("init ai service: %w", err)
+	}
+
+	h := handlers.New(cfg.CoursesDir, courses, catalogs, r, ps, ss, aiService)
 
 	router, err := api.NewRouter(h, api.RouterOptions{FrontendDir: cfg.FrontendDir})
 	if err != nil {

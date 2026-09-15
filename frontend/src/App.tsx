@@ -1,17 +1,19 @@
-import { useState } from 'react';
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, Link, useOutlet, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
-import { CoursesPage } from './pages/CoursesPage';
-import { CatalogPage } from './pages/CatalogPage';
-import { CoursePage } from './pages/CoursePage';
-import { TaskPage } from './pages/TaskPage';
-import { TheoryPage } from './pages/TheoryPage';
-import { SettingsPanel } from './components/SettingsPanel';
+import { useSettings } from './context/SettingsContext';
 import { api } from './api/client';
 
-function GearIcon() {
+const CoursesPage = lazy(() => import('./pages/CoursesPage').then((m) => ({ default: m.CoursesPage })));
+const CatalogPage = lazy(() => import('./pages/CatalogPage').then((m) => ({ default: m.CatalogPage })));
+const CoursePage = lazy(() => import('./pages/CoursePage').then((m) => ({ default: m.CoursePage })));
+const TaskPage = lazy(() => import('./pages/TaskPage').then((m) => ({ default: m.TaskPage })));
+const TheoryPage = lazy(() => import('./pages/TheoryPage').then((m) => ({ default: m.TheoryPage })));
+const SettingsPanel = lazy(() => import('./components/SettingsPanel').then((m) => ({ default: m.SettingsPanel })));
+
+export function GearIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
@@ -44,7 +46,7 @@ function Logo() {
 
 function AppLayout() {
   const { courseSlug, catalogSlug } = useParams<{ courseSlug?: string; catalogSlug?: string }>();
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { isSettingsOpen, openSettings, closeSettings } = useSettings();
 
   const { data: course } = useQuery({
     queryKey: ['course', courseSlug],
@@ -79,7 +81,7 @@ function AppLayout() {
           const last = i === crumbs.length - 1;
           return (
             <span key={c.to} className="flex items-center gap-2 min-w-0">
-              <span className="text-bdr shrink-0">›</span>
+              <span className="text-tx-3 shrink-0">›</span>
               <Link
                 to={c.to}
                 className={clsx(
@@ -92,9 +94,11 @@ function AppLayout() {
             </span>
           );
         })}
+
         <button
-          onClick={() => setSettingsOpen(true)}
+          onClick={() => openSettings()}
           className="ml-auto text-tx-3 hover:text-tx-1 transition-colors p-1 rounded hover:bg-bg-4"
+          title="Настройки"
         >
           <GearIcon />
         </button>
@@ -105,11 +109,17 @@ function AppLayout() {
             useOutlet captures the route element so the exiting copy is frozen. */}
         <AnimatePresence mode="wait">
           <motion.div key={routeKey} className="h-full">
-            {outlet}
+            <Suspense fallback={<div className="h-full bg-bg-1" />}>
+              {outlet}
+            </Suspense>
           </motion.div>
         </AnimatePresence>
       </div>
-      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {isSettingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsPanel open={isSettingsOpen} onClose={closeSettings} />
+        </Suspense>
+      )}
     </div>
   );
 }

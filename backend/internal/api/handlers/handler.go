@@ -19,9 +19,10 @@ type Handler struct {
 	runner      *runner.Runner
 	progress    *service.ProgressService
 	submissions *service.SubmissionService
+	ai          *service.AIService
 }
 
-func New(coursesDir string, courses map[string]*domain.Course, catalogs map[string]*domain.Catalog, r *runner.Runner, ps *service.ProgressService, ss *service.SubmissionService) *Handler {
+func New(coursesDir string, courses map[string]*domain.Course, catalogs map[string]*domain.Catalog, r *runner.Runner, ps *service.ProgressService, ss *service.SubmissionService, aiService *service.AIService) *Handler {
 	return &Handler{
 		coursesDir:  coursesDir,
 		courses:     courses,
@@ -29,6 +30,7 @@ func New(coursesDir string, courses map[string]*domain.Course, catalogs map[stri
 		runner:      r,
 		progress:    ps,
 		submissions: ss,
+		ai:          aiService,
 	}
 }
 

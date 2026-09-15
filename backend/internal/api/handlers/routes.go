@@ -34,4 +34,9 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 
 	r.Get("/submissions", h.listSubmissions)
 	r.Post("/submissions", h.createSubmission)
+
+	r.Get("/ai/config", h.getAIConfig)
+	r.Patch("/ai/config", h.patchAIConfig)
+	r.Post("/ai/chat", h.postAIChat)
+	r.Post("/ai/models", h.postAIModels)
 }

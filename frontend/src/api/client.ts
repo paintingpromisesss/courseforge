@@ -1,4 +1,4 @@
-import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission } from './types';
+import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission, AIConfig, AIMessage, AIModelItem } from './types';
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api';
 
@@ -54,6 +54,77 @@ async function put(path: string, body: unknown): Promise<void> {
 async function del(path: string): Promise<void> {
   const res = await fetch(`${BASE}${path}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`DELETE ${path} → ${res.status}`);
+}
+
+async function postStream(
+  path: string,
+  body: unknown,
+  onChunk: (text: string) => void,
+  onError?: (err: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (err: unknown) {
+    if (signal?.aborted) return;
+    const msg = err instanceof Error ? err.message : 'Network error';
+    onError?.(msg);
+    return;
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    onError?.(err?.error ?? String(res.status));
+    return;
+  }
+  const reader = res.body?.getReader();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    while (true) {
+      if (signal?.aborted) break;
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (trimmed.startsWith('data: ')) {
+          const data = trimmed.slice(6).trim();
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.error) {
+              onError?.(parsed.error);
+            } else if (parsed.delta) {
+              onChunk(parsed.delta);
+            }
+          } catch {
+            // ignore non-JSON or partial chunk
+          }
+        }
+      }
+    }
+  } catch (err: unknown) {
+    if (!signal?.aborted) {
+      const msg = err instanceof Error ? err.message : 'Stream interrupted';
+      onError?.(msg);
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore
+    }
+  }
 }
 
 export const api = {
@@ -116,4 +187,16 @@ export const api = {
     post<{ slug: string }>('/catalogs', body),
   patchCatalog: (slug: string, body: { title?: string; description?: string; courses?: string[] }) =>
     patch<void>(`/catalogs/${slug}`, body),
+
+  aiConfig: () => get<AIConfig>('/ai/config'),
+  aiSaveConfig: (body: Omit<AIConfig, 'enabled'>) => patch<void>('/ai/config', body),
+  aiChatStream: (
+    messages: AIMessage[],
+    onChunk: (text: string) => void,
+    onError?: (err: string) => void,
+    signal?: AbortSignal,
+    thinking?: boolean,
+  ) => postStream('/ai/chat', { messages, thinking }, onChunk, onError, signal),
+  aiModels: (body: { provider: string; base_url: string; api_key: string; check_availability?: boolean }) =>
+    post<AIModelItem[]>('/ai/models', body),
 };

@@ -37,6 +37,16 @@ body {
   min-height: 100vh;
 }
 
+/* Disable programming font ligatures (<- -> != == <= >= := etc.) so code characters never merge */
+*, ::before, ::after {
+  font-variant-ligatures: none;
+}
+
+code, pre, kbd, samp, input, textarea, .font-mono, [class*="font-mono"], .cm-editor, .cm-editor * {
+  font-variant-ligatures: none !important;
+  font-feature-settings: "liga" 0, "calt" 0, "dlig" 0, "hlig" 0 !important;
+}
+
 *:focus-visible {
   @apply outline-none ring-2 ring-brand ring-offset-2 ring-offset-bg-1;
 }
@@ -144,6 +154,44 @@ body {
   .markdown-body .code-tabs :where(pre) {
     @apply m-0 rounded-none border-0 bg-transparent;
   }
+
+  /* Compact high-contrast markdown for AI chat */
+  .chat-markdown {
+    @apply text-[13px] sm:text-[13.5px] leading-relaxed text-tx-1;
+  }
+  .chat-markdown :where(*) {
+    @apply text-tx-1 tracking-normal;
+  }
+  .chat-markdown :where(p) {
+    @apply my-1.5 first:mt-0 last:mb-0 leading-relaxed text-tx-1;
+  }
+  .chat-markdown :where(ul) {
+    @apply my-1.5 first:mt-0 last:mb-0 list-disc pl-5 text-tx-1;
+  }
+  .chat-markdown :where(ol) {
+    @apply my-1.5 first:mt-0 last:mb-0 list-decimal pl-5 text-tx-1;
+  }
+  .chat-markdown :where(li) {
+    @apply my-0.5 pl-0.5 text-tx-1;
+  }
+  .chat-markdown :where(li)::marker {
+    @apply text-tx-2;
+  }
+  .chat-markdown :where(pre) {
+    @apply my-2 overflow-x-auto rounded-lg border border-bdr bg-bg-2 p-2.5 text-tx-1;
+  }
+  .chat-markdown :where(pre code) {
+    @apply block bg-transparent p-0 font-mono text-[12px] leading-5 text-tx-1;
+  }
+  .chat-markdown :where(code):not(:where(pre code)) {
+    @apply rounded border border-bdr-s bg-bg-2 px-1.5 py-0.5 font-mono text-[0.88em] font-medium text-tx-1;
+  }
+  .chat-markdown :where(strong) {
+    @apply font-semibold text-tx-1;
+  }
+  .chat-markdown :where(h1, h2, h3, h4) {
+    @apply my-2 font-semibold text-tx-1 text-[14px];
+  }
 }
 
 /* highlight.js tokens, themed via the app palette (dark = default, light below) */
@@ -167,3 +215,16 @@ body {
 .light .hljs-title, .light .hljs-title.function_, .light .hljs-function .hljs-title, .light .hljs-section { color: #4078f2; }
 .light .hljs-attr, .light .hljs-attribute, .light .hljs-variable, .light .hljs-template-variable, .light .hljs-property { color: #e45649; }
 .light .hljs-tag, .light .hljs-name { color: #e45649; }
+
+/* CodeMirror selection fix: drawSelection() renders .cm-selectionBackground at
+   z-index:-2 behind line elements, so it's hidden by any line background.
+   Disable that layer and use native ::selection which paints at text level. */
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background-color: transparent !important;
+}
+.cm-editor .cm-content ::selection,
+.cm-editor .cm-line::selection,
+.cm-editor .cm-line ::selection {
+  background-color: rgba(130, 81, 238, 0.30) !important;
+}
