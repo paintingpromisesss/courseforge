@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
+
 
 	"github.com/paintingpromisesss/courseforge/internal/config"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
@@ -20,6 +22,10 @@ import (
 // If MCP is disabled in CourseForge settings (mcp_server_config.json),
 // it exits with an error unless -force is specified.
 func RunCLI(args []string) {
+	for len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		args = args[1:]
+	}
+
 	fs := flag.NewFlagSet("mcp", flag.ExitOnError)
 	transport := fs.String("transport", "stdio", "transport mode: stdio or sse")
 	host := fs.String("host", "127.0.0.1", "host to bind for standalone SSE")
@@ -31,6 +37,7 @@ func RunCLI(args []string) {
 	force := fs.Bool("force", false, "bypass disabled check in settings")
 
 	_ = fs.Parse(args)
+
 
 	// Check if MCP is disabled in settings
 	mcpRepo := repo.NewMCPConfigRepository(*dataDir)

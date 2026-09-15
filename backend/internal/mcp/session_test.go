@@ -72,3 +72,57 @@ func TestFileSessionManager_MemoryAndFile(t *testing.T) {
 		t.Fatalf("expected nil active task after clear, got %+v", active3)
 	}
 }
+
+func TestFileSessionManager_ExternalUpdateReload(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "mcp-session-test-*")
+	if err != nil {
+		t.Fatalf("mkdir temp: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	stateFile := filepath.Join(tmpDir, "active_task.json")
+	ctx := context.Background()
+
+	// sm1 simulates CourseForge server process
+	sm1, err := mcp.NewFileSessionManager(stateFile)
+	if err != nil {
+		t.Fatalf("sm1 init: %v", err)
+	}
+
+	// sm2 simulates external stdio agent process (e.g. OpenCode)
+	sm2, err := mcp.NewFileSessionManager(stateFile)
+	if err != nil {
+		t.Fatalf("sm2 init: %v", err)
+	}
+
+	// Initially empty
+	act, err := sm2.GetActiveTask(ctx)
+	if err != nil || act != nil {
+		t.Fatalf("expected nil active, got %+v (err: %v)", act, err)
+	}
+
+	// CourseForge server updates active task
+	if _, err := sm1.SetActiveTask(ctx, "course-1", "task-1", "go"); err != nil {
+		t.Fatalf("sm1 SetActiveTask: %v", err)
+	}
+
+	// sm2 should immediately see the update on GetActiveTask without restart
+	act2, err := sm2.GetActiveTask(ctx)
+	if err != nil {
+		t.Fatalf("sm2 GetActiveTask: %v", err)
+	}
+	if act2 == nil || act2.CourseSlug != "course-1" || act2.TaskSlug != "task-1" {
+		t.Fatalf("sm2 failed to see update: %+v", act2)
+	}
+
+	// CourseForge server clears active task
+	if err := sm1.ClearActiveTask(ctx); err != nil {
+		t.Fatalf("sm1 ClearActiveTask: %v", err)
+	}
+
+	act3, err := sm2.GetActiveTask(ctx)
+	if err != nil || act3 != nil {
+		t.Fatalf("expected nil active after clear, got %+v (err: %v)", act3, err)
+	}
+}
+

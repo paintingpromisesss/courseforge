@@ -325,7 +325,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
       {/* ── 2. Signature Action Card: Copy AI Agent Setup Prompt ────────── */}
       <div className="p-5 rounded-2xl bg-gradient-to-br from-brand/10 via-bg-2 to-bg-2 border border-brand/30 shadow-sm relative overflow-hidden group">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
+          <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold uppercase tracking-wider text-brand">
                 Быстрая настройка агента
@@ -338,7 +338,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
               Промпт подключения для вашего AI-ассистента
             </h4>
             <p className="text-xs text-tx-3 max-w-md">
-              Скопируйте сгенерированный промпт и отправьте его агенту. Он содержит готовые конфиги,
+              Скопируйте сгенерированный промпт и отправьте его агенту. Он содержит готовые инструкции,
               пути к бинарнику и пошаговый тест подключения.
             </p>
           </div>
@@ -347,14 +347,23 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
             type="button"
             onClick={handleCopyPrompt}
             className={clsx(
-              'shrink-0 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-xs transition-all shadow-sm cursor-pointer',
+              'shrink-0 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-xs whitespace-nowrap transition-colors shadow-sm cursor-pointer select-none',
               promptCopied
                 ? 'bg-emerald-600 text-white shadow-emerald-900/30'
-                : 'bg-brand hover:bg-brand/90 text-white shadow-brand/20 hover:scale-[1.02] active:scale-[0.98]',
+                : 'bg-brand hover:bg-brand/90 text-white shadow-brand/20',
             )}
           >
-            {promptCopied ? <CheckIcon /> : <CopyIcon />}
-            <span>{promptCopied ? 'Промпт скопирован!' : 'Скопировать промпт'}</span>
+            <span className="shrink-0">
+              {promptCopied ? <CheckIcon /> : <CopyIcon />}
+            </span>
+            <span className="grid">
+              <span className={clsx('col-start-1 row-start-1 whitespace-nowrap', !promptCopied && 'invisible')}>
+                Промпт скопирован!
+              </span>
+              <span className={clsx('col-start-1 row-start-1 whitespace-nowrap', promptCopied && 'invisible')}>
+                Скопировать промпт
+              </span>
+            </span>
           </button>
         </div>
 
@@ -515,10 +524,17 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
           <button
             type="button"
             onClick={handleCopyJson}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-bg-3 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer"
+            className="shrink-0 flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-bg-3 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer select-none whitespace-nowrap"
           >
-            {jsonCopied ? <CheckIcon /> : <CopyIcon />}
-            <span>{jsonCopied ? 'Скопировано' : 'Скопировать JSON'}</span>
+            <span className="shrink-0">{jsonCopied ? <CheckIcon /> : <CopyIcon />}</span>
+            <span className="grid">
+              <span className={clsx('col-start-1 row-start-1 whitespace-nowrap', !jsonCopied && 'invisible')}>
+                Скопировано
+              </span>
+              <span className={clsx('col-start-1 row-start-1 whitespace-nowrap', jsonCopied && 'invisible')}>
+                Скопировать JSON
+              </span>
+            </span>
           </button>
         </div>
 
@@ -532,9 +548,16 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
               <button
                 type="button"
                 onClick={() => copyText(currentCommandStr, setCmdCopied)}
-                className="shrink-0 px-2.5 py-1 rounded-lg bg-bg-2 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer"
+                className="shrink-0 flex items-center justify-center gap-1 px-3 py-1 rounded-lg bg-bg-2 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer select-none whitespace-nowrap"
               >
-                {cmdCopied ? 'Скопировано' : 'Копировать'}
+                <span className="grid">
+                  <span className={clsx('col-start-1 row-start-1 whitespace-nowrap text-emerald-400 font-medium', !cmdCopied && 'invisible')}>
+                    Скопировано
+                  </span>
+                  <span className={clsx('col-start-1 row-start-1 whitespace-nowrap', cmdCopied && 'invisible')}>
+                    Копировать
+                  </span>
+                </span>
               </button>
             </div>
             <p className="text-[11px] text-tx-3 leading-relaxed px-1">
@@ -553,9 +576,16 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
               <button
                 type="button"
                 onClick={() => copyText(currentStatus.sse_url || `http://${currentStatus.host || '127.0.0.1'}:${currentStatus.port || 8080}/api/mcp/sse`, setSseCopied)}
-                className="shrink-0 px-2.5 py-1 rounded-lg bg-bg-2 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer"
+                className="shrink-0 flex items-center justify-center gap-1 px-3 py-1 rounded-lg bg-bg-2 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer select-none whitespace-nowrap"
               >
-                {sseCopied ? 'Скопировано' : 'Копировать'}
+                <span className="grid">
+                  <span className={clsx('col-start-1 row-start-1 whitespace-nowrap text-emerald-400 font-medium', !sseCopied && 'invisible')}>
+                    Скопировано
+                  </span>
+                  <span className={clsx('col-start-1 row-start-1 whitespace-nowrap', sseCopied && 'invisible')}>
+                    Копировать
+                  </span>
+                </span>
               </button>
             </div>
             <p className="text-[11px] text-tx-3 leading-relaxed px-1">

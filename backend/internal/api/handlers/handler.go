@@ -25,9 +25,11 @@ type Handler struct {
 	submissions   *service.SubmissionService
 	ai            *service.AIService
 	mcpConfigRepo *repo.MCPConfigRepository
-	mcpServer     *mcp.Server
-	sseServer     *mcpserver.SSEServer
+	mcpServer       *mcp.Server
+	sseServer       *mcpserver.SSEServer
+	fallbackSession mcp.SessionManager
 }
+
 
 func New(
 	coursesDir string,

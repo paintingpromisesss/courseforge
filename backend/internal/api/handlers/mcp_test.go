@@ -83,3 +83,70 @@ func TestMCPConfigHandlers(t *testing.T) {
 		t.Fatalf("expected 403 Forbidden for SSE when MCP disabled, got %d", sseW.Code)
 	}
 }
+
+func TestMCPActiveTaskHandlers(t *testing.T) {
+	tempDir := t.TempDir()
+	h := New(filepath.Join(tempDir, "courses"), tempDir, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	// 1. Initial GET -> empty
+	req := httptest.NewRequest(http.MethodGet, "/mcp/active-task", nil)
+	w := httptest.NewRecorder()
+	h.getMCPActiveTask(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp dto.MCPActiveTaskResp
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if resp.CourseSlug != "" || resp.TaskSlug != "" {
+		t.Fatalf("expected empty active task, got %+v", resp)
+	}
+
+	// 2. PUT /mcp/active-task
+	putBody := dto.MCPActiveTaskReq{
+		CourseSlug: "go-course",
+		TaskSlug:   "hello-world",
+		Language:   "go",
+	}
+	bodyBytes, _ := json.Marshal(putBody)
+	putReq := httptest.NewRequest(http.MethodPut, "/mcp/active-task", bytes.NewReader(bodyBytes))
+	putW := httptest.NewRecorder()
+	h.putMCPActiveTask(putW, putReq)
+	if putW.Code != http.StatusOK {
+		t.Fatalf("expected 200 on put, got %d: %s", putW.Code, putW.Body.String())
+	}
+
+	// 3. GET /mcp/active-task after PUT
+	req2 := httptest.NewRequest(http.MethodGet, "/mcp/active-task", nil)
+	w2 := httptest.NewRecorder()
+	h.getMCPActiveTask(w2, req2)
+	var resp2 dto.MCPActiveTaskResp
+	if err := json.NewDecoder(w2.Body).Decode(&resp2); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if resp2.CourseSlug != "go-course" || resp2.TaskSlug != "hello-world" || resp2.Language != "go" {
+		t.Fatalf("unexpected active task: %+v", resp2)
+	}
+
+	// 4. DELETE /mcp/active-task
+	delReq := httptest.NewRequest(http.MethodDelete, "/mcp/active-task", nil)
+	delW := httptest.NewRecorder()
+	h.deleteMCPActiveTask(delW, delReq)
+	if delW.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", delW.Code)
+	}
+
+	// 5. GET /mcp/active-task after DELETE
+	req3 := httptest.NewRequest(http.MethodGet, "/mcp/active-task", nil)
+	w3 := httptest.NewRecorder()
+	h.getMCPActiveTask(w3, req3)
+	var resp3 dto.MCPActiveTaskResp
+	if err := json.NewDecoder(w3.Body).Decode(&resp3); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if resp3.CourseSlug != "" || resp3.TaskSlug != "" {
+		t.Fatalf("expected empty active task after delete, got %+v", resp3)
+	}
+}
+

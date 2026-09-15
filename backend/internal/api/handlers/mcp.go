@@ -10,10 +10,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/paintingpromisesss/courseforge/internal/api/dto"
 	"github.com/paintingpromisesss/courseforge/internal/domain"
+	"github.com/paintingpromisesss/courseforge/internal/mcp"
 )
+
 
 // @Summary Get MCP server configuration and status
 // @Tags mcp
@@ -133,6 +136,98 @@ func (h *Handler) handleMCPMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	h.sseServer.MessageHandler().ServeHTTP(w, r)
 }
+
+func (h *Handler) getSessionManager() mcp.SessionManager {
+	if h.mcpServer != nil && h.mcpServer.Session() != nil {
+		return h.mcpServer.Session()
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.fallbackSession == nil {
+		h.fallbackSession, _ = mcp.NewFileSessionManager(filepath.Join(h.dataDir, "mcp_session.json"))
+	}
+	return h.fallbackSession
+}
+
+// @Summary Get active task context for MCP
+// @Tags mcp
+// @Produce json
+// @Success 200 {object} dto.MCPActiveTaskResp
+// @Router /mcp/active-task [get]
+func (h *Handler) getMCPActiveTask(w http.ResponseWriter, r *http.Request) {
+	sm := h.getSessionManager()
+	if sm == nil {
+		h.writeJSON(w, http.StatusOK, dto.MCPActiveTaskResp{})
+		return
+	}
+	active, err := sm.GetActiveTask(r.Context())
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if active == nil {
+		h.writeJSON(w, http.StatusOK, dto.MCPActiveTaskResp{})
+		return
+	}
+	h.writeJSON(w, http.StatusOK, dto.MCPActiveTaskResp{
+		CourseSlug: active.CourseSlug,
+		TaskSlug:   active.TaskSlug,
+		Language:   active.Language,
+		UpdatedAt:  active.UpdatedAt.Format(time.RFC3339),
+	})
+}
+
+// @Summary Set active task context for MCP
+// @Tags mcp
+// @Accept json
+// @Produce json
+// @Param request body dto.MCPActiveTaskReq true "Active Task Context"
+// @Success 200 {object} dto.MCPActiveTaskResp
+// @Router /mcp/active-task [put]
+func (h *Handler) putMCPActiveTask(w http.ResponseWriter, r *http.Request) {
+	var req dto.MCPActiveTaskReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.CourseSlug == "" || req.TaskSlug == "" {
+		h.writeError(w, http.StatusBadRequest, "course_slug and task_slug are required")
+		return
+	}
+
+	sm := h.getSessionManager()
+	if sm == nil {
+		h.writeError(w, http.StatusInternalServerError, "session manager not available")
+		return
+	}
+
+	active, err := sm.SetActiveTask(r.Context(), req.CourseSlug, req.TaskSlug, req.Language)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, dto.MCPActiveTaskResp{
+		CourseSlug: active.CourseSlug,
+		TaskSlug:   active.TaskSlug,
+		Language:   active.Language,
+		UpdatedAt:  active.UpdatedAt.Format(time.RFC3339),
+	})
+}
+
+// @Summary Clear active task context for MCP
+// @Tags mcp
+// @Produce json
+// @Success 204 "No Content"
+// @Router /mcp/active-task [delete]
+func (h *Handler) deleteMCPActiveTask(w http.ResponseWriter, r *http.Request) {
+	sm := h.getSessionManager()
+	if sm != nil {
+		_ = sm.ClearActiveTask(r.Context())
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 
 func (h *Handler) isMCPEnabled(ctx context.Context) bool {
 	if h.mcpConfigRepo == nil {

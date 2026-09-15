@@ -133,4 +133,12 @@ export interface MCPStatusResponse extends MCPConfig {
   available: boolean;
 }
 
+export interface MCPActiveTask {
+  course_slug?: string;
+  task_slug?: string;
+  language?: string;
+  updated_at?: string;
+}
+
+
 

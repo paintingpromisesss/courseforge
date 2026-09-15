@@ -15,75 +15,90 @@ export function buildMCPSetupPrompt(status: MCPStatusResponse): string {
   lines.push(
     '# Настройка MCP-сервера CourseForge',
     '',
-    'Ты — AI-ассистент. Добавь MCP-сервер CourseForge в конфигурацию своего MCP-клиента.',
+    'Ты — AI-ассистент. Твоя единственная задача — добавить MCP-сервер `courseforge` в конфигурационный файл своего окружения.',
     '',
-    '❗ СТРОГИЕ ПРАВИЛА:',
-    '1. НЕ редактируй файлы репозитория и не меняй исходный код проекта (не трогай backend, frontend, courses и т.д.). Это НЕ задача разработки.',
-    '2. Твоя цель — добавить MCP-сервер `courseforge` в конфигурационный файл ТВОЕГО СОБСТВЕННОГО окружения/клиента, в котором ты сейчас запущен.',
+    '⛔ СТРОГИЕ ЗАПРЕТЫ:',
+    '1. НЕ запускай терминальные команды (ls, dir, find, echo и т.д.) для поиска путей и не исследуй систему через shell!',
+    '2. НЕ редактируй исходный код репозитория (папки backend, frontend, courses и т.д.).',
+    '3. НЕ пытайся вызывать инструменты CourseForge в этой сессии до перезапуска клиента!',
     '',
   );
 
   if (!status.enabled) {
     lines.push(
-      '⚠️ ВНИМАНИЕ: Сейчас в интерфейсе CourseForge сервер отключен. Перед проверкой включите тоггл в CourseForge: Настройки → MCP-сервер.',
+      '⚠️ ВНИМАНИЕ: В интерфейсе CourseForge сервер сейчас выключен. Перед проверкой включите тоггл в CourseForge: Настройки → MCP-сервер.',
       '',
-    );
-  }
-
-  if (isSSE) {
-    lines.push(
-      '## Параметры подключения (SSE HTTP):',
-      '- **Имя сервера:** `courseforge`',
-      '- **Транспорт:** `sse` (или `remote` / `http`)',
-      `- **URL эндпоинта:** \`${sseUrl}\``,
-      '',
-      '> ℹ️ CourseForge уже запущен и раздает SSE-эндпоинт по сети. Команда запуска процесса не требуется.',
-    );
-  } else {
-    lines.push(
-      '## Параметры запуска (stdio):',
-      '- **Имя сервера:** `courseforge`',
-      '- **Транспорт:** `stdio` (или `local`)',
-      `- **Команда (command):** \`${command}\``,
-      `- **Аргументы (args):** \`${JSON.stringify(args)}\``,
-      `- **Единый массив для запуска:** \`${JSON.stringify(fullCommandArray)}\``,
-      '',
-      '> ℹ️ Твой клиент будет запускать бинарник в фоне как дочерний процесс.',
     );
   }
 
   lines.push(
+    '## 1. Конфигурация для твоего клиента (используй локальный файл проекта):',
     '',
-    '## Справочник: где находится конфиг твоего агента:',
-    `- **OpenCode (CLI):** файл \`opencode.json\` (в корне проекта или \`~/.config/opencode/opencode.json\`), корневой ключ \`"mcp"\`. ${
-      isSSE
-        ? 'Используй `"type": "remote"`, `"url": "' + sseUrl + '"`'
-        : 'Используй `"type": "local"`, `"command": ' + JSON.stringify(fullCommandArray) + '`'
-    }.`,
-    `- **Claude Code (CLI):** выполни команду ${
-      isSSE
-        ? `\`claude mcp add courseforge --transport sse ${sseUrl}\``
-        : `\`claude mcp add courseforge -- ${fullCommandArray.join(' ')}\``
-    } либо пропиши в \`~/.claude.json\` / \`.mcp.json\` (ключ \`"mcpServers"\`).`,
-    '- **Cursor:** файл `.cursor/mcp.json` (в корне проекта) или `~/.cursor/mcp.json`, ключ `"mcpServers"`.',
-    `- **Claude Desktop:** файл \`claude_desktop_config.json\` (${
-      platform === 'windows' ? '%APPDATA%\\Claude\\' : '~/Library/Application Support/Claude/'
-    }), ключ \`"mcpServers"\`.`,
-    `- **Windsurf (Codeium):** файл \`~/.codeium/windsurf/mcp_config.json\`, ключ \`"mcpServers"\`${
-      isSSE ? ' (внимание: для SSE используется поле `"serverUrl"`)' : ''
-    }.`,
-    '- **Cline / Roo Code:** файл настроек расширения `cline_mcp_settings.json` или проектный `.roo/mcp.json`, ключ `"mcpServers"`.',
-    '- **Zed:** файл `settings.json` (или `.zed/settings.json`), ключ `"context_servers"`.',
-    `- **Antigravity CLI:** файл \`~/.gemini/config/mcp_config.json\`, ключ \`"mcpServers"\`${
-      isSSE ? ' (для SSE используется поле `"serverUrl"`)' : ''
-    }.`,
+    '### 👉 Если ты работаешь в OpenCode:',
+    'Отредактируй или создай файл `opencode.json` прямо в корне текущего проекта и добавь секцию `"mcp"`:',
+    '```json',
+    isSSE
+      ? JSON.stringify(
+          {
+            mcp: {
+              courseforge: {
+                type: 'remote',
+                url: sseUrl,
+              },
+            },
+          },
+          null,
+          2,
+        )
+      : JSON.stringify(
+          {
+            mcp: {
+              courseforge: {
+                type: 'local',
+                command: fullCommandArray,
+              },
+            },
+          },
+          null,
+          2,
+        ),
+    '```',
     '',
-    '## Чеклист действий:',
-    '1. Определи, в каком клиенте/агенте ты сейчас работаешь.',
-    '2. Найди и обнови соответствующий конфигурационный файл своего окружения (или вызови CLI-команду добавления, если это Claude Code).',
-    '3. Перезагрузи / обнови список доступных MCP-инструментов в своём окружении.',
-    '4. Вызови инструмент `list_courses` для проверки связи с платформой CourseForge.',
-    '5. Кратко доложи пользователю: «MCP-сервер CourseForge успешно подключен к моему окружению».',
+    '### 👉 Если ты работаешь в Cursor или Claude Code:',
+    'Отредактируй или создай локальный файл в корне проекта: `.cursor/mcp.json` (для Cursor) или `.mcp.json` (для Claude Code):',
+    '```json',
+    isSSE
+      ? JSON.stringify(
+          {
+            mcpServers: {
+              courseforge: {
+                url: sseUrl,
+              },
+            },
+          },
+          null,
+          2,
+        )
+      : JSON.stringify(
+          {
+            mcpServers: {
+              courseforge: {
+                command,
+                args,
+              },
+            },
+          },
+          null,
+          2,
+        ),
+    '```',
+    '',
+    '*(Для других клиентов: Claude Desktop — глобальный `claude_desktop_config.json`, Windsurf — `~/.codeium/windsurf/mcp_config.json` с полем `"serverUrl"`)*',
+    '',
+    '## 2. Алгоритм действий (НЕ используй терминал):',
+    '1. С помощью инструмента записи/редактирования файлов запиши указанный JSON в соответствующий файл конфигурации (для OpenCode это `opencode.json` в текущей папке).',
+    '2. НЕ вызывай никакие команды в shell и НЕ пытайся вызвать инструмент `list_courses` (в OpenCode и большинстве клиентов нет горячей перезагрузки).',
+    '3. Сразу ответь пользователю: «MCP-сервер CourseForge добавлен в конфигурацию. Пожалуйста, перезапустите сессию клиента, чтобы инструменты стали доступны».',
   );
 
   return lines.join('\n');

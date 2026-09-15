@@ -24,3 +24,17 @@ type MCPStatusResp struct {
 	ToolsCount int      `json:"tools_count"`
 	Available  bool     `json:"available"`
 }
+
+type MCPActiveTaskReq struct {
+	CourseSlug string `json:"course_slug"`
+	TaskSlug   string `json:"task_slug"`
+	Language   string `json:"language,omitempty"`
+}
+
+type MCPActiveTaskResp struct {
+	CourseSlug string `json:"course_slug,omitempty"`
+	TaskSlug   string `json:"task_slug,omitempty"`
+	Language   string `json:"language,omitempty"`
+	UpdatedAt  string `json:"updated_at,omitempty"`
+}
+

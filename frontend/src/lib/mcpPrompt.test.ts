@@ -3,7 +3,7 @@ import { buildMCPSetupPrompt } from './mcpPrompt';
 import type { MCPStatusResponse } from '../api/types';
 
 describe('mcpPrompt', () => {
-  it('generates directive prompt for stdio with agent guide and OpenCode reference', () => {
+  it('generates direct prompt for stdio with OpenCode snippet and strict prohibitions', () => {
     const status: MCPStatusResponse = {
       enabled: true,
       transport: 'stdio',
@@ -21,19 +21,19 @@ describe('mcpPrompt', () => {
     };
 
     const prompt = buildMCPSetupPrompt(status);
-    expect(prompt).toContain('НЕ редактируй файлы репозитория');
-    expect(prompt).toContain('ТВОЕГО СОБСТВЕННОГО окружения/клиента');
+    expect(prompt).toContain('НЕ запускай терминальные команды');
+    expect(prompt).toContain('НЕ редактируй исходный код репозитория');
+    expect(prompt).toContain('opencode.json');
+    expect(prompt).toContain('"type": "local"');
     expect(prompt).toContain('F:/Proga/courseforge/bin/courseforge.exe');
     expect(prompt).toContain('--courses-dir=F:/Proga/courseforge/courses');
     expect(prompt).toContain('--data-dir=F:/Proga/courseforge/data');
-    expect(prompt).toContain('OpenCode');
-    expect(prompt).toContain('opencode.json');
     expect(prompt).toContain('Cursor');
     expect(prompt).toContain('Claude Code');
-    expect(prompt).toContain('list_courses');
+    expect(prompt).toContain('перезапустите сессию клиента');
   });
 
-  it('generates directive prompt for SSE transport without requiring launch command', () => {
+  it('generates direct prompt for SSE transport', () => {
     const status: MCPStatusResponse = {
       enabled: true,
       transport: 'sse',
@@ -52,11 +52,9 @@ describe('mcpPrompt', () => {
 
     const prompt = buildMCPSetupPrompt(status);
     expect(prompt).toContain('http://127.0.0.1:8080/api/mcp/sse');
-    expect(prompt).toContain('Команда запуска процесса не требуется');
     expect(prompt).toContain('OpenCode');
     expect(prompt).toContain('"type": "remote"');
     expect(prompt).toContain('serverUrl');
-    expect(prompt).toContain('list_courses');
   });
 
   it('includes warning when toggle is disabled', () => {
@@ -76,6 +74,6 @@ describe('mcpPrompt', () => {
     };
 
     const prompt = buildMCPSetupPrompt(status);
-    expect(prompt).toContain('сервер отключен');
+    expect(prompt).toContain('сервер сейчас выключен');
   });
 });

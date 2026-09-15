@@ -27,9 +27,10 @@ type SessionManager interface {
 
 // FileSessionManager stores the active task context in memory with an optional backup JSON file.
 type FileSessionManager struct {
-	mu       sync.RWMutex
-	filePath string
-	active   *ActiveTaskContext
+	mu          sync.RWMutex
+	filePath    string
+	active      *ActiveTaskContext
+	lastModTime time.Time
 }
 
 // NewFileSessionManager creates a SessionManager backed by memory and an optional state file.
@@ -39,10 +40,13 @@ func NewFileSessionManager(filePath string) (*FileSessionManager, error) {
 	}
 
 	if filePath != "" {
-		if data, err := os.ReadFile(filePath); err == nil && len(data) > 0 {
-			var state ActiveTaskContext
-			if err := json.Unmarshal(data, &state); err == nil && state.CourseSlug != "" && state.TaskSlug != "" {
-				sm.active = &state
+		if fi, err := os.Stat(filePath); err == nil {
+			sm.lastModTime = fi.ModTime()
+			if data, err := os.ReadFile(filePath); err == nil && len(data) > 0 {
+				var state ActiveTaskContext
+				if err := json.Unmarshal(data, &state); err == nil && state.CourseSlug != "" && state.TaskSlug != "" {
+					sm.active = &state
+				}
 			}
 		}
 	}
@@ -50,9 +54,38 @@ func NewFileSessionManager(filePath string) (*FileSessionManager, error) {
 	return sm, nil
 }
 
+func (sm *FileSessionManager) reloadIfNeeded() {
+	if sm.filePath == "" {
+		return
+	}
+	fi, err := os.Stat(sm.filePath)
+	if err != nil {
+		if os.IsNotExist(err) && sm.active != nil {
+			sm.active = nil
+			sm.lastModTime = time.Time{}
+		}
+		return
+	}
+	if fi.ModTime().Equal(sm.lastModTime) {
+		return
+	}
+
+	data, err := os.ReadFile(sm.filePath)
+	if err != nil || len(data) == 0 {
+		return
+	}
+	var state ActiveTaskContext
+	if err := json.Unmarshal(data, &state); err == nil && state.CourseSlug != "" && state.TaskSlug != "" {
+		sm.active = &state
+		sm.lastModTime = fi.ModTime()
+	}
+}
+
 func (sm *FileSessionManager) GetActiveTask(ctx context.Context) (*ActiveTaskContext, error) {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	sm.reloadIfNeeded()
 
 	if sm.active == nil {
 		return nil, nil
@@ -81,7 +114,11 @@ func (sm *FileSessionManager) SetActiveTask(ctx context.Context, courseSlug, tas
 	if sm.filePath != "" {
 		if err := os.MkdirAll(filepath.Dir(sm.filePath), 0755); err == nil {
 			if data, err := json.MarshalIndent(ctxObj, "", "  "); err == nil {
-				_ = os.WriteFile(sm.filePath, data, 0644)
+				if err := os.WriteFile(sm.filePath, data, 0644); err == nil {
+					if fi, err := os.Stat(sm.filePath); err == nil {
+						sm.lastModTime = fi.ModTime()
+					}
+				}
 			}
 		}
 	}
@@ -95,6 +132,7 @@ func (sm *FileSessionManager) ClearActiveTask(ctx context.Context) error {
 	defer sm.mu.Unlock()
 
 	sm.active = nil
+	sm.lastModTime = time.Time{}
 	if sm.filePath != "" {
 		_ = os.Remove(sm.filePath)
 	}
@@ -103,3 +141,4 @@ func (sm *FileSessionManager) ClearActiveTask(ctx context.Context) error {
 
 // Ensure interface implementation
 var _ SessionManager = (*FileSessionManager)(nil)
+

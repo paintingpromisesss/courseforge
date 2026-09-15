@@ -76,6 +76,12 @@ func (s *Server) MCPServer() *server.MCPServer {
 	return s.mcpServer
 }
 
+// Session returns the SessionManager used by this MCP server.
+func (s *Server) Session() SessionManager {
+	return s.session
+}
+
+
 // ServeStdio starts the MCP server over standard I/O (stdin/stdout).
 func (s *Server) ServeStdio() error {
 	return s.ServeStdioWithIO(context.Background(), os.Stdin, os.Stdout)

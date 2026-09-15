@@ -42,6 +42,10 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 
 	r.Get("/mcp/config", h.getMCPConfig)
 	r.Patch("/mcp/config", h.patchMCPConfig)
+	r.Get("/mcp/active-task", h.getMCPActiveTask)
+	r.Put("/mcp/active-task", h.putMCPActiveTask)
+	r.Delete("/mcp/active-task", h.deleteMCPActiveTask)
 	r.Get("/mcp/sse", h.handleMCPSSE)
 	r.Post("/mcp/message", h.handleMCPMessage)
 }
+
