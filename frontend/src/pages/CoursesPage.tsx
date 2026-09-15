@@ -210,23 +210,14 @@ export function CoursesPage() {
                   </button>
                 </>
               ) : (
-                <>
-                  <button
-                    onClick={() => setCreating(true)}
-                    className="px-3.5 h-9 rounded-lg border border-brand/40 bg-brand/10 hover:bg-brand/20 text-brand text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <PlusIcon />
-                    <span>Новая группа</span>
-                  </button>
-                  <button
-                    onClick={() => setEditMode(true)}
-                    className="px-3 h-9 rounded-lg border border-bdr bg-bg-2 hover:bg-bg-3 text-tx-3 hover:text-tx-1 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-                    title="Управление и удаление курсов"
-                  >
-                    <PencilIcon />
-                    <span>Управление</span>
-                  </button>
-                </>
+                <button
+                  onClick={() => setEditMode(true)}
+                  className="px-3 h-9 rounded-lg border border-bdr bg-bg-2 hover:bg-bg-3 text-tx-3 hover:text-tx-1 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Управление и удаление курсов"
+                >
+                  <PencilIcon />
+                  <span>Управление</span>
+                </button>
               )}
             </div>
           )}

@@ -199,21 +199,22 @@ export function CatalogPage() {
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
           <div className="flex-1 min-w-0">
             {editMode ? (
-              <>
+              <div className="max-w-xl space-y-2">
                 <input
+                  autoFocus
                   value={titleDraft}
                   onChange={(e) => setTitleDraft(e.target.value)}
                   placeholder="Название группы"
-                  className="block w-full p-0 m-0 bg-transparent border-b border-bdr focus:border-brand pb-1 text-2xl font-semibold text-tx-1 placeholder:text-tx-3 focus:outline-none"
+                  className="w-full px-3.5 py-2 rounded-lg bg-bg-2 border border-bdr text-xl font-semibold text-tx-1 placeholder:text-tx-3 focus:border-brand focus:outline-none transition-colors"
                 />
                 <textarea
                   value={descDraft}
                   onChange={(e) => setDescDraft(e.target.value)}
                   placeholder="Описание группы (необязательно)"
                   rows={2}
-                  className="block w-full p-0 m-0 mt-2 bg-transparent border-b border-bdr-s focus:border-brand pb-1 text-sm text-tx-2 placeholder:text-tx-3 focus:outline-none resize-none"
+                  className="w-full px-3.5 py-2 rounded-lg bg-bg-2 border border-bdr text-sm text-tx-2 placeholder:text-tx-3 focus:border-brand focus:outline-none resize-none transition-colors"
                 />
-              </>
+              </div>
             ) : (
               <>
                 <h1 className="text-2xl font-semibold text-tx-1">{catalog.title}</h1>
@@ -319,7 +320,10 @@ export function CatalogPage() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ duration: 0.2 }}
-                className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-brand/40 bg-brand/5 text-brand hover:bg-brand/10 hover:border-brand/60 transition-colors"
+                className={clsx(
+                  'flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-brand/40 bg-brand/5 text-brand hover:bg-brand/10 hover:border-brand/60 transition-colors cursor-pointer p-4',
+                  catalog.courses.length === 0 ? 'min-h-[6.5rem]' : 'h-full min-h-[5rem]',
+                )}
               >
                 <PlusIcon />
                 <span className="text-sm font-medium">Добавить курсы</span>
@@ -327,6 +331,19 @@ export function CatalogPage() {
             )}
           </AnimatePresence>
         </div>
+
+        {catalog.courses.length === 0 && !editMode && (
+          <div className="flex flex-col items-center justify-center py-16 px-4 rounded-xl border border-dashed border-bdr text-center">
+            <p className="text-tx-3 text-sm mb-4">В этой группе пока нет курсов</p>
+            <button
+              onClick={() => setPicking(true)}
+              className="px-4 h-9 rounded-lg border border-brand/40 bg-brand/10 hover:bg-brand/20 text-brand text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <PlusIcon />
+              <span>Добавить курсы</span>
+            </button>
+          </div>
+        )}
       </div>
 
 
