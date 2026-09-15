@@ -1,0 +1,1 @@
+# Placeholder so Go embed and tests succeed even when frontend is not built

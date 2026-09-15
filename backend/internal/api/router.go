@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -8,10 +9,12 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/paintingpromisesss/courseforge/internal/api/handlers"
+	"github.com/paintingpromisesss/courseforge/internal/web"
 )
 
 type RouterOptions struct {
@@ -32,14 +35,24 @@ func NewRouter(h *handlers.Handler, opts RouterOptions) (http.Handler, error) {
 		h.RegisterRoutes(r)
 	})
 
+	var frontendHandler http.Handler
 	if opts.FrontendDir != "" {
-		frontend, err := newFrontendHandler(opts.FrontendDir)
+		fh, err := newFrontendHandler(opts.FrontendDir)
 		if err != nil {
 			return nil, err
 		}
+		frontendHandler = fh
+	} else if web.HasEmbedded() {
+		fh, err := newFrontendHandlerFromFS(web.Dist())
+		if err != nil {
+			return nil, err
+		}
+		frontendHandler = fh
+	}
 
-		r.Get("/*", frontend.ServeHTTP)
-		r.Head("/*", frontend.ServeHTTP)
+	if frontendHandler != nil {
+		r.Get("/*", frontendHandler.ServeHTTP)
+		r.Head("/*", frontendHandler.ServeHTTP)
 	}
 
 	return r, nil
@@ -64,9 +77,22 @@ func newFrontendHandler(dir string) (http.Handler, error) {
 		return nil, fmt.Errorf("resolve frontend dir: %w", err)
 	}
 
-	fsys := os.DirFS(absDir)
+	return newFrontendHandlerFromFS(os.DirFS(absDir))
+}
+
+func newFrontendHandlerFromFS(fsys fs.FS) (http.Handler, error) {
 	if _, err := fs.Stat(fsys, "index.html"); err != nil {
-		return nil, fmt.Errorf("frontend build not found in %s", absDir)
+		return nil, fmt.Errorf("frontend build not found: %w", err)
+	}
+
+	indexHTML, err := fs.ReadFile(fsys, "index.html")
+	if err != nil {
+		return nil, fmt.Errorf("read index.html: %w", err)
+	}
+
+	var modTime time.Time
+	if info, err := fs.Stat(fsys, "index.html"); err == nil {
+		modTime = info.ModTime()
 	}
 
 	files := http.FileServer(http.FS(fsys))
@@ -79,7 +105,7 @@ func newFrontendHandler(dir string) (http.Handler, error) {
 
 		cleanPath := path.Clean("/" + r.URL.Path)
 		if cleanPath == "/" {
-			http.ServeFile(w, r, filepath.Join(absDir, "index.html"))
+			http.ServeContent(w, r, "index.html", modTime, bytes.NewReader(indexHTML))
 			return
 		}
 
@@ -89,6 +115,7 @@ func newFrontendHandler(dir string) (http.Handler, error) {
 			return
 		}
 
-		http.ServeFile(w, r, filepath.Join(absDir, "index.html"))
+		http.ServeContent(w, r, "index.html", modTime, bytes.NewReader(indexHTML))
 	}), nil
 }
+
