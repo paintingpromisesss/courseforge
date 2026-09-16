@@ -66,26 +66,48 @@ jobs:
           path: ${{ matrix.target }}
           if-no-files-found: error
 
-      - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+
+      - name: Publish Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            gh release create "${GITHUB_REF_NAME}" --generate-notes || true
+          tag="${GITHUB_REF_NAME}"
+
+          # Create release if it doesn't exist yet (generates release notes exactly once)
+          if ! gh release view "${tag}" >/dev/null 2>&1; then
+            echo "Creating release ${tag}..."
+            gh release create "${tag}" --generate-notes
           fi
 
-          for attempt in 1 2 3; do
-            if gh release upload "${GITHUB_REF_NAME}" "${{ matrix.target }}" --clobber; then
-              exit 0
-            fi
+          # Upload assets with retries
+          echo "Uploading release assets..."
+          for file in dist/*; do
+            echo "Uploading ${file}..."
+            for attempt in 1 2 3; do
+              if gh release upload "${tag}" "${file}" --clobber; then
+                echo "Successfully uploaded ${file}"
+                break
+              fi
 
-            if [ "${attempt}" -eq 3 ]; then
-              echo "Failed to upload release asset after ${attempt} attempts."
-              exit 1
-            fi
+              if [ "${attempt}" -eq 3 ]; then
+                echo "Failed to upload ${file} after ${attempt} attempts."
+                exit 1
+              fi
 
-            echo "Upload attempt ${attempt} failed, retrying in 10 seconds..."
-            sleep 10
+              echo "Upload attempt ${attempt} for ${file} failed, retrying in 10s..."
+              sleep 10
+            done
           done
