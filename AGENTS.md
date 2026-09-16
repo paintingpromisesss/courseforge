@@ -13,6 +13,13 @@
 ./bin/courseforge --port=8080 --courses-dir=./courses --data-dir=./data --frontend-dir=./frontend/dist
 ```
 
+**MCP Server** (stdio mode for AI agents / IDE):
+```bash
+./bin/courseforge mcp --courses-dir=./courses --data-dir=./data --transport=stdio
+# dev: cd backend && go run ./cmd/server mcp --courses-dir=./courses --data-dir=./data
+# smoke test: .\scripts\smoke-test-mcp.ps1
+```
+
 **Dev** (run both terminals):
 ```bash
 cd backend && make run       # hot swagger regen + go run via cmd/server (swagger tag)
@@ -35,8 +42,8 @@ cd backend && make swagger
 
 ## Build quirks
 
-- Single Go binary serves REST API (chi) + static SPA (`frontend/dist/`).
-- `cmd/courseforge/` = production entrypoint; `cmd/server/` = dev entrypoint (enables `swagger` build tag).
+- Single Go binary serves REST API (chi) + static SPA (`frontend/dist/`), AND the MCP server (`courseforge mcp ...`). There is NO separate `courseforge-mcp` binary.
+- `cmd/courseforge/` = production entrypoint; `cmd/server/` = dev entrypoint (enables `swagger` build tag). Both support the `mcp` subcommand.
 - `swagger` build tag: enables `/swagger/index.html`. `scripts/build.sh` and `make run` use it; bare `go build` does not.
 - Windows build script accepts `-Console` switch to disable GUI window (`-H=windowsgui` ldflag).
 - Shared `GOCACHE` at `.cache/go-build/` across repo (set by build scripts and Makefile).
@@ -46,14 +53,15 @@ cd backend && make swagger
 
 ```
 backend/                       # Go 1.26, module github.com/paintingpromisesss/courseforge
-  cmd/courseforge/             # production CLI (chi + static file server)
-  cmd/server/                  # dev CLI (adds swagger tag)
+  cmd/courseforge/             # production CLI (chi + static file server + mcp subcommand)
+  cmd/server/                  # dev CLI (adds swagger tag + mcp subcommand)
   internal/di/di.go            # composition root — wires config → courses → runner → repos → services → handlers → router
   internal/api/handlers/       # HTTP handlers (chi router)
   internal/api/dto/            # request/response types
   internal/application/service/ # business logic (progress, submissions)
   internal/infrastructure/     # runner, repos, parser, AI client
-  internal/domain/             # Course, Task, Submission, Progress
+  internal/mcp/                # MCP server (stdio & SSE, session manager, tools, resources)
+  internal/domain/             # Course, Task, Submission, Progress, MCP
   docs/                        # swagger JSON (generated)
 
 frontend/                      # React 19, TS, Vite 8, Tailwind 3
@@ -92,9 +100,31 @@ data/                          # runtime state (gitignored: SQLite, runners.json
 | What | Where |
 |---|---|
 | Course progress | `progress.json` alongside course files |
-| Submissions | SQLite (`--data-dir/courseforge_submissions.db`) |
+| Submissions | SQLite (`--data-dir/courseforge_submissions.db` or `courseforge.db`) |
 | Runner config | `data/runners.json` |
 | Postgres cluster | `data/postgres/` (auto-created on first run) |
+| Active MCP session | `mcp_session.json` inside `--data-dir` |
+| MCP server settings | `mcp_server_config.json` inside `--data-dir` |
+
+## MCP integration
+
+- Unified binary: `courseforge mcp [flags]` runs the MCP server directly.
+- Transports supported: `stdio` (default for CLI / IDE agents) and `sse` (mounted at `/api/mcp/sse` when running the web server, or standalone `--transport=sse`).
+- Active task synchronization:
+  - When user views a task in the UI, `TaskPage.tsx` debounces 3 seconds and calls `PUT /api/mcp/active-task`.
+  - The web server writes the active task context to `mcp_session.json`.
+  - `FileSessionManager.GetActiveTask()` checks `os.Stat(filePath).ModTime()` on every invocation, automatically hot-reloading changes on the fly without restarting the MCP stdio process.
+- MCP client config convention for agents:
+  ```json
+  "courseforge": {
+    "command": "F:\\Proga\\courseforge\\bin\\courseforge.exe",
+    "args": [
+      "mcp",
+      "--courses-dir=F:\\Proga\\courseforge\\courses",
+      "--data-dir=F:\\Proga\\courseforge\\data"
+    ]
+  }
+  ```
 
 ## No CI, no pre-commit, no lint-on-save
 
