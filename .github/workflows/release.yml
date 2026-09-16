@@ -65,9 +65,8 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         env:
-          GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: ${{ matrix.goarch == 'arm64' && '0' || '' }}
-        run: ./scripts/build.ps1
+        run: ./scripts/build.ps1 ${{ matrix.goarch == 'arm64' && '-GoArch arm64' || '' }}
 
       - name: Build (unix)
         if: matrix.os != 'windows-latest'
