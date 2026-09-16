@@ -68,8 +68,24 @@ jobs:
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ${{ matrix.target }}
-          generate_release_notes: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" --generate-notes || true
+          fi
 
+          for attempt in 1 2 3; do
+            if gh release upload "${GITHUB_REF_NAME}" "${{ matrix.target }}" --clobber; then
+              exit 0
+            fi
+
+            if [ "${attempt}" -eq 3 ]; then
+              echo "Failed to upload release asset after ${attempt} attempts."
+              exit 1
+            fi
+
+            echo "Upload attempt ${attempt} failed, retrying in 10 seconds..."
+            sleep 10
+          done
