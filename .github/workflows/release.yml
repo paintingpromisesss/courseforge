@@ -34,7 +34,7 @@ jobs:
             bin: bin/courseforge.exe
             target: courseforge-windows-arm64.exe
             goarch: arm64
-          - os: macos-13
+          - os: macos-15-intel
             name: macos-amd64
             bin: bin/courseforge
             target: courseforge-macos-amd64
