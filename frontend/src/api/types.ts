@@ -113,3 +113,32 @@ export interface AIModelItem {
   id: string;
   available: boolean;
 }
+
+export interface MCPConfig {
+  enabled: boolean;
+  transport: 'stdio' | 'sse';
+  host: string;
+  port: number;
+  courses_dir: string;
+  data_dir: string;
+}
+
+export interface MCPStatusResponse extends MCPConfig {
+  binary_path: string;
+  command?: string;
+  args?: string[];
+  sse_url?: string;
+  platform: string;
+  tools_count: number;
+  available: boolean;
+}
+
+export interface MCPActiveTask {
+  course_slug?: string;
+  task_slug?: string;
+  language?: string;
+  updated_at?: string;
+}
+
+
+

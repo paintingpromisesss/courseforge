@@ -13,3 +13,4 @@ test:
 
 swagger:
 	go run github.com/swaggo/swag/cmd/swag init -g main.go -d ./cmd/server,./internal/api/handlers,./internal/api/dto -o ./docs --exclude ./courses
+

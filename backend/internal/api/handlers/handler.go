@@ -6,31 +6,64 @@ import (
 	"sync"
 
 	"github.com/go-chi/chi/v5"
+	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/paintingpromisesss/courseforge/internal/application/service"
 	"github.com/paintingpromisesss/courseforge/internal/domain"
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
+	"github.com/paintingpromisesss/courseforge/internal/mcp"
 )
 
 type Handler struct {
-	mu          sync.RWMutex
-	coursesDir  string
-	courses     map[string]*domain.Course
-	catalogs    map[string]*domain.Catalog
-	runner      *runner.Runner
-	progress    *service.ProgressService
-	submissions *service.SubmissionService
-	ai          *service.AIService
+	mu            sync.RWMutex
+	coursesDir    string
+	dataDir       string
+	courses       map[string]*domain.Course
+	catalogs      map[string]*domain.Catalog
+	runner        *runner.Runner
+	progress      *service.ProgressService
+	submissions   *service.SubmissionService
+	ai            *service.AIService
+	mcpConfigRepo *repo.MCPConfigRepository
+	mcpServer       *mcp.Server
+	sseServer       *mcpserver.SSEServer
+	fallbackSession mcp.SessionManager
 }
 
-func New(coursesDir string, courses map[string]*domain.Course, catalogs map[string]*domain.Catalog, r *runner.Runner, ps *service.ProgressService, ss *service.SubmissionService, aiService *service.AIService) *Handler {
+
+func New(
+	coursesDir string,
+	dataDir string,
+	courses map[string]*domain.Course,
+	catalogs map[string]*domain.Catalog,
+	r *runner.Runner,
+	ps *service.ProgressService,
+	ss *service.SubmissionService,
+	aiService *service.AIService,
+	mcpConfigRepo *repo.MCPConfigRepository,
+	mcpServer *mcp.Server,
+) *Handler {
+	var sseServer *mcpserver.SSEServer
+	if mcpServer != nil {
+		sseServer = mcpServer.NewSSEServer(
+			"",
+			mcpserver.WithSSEEndpoint("/api/mcp/sse"),
+			mcpserver.WithMessageEndpoint("/api/mcp/message"),
+		)
+	}
+
 	return &Handler{
-		coursesDir:  coursesDir,
-		courses:     courses,
-		catalogs:    catalogs,
-		runner:      r,
-		progress:    ps,
-		submissions: ss,
-		ai:          aiService,
+		coursesDir:    coursesDir,
+		dataDir:       dataDir,
+		courses:       courses,
+		catalogs:      catalogs,
+		runner:        r,
+		progress:      ps,
+		submissions:   ss,
+		ai:            aiService,
+		mcpConfigRepo: mcpConfigRepo,
+		mcpServer:     mcpServer,
+		sseServer:     sseServer,
 	}
 }
 

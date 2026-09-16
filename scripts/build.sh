@@ -31,6 +31,10 @@ fi
 
 (cd "$FRONTEND_DIR" && npm run build)
 
+WEB_DIST_DIR="$BACKEND_DIR/internal/web/dist"
+mkdir -p "$WEB_DIST_DIR"
+cp -r "$FRONTEND_DIR/dist/"* "$WEB_DIST_DIR/"
+
 mkdir -p "$BIN_DIR"
 (cd "$BACKEND_DIR" && go run github.com/swaggo/swag/cmd/swag init -g main.go -d ./cmd/server,./internal/api/handlers,./internal/api/dto -o ./docs --exclude ./courses)
 LDFLAGS=""

@@ -1,4 +1,5 @@
-import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission, AIConfig, AIMessage, AIModelItem } from './types';
+import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission, AIConfig, AIMessage, AIModelItem, MCPConfig, MCPStatusResponse, MCPActiveTask } from './types';
+
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api';
 
@@ -199,4 +200,13 @@ export const api = {
   ) => postStream('/ai/chat', { messages, thinking }, onChunk, onError, signal),
   aiModels: (body: { provider: string; base_url: string; api_key: string; check_availability?: boolean }) =>
     post<AIModelItem[]>('/ai/models', body),
+
+  mcpConfig: () => get<MCPStatusResponse>('/mcp/config'),
+  mcpSaveConfig: (body: Partial<MCPConfig>) => patch<MCPStatusResponse>('/mcp/config', body),
+  mcpGetActiveTask: () => get<MCPActiveTask>('/mcp/active-task'),
+  mcpSetActiveTask: (body: { course_slug: string; task_slug: string; language?: string }) =>
+    put('/mcp/active-task', body),
+  mcpClearActiveTask: () => del('/mcp/active-task'),
 };
+
+

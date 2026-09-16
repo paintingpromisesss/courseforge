@@ -12,3 +12,5 @@ skills-lock.json
 .serena
 .tokensave
 .superpowers
+backend/internal/web/dist/*
+!backend/internal/web/dist/placeholder.txt

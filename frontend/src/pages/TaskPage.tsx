@@ -626,6 +626,20 @@ export function TaskPage() {
     }
   }, [task, lang]);
 
+  // Set active task context for MCP after 3 seconds dwell
+  useEffect(() => {
+    if (!courseSlug || !taskSlug) return;
+    const timer = setTimeout(() => {
+      api.mcpSetActiveTask({
+        course_slug: courseSlug,
+        task_slug: taskSlug,
+        language: lang || undefined,
+      }).catch(() => {});
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [courseSlug, taskSlug, lang]);
+
+
   const { data: template } = useQuery({
     queryKey: ['template', courseSlug, trackSlug, topicSlug, unitSlug, taskSlug, lang],
     queryFn: () => api.getTemplate(courseSlug!, trackSlug!, topicSlug!, unitSlug!, taskSlug!, lang),

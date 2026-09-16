@@ -45,6 +45,10 @@ try {
   Pop-Location
 }
 
+$WebDistDir = Join-Path $BackendDir 'internal\web\dist'
+New-Item -ItemType Directory -Force -Path $WebDistDir | Out-Null
+Copy-Item -Recurse -Force (Join-Path $FrontendDir 'dist\*') $WebDistDir
+
 New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 
 Push-Location $BackendDir

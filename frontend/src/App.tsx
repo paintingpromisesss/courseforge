@@ -63,6 +63,12 @@ function AppLayout() {
   // a course page knows its parent catalog by membership, not from the course payload
   const parentCatalog = courseSlug ? catalogs?.find(c => c.courses.some(x => x.slug === courseSlug)) : undefined;
 
+  const { data: mcpStatus } = useQuery({
+    queryKey: ['mcp-config'],
+    queryFn: api.mcpConfig,
+    staleTime: 10000,
+  });
+
   const outlet = useOutlet();
   const routeKey = courseSlug ? `course:${courseSlug}` : catalogSlug ? `catalog:${catalogSlug}` : 'home';
 
@@ -95,13 +101,41 @@ function AppLayout() {
           );
         })}
 
-        <button
-          onClick={() => openSettings()}
-          className="ml-auto text-tx-3 hover:text-tx-1 transition-colors p-1 rounded hover:bg-bg-4"
-          title="Настройки"
-        >
-          <GearIcon />
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          {mcpStatus && (
+            <button
+              type="button"
+              onClick={() => openSettings('mcp')}
+              className={clsx(
+                'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-all border cursor-pointer select-none',
+                mcpStatus.enabled
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                  : 'bg-bg-3/80 border-bdr text-tx-3 hover:text-tx-2 hover:border-bdr-hover',
+              )}
+              title={
+                mcpStatus.enabled
+                  ? `MCP-сервер активен (${mcpStatus.transport}) — открыть настройки`
+                  : 'MCP-сервер выключен — открыть настройки'
+              }
+            >
+              <span
+                className={clsx(
+                  'w-1.5 h-1.5 rounded-full shrink-0',
+                  mcpStatus.enabled ? 'bg-emerald-400 animate-pulse' : 'bg-tx-3',
+                )}
+              />
+              <span>{mcpStatus.enabled ? 'MCP' : 'MCP выкл'}</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => openSettings()}
+            className="text-tx-3 hover:text-tx-1 transition-colors p-1 rounded hover:bg-bg-4 cursor-pointer"
+            title="Настройки"
+          >
+            <GearIcon />
+          </button>
+        </div>
       </header>
       <div className="flex-1 overflow-hidden">
         {/* Coarse key: stable across task navigation inside a course, so entering/
