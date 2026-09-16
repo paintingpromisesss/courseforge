@@ -5,21 +5,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$McpBin = Join-Path $RepoRoot "bin\courseforge-mcp.exe"
-
-Write-Host "==> [Smoke Test] Building courseforge-mcp..." -ForegroundColor Cyan
-Push-Location (Join-Path $RepoRoot "backend")
-try {
-  & go build -o $McpBin ./cmd/mcp
-  if ($LASTEXITCODE -ne 0) { throw "go build failed" }
-} finally {
-  Pop-Location
-}
+$Bin = Join-Path $RepoRoot "bin\courseforge.exe"
 
 Write-Host "==> [Smoke Test] Launching MCP Server via STDIO..." -ForegroundColor Cyan
 $psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = $McpBin
-$psi.Arguments = "--courses-dir=$CoursesDir --data-dir=$DataDir --transport=stdio"
+$psi.FileName = $Bin
+$psi.Arguments = "mcp --courses-dir=$CoursesDir --data-dir=$DataDir --transport=stdio"
 $psi.UseShellExecute = $false
 $psi.RedirectStandardInput = $true
 $psi.RedirectStandardOutput = $true

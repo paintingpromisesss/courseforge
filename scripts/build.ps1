@@ -56,8 +56,6 @@ try {
   Invoke-CheckedNative go @('run', 'github.com/swaggo/swag/cmd/swag', 'init', '-g', 'main.go', '-d', './cmd/server,./internal/api/handlers,./internal/api/dto', '-o', './docs', '--exclude', './courses')
   $LdFlags = if ($Console) { '' } else { '-H=windowsgui' }
   Invoke-CheckedNative go @('build', '-tags', 'swagger', '-ldflags', $LdFlags, '-o', $BinaryPath, './cmd/courseforge')
-  $McpBinaryPath = Join-Path $BinDir 'courseforge-mcp.exe'
-  Invoke-CheckedNative go @('build', '-o', $McpBinaryPath, './cmd/mcp')
 } finally {
   Pop-Location
 }

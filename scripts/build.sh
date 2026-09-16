@@ -43,7 +43,5 @@ case "$(uname -s)" in
 esac
 
 (cd "$BACKEND_DIR" && go build -tags swagger -ldflags "$LDFLAGS" -o "$BINARY_PATH" ./cmd/courseforge)
-MCP_BINARY_PATH="$BIN_DIR/courseforge-mcp"
-(cd "$BACKEND_DIR" && go build -o "$MCP_BINARY_PATH" ./cmd/mcp)
 
-echo "Built $BINARY_PATH and $MCP_BINARY_PATH"
+echo "Built $BINARY_PATH"
