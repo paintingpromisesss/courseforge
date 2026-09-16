@@ -40,13 +40,13 @@ func Run(addr string, onServerStart func(), onQuit func()) {
 		onServerStart()
 
 		// Open the browser automatically on launch.
-		openBrowser("http://" + addr)
+		OpenBrowser("http://" + addr)
 
 		go func() {
 			for {
 				select {
 				case <-mOpen.ClickedCh:
-					openBrowser("http://" + addr)
+					OpenBrowser("http://" + addr)
 				case <-mQuit.ClickedCh:
 					systray.Quit()
 				}
@@ -63,7 +63,8 @@ func Quit() {
 	systray.Quit()
 }
 
-func openBrowser(url string) {
+// OpenBrowser opens url in the OS default browser.
+func OpenBrowser(url string) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":

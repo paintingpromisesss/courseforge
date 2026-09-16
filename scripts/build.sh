@@ -37,9 +37,12 @@ cp -r "$FRONTEND_DIR/dist/"* "$WEB_DIST_DIR/"
 
 mkdir -p "$BIN_DIR"
 (cd "$BACKEND_DIR" && go run github.com/swaggo/swag/cmd/swag init -g main.go -d ./cmd/server,./internal/api/handlers,./internal/api/dto -o ./docs --exclude ./courses)
-LDFLAGS=""
+
+VERSION="$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || true)"
+[[ -z "$VERSION" ]] && VERSION="dev"
+LDFLAGS="-X main.version=$VERSION"
 case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) LDFLAGS="-H=windowsgui" ;;
+  MINGW*|MSYS*|CYGWIN*) LDFLAGS="$LDFLAGS -H=windowsgui" ;;
 esac
 
 (cd "$BACKEND_DIR" && go build -tags swagger -ldflags "$LDFLAGS" -o "$BINARY_PATH" ./cmd/courseforge)
