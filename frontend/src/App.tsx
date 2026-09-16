@@ -6,11 +6,12 @@ import clsx from 'clsx';
 import { useSettings } from './context/SettingsContext';
 import { api } from './api/client';
 
-const CoursesPage = lazy(() => import('./pages/CoursesPage').then((m) => ({ default: m.CoursesPage })));
-const CatalogPage = lazy(() => import('./pages/CatalogPage').then((m) => ({ default: m.CatalogPage })));
-const CoursePage = lazy(() => import('./pages/CoursePage').then((m) => ({ default: m.CoursePage })));
-const TaskPage = lazy(() => import('./pages/TaskPage').then((m) => ({ default: m.TaskPage })));
-const TheoryPage = lazy(() => import('./pages/TheoryPage').then((m) => ({ default: m.TheoryPage })));
+import { CoursesPage } from './pages/CoursesPage';
+import { CatalogPage } from './pages/CatalogPage';
+import { CoursePage } from './pages/CoursePage';
+import { TaskPage } from './pages/TaskPage';
+import { TheoryPage } from './pages/TheoryPage';
+
 const SettingsPanel = lazy(() => import('./components/SettingsPanel').then((m) => ({ default: m.SettingsPanel })));
 
 export function GearIcon() {
@@ -143,9 +144,7 @@ function AppLayout() {
             useOutlet captures the route element so the exiting copy is frozen. */}
         <AnimatePresence mode="wait">
           <motion.div key={routeKey} className="h-full">
-            <Suspense fallback={<div className="h-full bg-bg-1" />}>
-              {outlet}
-            </Suspense>
+            {outlet}
           </motion.div>
         </AnimatePresence>
       </div>
