@@ -1,6 +1,5 @@
 param(
   [switch]$SkipDeps,
-  [switch]$Console,
   [string]$GoArch = ''
 )
 
@@ -60,8 +59,11 @@ try {
 
   $Version = (git -C $RepoRoot describe --tags --always --dirty 2>$null)
   if ([string]::IsNullOrWhiteSpace($Version)) { $Version = 'dev' }
-  $VersionFlag = "-X main.version=$Version"
-  $LdFlags = if ($Console) { $VersionFlag } else { "$VersionFlag -H=windowsgui" }
+  # Always build as a console-subsystem exe: the "-H=windowsgui" this used to
+  # get for the tray/serve launch made every subcommand's stdout/stderr go
+  # nowhere in an existing terminal. The no-console-flash tray look is
+  # recovered at runtime instead (see hideConsoleWindowIfOwned in cmd/courseforge).
+  $LdFlags = "-X main.version=$Version"
   if ($GoArch) { $env:GOARCH = $GoArch }
   Invoke-CheckedNative go @('build', '-tags', 'swagger', '-ldflags', $LdFlags, '-o', $BinaryPath, './cmd/courseforge')
 } finally {

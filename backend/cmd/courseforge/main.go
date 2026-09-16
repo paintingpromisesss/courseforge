@@ -89,6 +89,9 @@ func runServe(args []string) {
 		DBPath:      *dbPath,
 		EnableTray:  *enableTray,
 	}
+	if cfg.EnableTray {
+		hideConsoleWindowIfOwned()
+	}
 	if cfg.DBPath == "" {
 		cfg.DBPath = config.DefaultDBPath(*dataDir)
 	}
