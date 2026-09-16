@@ -54,7 +54,11 @@ New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 Push-Location $BackendDir
 try {
   Invoke-CheckedNative go @('run', 'github.com/swaggo/swag/cmd/swag', 'init', '-g', 'main.go', '-d', './cmd/server,./internal/api/handlers,./internal/api/dto', '-o', './docs', '--exclude', './courses')
-  $LdFlags = if ($Console) { '' } else { '-H=windowsgui' }
+
+  $Version = (git -C $RepoRoot describe --tags --always --dirty 2>$null)
+  if ([string]::IsNullOrWhiteSpace($Version)) { $Version = 'dev' }
+  $VersionFlag = "-X main.version=$Version"
+  $LdFlags = if ($Console) { $VersionFlag } else { "$VersionFlag -H=windowsgui" }
   Invoke-CheckedNative go @('build', '-tags', 'swagger', '-ldflags', $LdFlags, '-o', $BinaryPath, './cmd/courseforge')
 } finally {
   Pop-Location

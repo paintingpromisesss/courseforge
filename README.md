@@ -84,6 +84,26 @@ simply reported as unavailable in Settings.
 
 ## Installation
 
+### From a release (no build tools required)
+
+Downloads the latest binary, installs it, and adds it to PATH.
+
+Windows — installs to `%LOCALAPPDATA%\CourseForge`:
+
+```powershell
+irm https://raw.githubusercontent.com/paintingpromisesss/courseforge/main/scripts/install-release.ps1 | iex
+```
+
+Linux / macOS — installs to `~/.local/bin`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/paintingpromisesss/courseforge/main/scripts/install-release.sh | sh
+```
+
+Open a new terminal afterward and run `courseforge`.
+
+### From source
+
 ```powershell
 .\scripts\install.ps1   # Windows
 ```
@@ -92,11 +112,24 @@ simply reported as unavailable in Settings.
 ./scripts/install.sh    # Linux / macOS
 ```
 
-The script copies the binary into a user bin directory. The frontend build
-stays in `frontend/dist` — pass `--frontend-dir` when running an installed
-binary outside the repository.
+The script builds the binary and copies it into a user bin directory. The
+frontend build stays in `frontend/dist` — pass `--frontend-dir` when running
+an installed binary outside the repository.
 
-### CLI Flags
+### CLI
+
+```
+courseforge [flags]              start the server (default command)
+courseforge serve [flags]        start the server
+courseforge open [course-slug]   open the app in your browser, starting the server if needed
+courseforge doctor               check which language toolchains are usable
+courseforge update [--tag vX.Y.Z] update to the latest (or a specific) release
+courseforge mcp [flags]          run the MCP server
+courseforge version              print the version
+courseforge help                 show this help
+```
+
+`serve` / `open` flags:
 
 | Flag | Default | Description |
 |---|---|---|
@@ -104,8 +137,23 @@ binary outside the repository.
 | `--port` | `8080` | HTTP server port |
 | `--courses-dir` | `./courses` | directory with course files |
 | `--data-dir` | `./data` | app state (SQLite, runners, PostgreSQL cluster) |
-| `--db-path` | `{data-dir}/…` | path to the submissions SQLite database |
-| `--frontend-dir` | auto-detected | directory with built SPA assets (`frontend/dist`) |
+| `--db-path` | `{data-dir}/…` | path to the submissions SQLite database (`serve` only) |
+| `--frontend-dir` | auto-detected | directory with built SPA assets (`frontend/dist`, `serve` only) |
+| `--tray` | `true` | show the system tray icon (`serve` only) |
+
+`courseforge open` reuses a server already running on `--port`; otherwise it
+starts one in the background (logs to `{data-dir}/courseforge.log`) and opens
+your browser once it's up. `courseforge open <slug>` jumps straight to that
+course.
+
+`courseforge doctor` runs each configured language's hello-world check and
+prints a status table — handy after installing a new toolchain.
+
+`courseforge update` downloads the matching binary for your OS/arch from the
+latest GitHub release and swaps it in for the running one. It compares the
+current version against the release tag and skips the download if they
+already match — pass `--force` to reinstall anyway. A `go build`-from-source
+binary reports itself as `dev`, so it never matches and always updates.
 
 ## Architecture
 
