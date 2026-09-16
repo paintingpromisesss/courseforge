@@ -6,6 +6,7 @@ on:
       - main
     tags:
       - "v*"
+  workflow_dispatch: # manual run from any branch (gh workflow run release.yml --ref <branch>); publish step still only fires on a tag ref
 
 permissions:
   contents: write
