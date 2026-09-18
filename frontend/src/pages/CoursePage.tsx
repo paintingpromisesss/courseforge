@@ -235,7 +235,11 @@ const TreeRow = memo(function TreeRow({
   );
 });
 
-function computeAutoFitWidth(tree: TreeNode[], open: Record<string, boolean>): number {
+function computeAutoFitWidth(
+  tree: TreeNode[],
+  open: Record<string, boolean>,
+  isSingleGroup: boolean = false,
+): number {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   const measure = (text: string, font: string) => {
@@ -276,8 +280,11 @@ function computeAutoFitWidth(tree: TreeNode[], open: Record<string, boolean>): n
     }
   };
 
-  for (const root of tree) {
-    traverse(root, 0);
+  const roots = isSingleGroup && tree.length === 1 && tree[0].kind === 'group' ? tree[0].children : tree;
+  const startDepth = isSingleGroup && tree.length === 1 && tree[0].kind === 'group' ? 1 : 0;
+
+  for (const root of roots) {
+    traverse(root, startDepth);
   }
 
   return Math.min(Math.max(Math.ceil(maxW), 260), 650);
@@ -344,7 +351,12 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
       .filter((tr) => tr.topics.length > 0);
   }, [tracks, selectedTags]);
 
+  const isSingleTrackCourse = tracks.length === 1;
   const tree = useMemo(() => buildTree(filteredTracks, done), [filteredTracks, done]);
+  const isSingleGroup = isSingleTrackCourse && tree.length === 1 && tree[0].kind === 'group';
+  const displayNodes = isSingleGroup ? tree[0].children : tree;
+  const startDepth = isSingleGroup ? 1 : 0;
+
   const totalDone = useMemo(() => tree.reduce((a, n) => a + n.done, 0), [tree]);
   const total = useMemo(() => tree.reduce((a, n) => a + n.total, 0), [tree]);
   const treeRef = useRef<HTMLDivElement>(null);
@@ -384,13 +396,13 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
         if (containsActive(track)) initOpen[track.id] = true;
       }
     }
-    return computeAutoFitWidth(tree, initOpen);
+    return computeAutoFitWidth(tree, initOpen, isSingleTrackCourse);
   });
 
   const [isDragging, setIsDragging] = useState(false);
 
   const measureRealDom = useCallback((): number => {
-    if (!treeRef.current) return computeAutoFitWidth(tree, open);
+    if (!treeRef.current) return computeAutoFitWidth(tree, open, isSingleGroup);
     const container = treeRef.current;
     const containerRect = container.getBoundingClientRect();
     let maxNeeded = 270;
@@ -398,7 +410,7 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
     const rows = container.querySelectorAll<HTMLElement>('button, .select-none');
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    if (!ctx) return computeAutoFitWidth(tree, open);
+    if (!ctx) return computeAutoFitWidth(tree, open, isSingleGroup);
 
     rows.forEach((row) => {
       const textSpan = row.querySelector<HTMLElement>('.truncate');
@@ -432,7 +444,7 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
     });
 
     return Math.min(Math.max(Math.ceil(maxNeeded), 260), 650);
-  }, [tree, open]);
+  }, [tree, open, isSingleGroup]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -554,36 +566,38 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
             <span>Содержание</span>
           </div>
 
-          <button
-            type="button"
-            onClick={toggleAll}
-            title={allExpanded ? 'Свернуть все' : 'Развернуть все'}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-tx-3 hover:text-tx-1 hover:bg-bg-3 active:scale-95 transition-all"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="shrink-0"
+          {!isSingleGroup && trackIds.length > 1 && (
+            <button
+              type="button"
+              onClick={toggleAll}
+              title={allExpanded ? 'Свернуть все' : 'Развернуть все'}
+              className="w-7 h-7 flex items-center justify-center rounded-md text-tx-3 hover:text-tx-1 hover:bg-bg-3 active:scale-95 transition-all"
             >
-              {allExpanded ? (
-                <>
-                  <polyline points="4 2 8 6 12 2" />
-                  <polyline points="4 14 8 10 12 14" />
-                </>
-              ) : (
-                <>
-                  <polyline points="4 6 8 2 12 6" />
-                  <polyline points="4 10 8 14 12 10" />
-                </>
-              )}
-            </svg>
-          </button>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="shrink-0"
+              >
+                {allExpanded ? (
+                  <>
+                    <polyline points="4 2 8 6 12 2" />
+                    <polyline points="4 14 8 10 12 14" />
+                  </>
+                ) : (
+                  <>
+                    <polyline points="4 6 8 2 12 6" />
+                    <polyline points="4 10 8 14 12 10" />
+                  </>
+                )}
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Dynamic Tag Filter (rendered ONLY when course has tagged tasks) */}
@@ -657,7 +671,7 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
 
         {/* Tree Content */}
         <div ref={treeRef} className="px-2 py-2.5 space-y-1 flex-1 overflow-y-auto">
-          {tree.length === 0 ? (
+          {displayNodes.length === 0 ? (
             <div className="p-4 text-center space-y-2 select-none">
               <p className="text-xs text-tx-3">Нет задач с выбранными тегами</p>
               <button
@@ -669,11 +683,11 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
               </button>
             </div>
           ) : (
-            tree.map((node) => (
+            displayNodes.map((node) => (
               <TreeRow
                 key={node.id}
                 node={node}
-                depth={0}
+                depth={startDepth}
                 open={open}
                 toggle={toggle}
                 activeTaskSlug={activeTaskSlug}
