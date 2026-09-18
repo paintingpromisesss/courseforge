@@ -54,7 +54,7 @@ export function DifficultyBadge({
       <span
         title={`Сложность: ${cfg.label}`}
         className={clsx(
-          'text-[10px] leading-tight px-1.5 py-0.5 rounded font-medium shrink-0 transition-colors border select-none',
+          'difficulty-badge text-[10px] leading-tight px-1.5 py-0.5 rounded font-medium shrink-0 transition-colors border select-none',
           active
             ? 'bg-white/20 text-white border-white/30'
             : cfg.colorClass,

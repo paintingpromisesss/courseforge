@@ -263,7 +263,8 @@ function computeAutoFitWidth(tree: TreeNode[], open: Record<string, boolean>): n
       // Task or Theory Leaf
       const indent = 8 + (depth - 1) * 16;
       const titleW = measure(node.title, '400 12px Inter, system-ui, sans-serif');
-      rowWidth = 16 + indent + 22 + titleW + 36;
+      const diffW = node.difficulty ? 48 : 0;
+      rowWidth = 16 + indent + 22 + titleW + diffW + 36;
     }
 
     if (rowWidth > maxW) maxW = rowWidth;
@@ -408,8 +409,20 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
       const computed = window.getComputedStyle(textSpan);
       ctx.font = `${computed.fontWeight} ${computed.fontSize} ${computed.fontFamily}`;
       const naturalTextWidth = ctx.measureText(textSpan.textContent).width;
-      const badge = row.querySelector<HTMLElement>('.rounded-full');
-      const badgeW = badge ? badge.offsetWidth + 12 : 0;
+
+      let badgeW = 0;
+      // Progress badge in groups (has .rounded-full, exclude tiny topic indicator .w-1)
+      const progressBadge = row.querySelector<HTMLElement>('.rounded-full:not(.w-1)');
+      if (progressBadge && progressBadge.offsetWidth > 10) {
+        badgeW += progressBadge.offsetWidth + 8;
+      }
+
+      // Difficulty badge in task rows
+      const diffBadge = row.querySelector<HTMLElement>('.difficulty-badge, [title^="Сложность"]');
+      if (diffBadge) {
+        badgeW += diffBadge.offsetWidth + 8;
+      }
+
       const iconW = 24;
 
       const totalNeeded = leftOffset + iconW + naturalTextWidth + badgeW + 36;
