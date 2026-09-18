@@ -329,30 +329,42 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
 
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  // Filter tracks by selected tags (multiple-filter: matches any of selected tags)
-  const filteredTracks = useMemo(() => {
-    if (selectedTags.length === 0) return tracks;
-    const tagSet = new Set(selectedTags);
-    return tracks
-      .map((tr) => ({
-        ...tr,
-        topics: tr.topics
-          .map((tp) => ({
-            ...tp,
-            units: tp.units
-              .map((u) => ({
-                ...u,
-                tasks: u.tasks.filter((t) => t.tags && t.tags.some((tag) => tagSet.has(tag))),
-              }))
-              .filter((u) => u.tasks.length > 0),
-          }))
-          .filter((tp) => tp.units.length > 0),
-      }))
-      .filter((tr) => tr.topics.length > 0);
-  }, [tracks, selectedTags]);
-
   const isSingleTrackCourse = tracks.length === 1;
-  const tree = useMemo(() => buildTree(filteredTracks, done), [filteredTracks, done]);
+  const fullTree = useMemo(() => buildTree(tracks, done), [tracks, done]);
+
+  // Filter tree by selected tags (multiple-filter: matches any of selected tags)
+  const tree = useMemo(() => {
+    if (selectedTags.length === 0) return fullTree;
+    const tagSet = new Set(selectedTags);
+
+    const filterNode = (node: TreeNode): TreeNode | null => {
+      if (node.kind === 'task') {
+        return node.tags && node.tags.some((t) => tagSet.has(t)) ? node : null;
+      }
+      if (node.kind === 'theory') {
+        return null;
+      }
+      const filteredChildren: TreeNode[] = [];
+      for (const child of node.children) {
+        const filteredChild = filterNode(child);
+        if (filteredChild) {
+          filteredChildren.push(filteredChild);
+        }
+      }
+      if (filteredChildren.length === 0) return null;
+      return {
+        ...node,
+        children: filteredChildren,
+        done: filteredChildren.reduce((a, c) => a + c.done, 0),
+        total: filteredChildren.reduce((a, c) => a + c.total, 0),
+      };
+    };
+
+    return fullTree
+      .map(filterNode)
+      .filter((n): n is TreeNode => n !== null);
+  }, [fullTree, selectedTags]);
+
   const isSingleGroup = isSingleTrackCourse && tree.length === 1 && tree[0].kind === 'group';
   const displayNodes = isSingleGroup ? tree[0].children : tree;
   const startDepth = isSingleGroup ? 1 : 0;
