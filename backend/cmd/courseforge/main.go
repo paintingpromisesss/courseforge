@@ -20,24 +20,37 @@ func main() {
 
 	host := flag.String("host", "127.0.0.1", "host to bind")
 	port := flag.Int("port", 8080, "port to listen on")
-	coursesDir := flag.String("courses-dir", "./courses", "directory with course files")
-	dataDir := flag.String("data-dir", "./data", "directory for app state")
+	coursesDir := flag.String("courses-dir", config.DefaultCoursesDir(), "directory with course files")
+	dataDir := flag.String("data-dir", config.DefaultDataDir(), "directory for app state")
 	dbPath := flag.String("db-path", "", "path to submissions sqlite db")
 	frontendDir := flag.String("frontend-dir", defaultFrontendDir(), "directory with built frontend assets")
 	enableTray := flag.Bool("tray", true, "show system tray icon")
 	flag.Parse()
 
+	resolvedCourses := *coursesDir
+	if resolvedCourses == "" || resolvedCourses == "./courses" {
+		if fi, err := os.Stat(resolvedCourses); err != nil || !fi.IsDir() {
+			resolvedCourses = config.DefaultCoursesDir()
+		}
+	}
+	resolvedData := *dataDir
+	if resolvedData == "" || resolvedData == "./data" {
+		if fi, err := os.Stat(resolvedData); err != nil || !fi.IsDir() {
+			resolvedData = config.DefaultDataDir()
+		}
+	}
+
 	cfg := &config.Config{
-		DataDir:     *dataDir,
-		CoursesDir:  *coursesDir,
-		RunnersJSON: config.DefaultRunnersJSON(*dataDir),
+		DataDir:     resolvedData,
+		CoursesDir:  resolvedCourses,
+		RunnersJSON: config.DefaultRunnersJSON(resolvedData),
 		FrontendDir: *frontendDir,
 		Addr:        *host + ":" + strconv.Itoa(*port),
 		DBPath:      *dbPath,
 		EnableTray:  *enableTray,
 	}
 	if cfg.DBPath == "" {
-		cfg.DBPath = config.DefaultDBPath(*dataDir)
+		cfg.DBPath = config.DefaultDBPath(resolvedData)
 	}
 
 	if err := di.Run(cfg); err != nil {
