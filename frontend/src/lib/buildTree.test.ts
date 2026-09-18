@@ -103,6 +103,22 @@ describe('buildTree', () => {
     const tracks = [track('empty', [])];
     expect(buildTree(tracks, {})).toHaveLength(0);
   });
+
+  it('preserves difficulty and tags on task leaves', () => {
+    const tItem: TaskItem = {
+      slug: 'task-1',
+      title: 'Task 1',
+      languages: ['go'],
+      difficulty: 2,
+      tags: ['slice', 'array'],
+    };
+    const tracks = [track('w1', [topic('t1', [unit('u1', [tItem, task('task-2')])])])];
+    const tree = buildTree(tracks, {});
+    const leaf = tree[0].children[0];
+    expect(leaf.kind).toBe('task');
+    expect(leaf.difficulty).toBe(2);
+    expect(leaf.tags).toEqual(['slice', 'array']);
+  });
 });
 
 describe('initialOpen', () => {

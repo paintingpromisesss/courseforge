@@ -9,6 +9,8 @@ import { Tabs } from '../components/ui/Tabs';
 import { Markdown, VideoEmbed } from '../components/ui/Markdown';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Badge } from '../components/ui/Badge';
+import { DifficultyBadge } from '../components/ui/DifficultyBadge';
+import { TagBadge } from '../components/ui/TagBadge';
 import { AIAssist } from '../components/ui/AIAssist';
 import { loadCode, saveCode } from '../lib/editorStorage';
 import { CodeMirrorEditor } from '../components/ui/CodeMirrorEditor';
@@ -972,16 +974,41 @@ export function TaskPage() {
             {activeTab === 'statement' && (() => {
               const BASE = import.meta.env.VITE_API_URL ?? '/api';
               const assetBase = `${BASE}/courses/${courseSlug}/tracks/${trackSlug}/topics/${topicSlug}/units/${unitSlug}/tasks/${taskSlug}`;
-              return statement
-                ? <motion.div
-                    key={`statement-${taskSlug}`}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.16, ease: 'easeOut' }}
-                  >
-                    <Markdown content={statement} assetBase={assetBase} />
-                  </motion.div>
-                : <div className="text-tx-3 text-sm">Загрузка...</div>;
+              if (!statement) {
+                return <div className="text-tx-3 text-sm">Загрузка...</div>;
+              }
+
+              // Extract leading H1 title if present, so we can position badges directly under it
+              const h1Match = statement.match(/^#\s+([^\n\r]+)/);
+              const displayTitle = h1Match ? h1Match[1] : (task?.title ?? 'Задача');
+              const bodyMarkdown = h1Match ? statement.slice(h1Match[0].length).trimStart() : statement;
+              const hasMetadata = !!(task?.difficulty || (task?.tags && task.tags.length > 0));
+
+              return (
+                <motion.div
+                  key={`statement-${taskSlug}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.16, ease: 'easeOut' }}
+                >
+                  <div className="mb-5 pb-4 border-b border-bdr">
+                    <h1 className="text-xl font-semibold text-tx-1 mb-2.5">
+                      {displayTitle}
+                    </h1>
+                    {hasMetadata && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        {task?.difficulty ? (
+                          <DifficultyBadge difficulty={task.difficulty} size="md" />
+                        ) : null}
+                        {task?.tags?.map((t) => (
+                          <TagBadge key={t} tag={t} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <Markdown content={bodyMarkdown} assetBase={assetBase} />
+                </motion.div>
+              );
             })()}
             {activeTab === 'video' && task?.editorial_url && (
               <VideoEmbed href={task.editorial_url} />
