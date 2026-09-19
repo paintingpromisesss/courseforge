@@ -30,13 +30,24 @@ func RunCLI(args []string) {
 	transport := fs.String("transport", "stdio", "transport mode: stdio or sse")
 	host := fs.String("host", "127.0.0.1", "host to bind for standalone SSE")
 	port := fs.Int("port", 8085, "port to listen on for standalone SSE")
-	coursesDir := fs.String("courses-dir", "./courses", "directory with course manifests and files")
-	dataDir := fs.String("data-dir", "./data", "directory for application state")
+	coursesDir := fs.String("courses-dir", config.DefaultCoursesDir(), "directory with course manifests and files")
+	dataDir := fs.String("data-dir", config.DefaultDataDir(), "directory for application state")
 	dbPath := fs.String("db-path", "", "path to submissions sqlite db")
 	stateFile := fs.String("state-file", "", "path to active task session json file")
 	force := fs.Bool("force", false, "bypass disabled check in settings")
 
 	_ = fs.Parse(args)
+
+	if *coursesDir == "" || *coursesDir == "./courses" {
+		if fi, err := os.Stat(*coursesDir); err != nil || !fi.IsDir() {
+			*coursesDir = config.DefaultCoursesDir()
+		}
+	}
+	if *dataDir == "" || *dataDir == "./data" {
+		if fi, err := os.Stat(*dataDir); err != nil || !fi.IsDir() {
+			*dataDir = config.DefaultDataDir()
+		}
+	}
 
 
 	// Check if MCP is disabled in settings

@@ -37,6 +37,8 @@ type TaskDetails struct {
 	CourseSlug   string     `json:"course_slug"`
 	TaskSlug     string     `json:"task_slug"`
 	Title        string     `json:"title"`
+	Difficulty   int        `json:"difficulty,omitempty"`
+	Tags         []string   `json:"tags,omitempty"`
 	Statement    string     `json:"statement"`
 	EditorialURL string     `json:"editorial_url,omitempty"`
 	Languages    []string   `json:"languages"`
@@ -232,6 +234,8 @@ func (p *CourseForgeProvider) GetTaskDetails(ctx context.Context, courseSlug, ta
 		CourseSlug:   c.Slug,
 		TaskSlug:     task.Slug,
 		Title:        task.Title,
+		Difficulty:   task.Difficulty,
+		Tags:         task.Tags,
 		Statement:    string(statementBytes),
 		EditorialURL: task.EditorialURL,
 		Languages:    langs,

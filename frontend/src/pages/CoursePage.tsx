@@ -6,6 +6,7 @@ import clsx from 'clsx';
 import { api } from '../api/client';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { DifficultyBadge } from '../components/ui/DifficultyBadge';
 import type { TrackItem } from '../api/types';
 import { buildTree, type TreeNode, type NavTarget } from '../lib/buildTree';
 
@@ -227,11 +228,18 @@ const TreeRow = memo(function TreeRow({
         {node.doneFlag ? '✓' : '·'}
       </span>
       <span className="truncate flex-1">{node.title}</span>
+      {isTask && node.difficulty ? (
+        <DifficultyBadge difficulty={node.difficulty} size="sm" active={active} />
+      ) : null}
     </button>
   );
 });
 
-function computeAutoFitWidth(tree: TreeNode[], open: Record<string, boolean>): number {
+function computeAutoFitWidth(
+  tree: TreeNode[],
+  open: Record<string, boolean>,
+  isSingleGroup: boolean = false,
+): number {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   const measure = (text: string, font: string) => {
@@ -259,7 +267,8 @@ function computeAutoFitWidth(tree: TreeNode[], open: Record<string, boolean>): n
       // Task or Theory Leaf
       const indent = 8 + (depth - 1) * 16;
       const titleW = measure(node.title, '400 12px Inter, system-ui, sans-serif');
-      rowWidth = 16 + indent + 22 + titleW + 36;
+      const diffW = node.difficulty ? 48 : 0;
+      rowWidth = 16 + indent + 22 + titleW + diffW + 36;
     }
 
     if (rowWidth > maxW) maxW = rowWidth;
@@ -271,8 +280,11 @@ function computeAutoFitWidth(tree: TreeNode[], open: Record<string, boolean>): n
     }
   };
 
-  for (const root of tree) {
-    traverse(root, 0);
+  const roots = isSingleGroup && tree.length === 1 && tree[0].kind === 'group' ? tree[0].children : tree;
+  const startDepth = isSingleGroup && tree.length === 1 && tree[0].kind === 'group' ? 1 : 0;
+
+  for (const root of roots) {
+    traverse(root, startDepth);
   }
 
   return Math.min(Math.max(Math.ceil(maxW), 260), 650);
@@ -290,7 +302,73 @@ interface SidebarProps {
 }
 
 function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheory, onResetProgress }: SidebarProps) {
-  const tree = useMemo(() => buildTree(tracks, done), [tracks, done]);
+  // Extract all unique tags across tasks in this course
+  const { allTags, tagCounts } = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const tr of tracks) {
+      for (const tp of tr.topics) {
+        for (const u of tp.units) {
+          for (const t of u.tasks) {
+            if (t.tags) {
+              for (const tag of t.tags) {
+                const trimmed = tag.trim();
+                if (trimmed) {
+                  counts[trimmed] = (counts[trimmed] || 0) + 1;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    const tags = Object.keys(counts).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' }),
+    );
+    return { allTags: tags, tagCounts: counts };
+  }, [tracks]);
+
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  const isSingleTrackCourse = tracks.length === 1;
+  const fullTree = useMemo(() => buildTree(tracks, done), [tracks, done]);
+
+  // Filter tree by selected tags (multiple-filter: matches any of selected tags)
+  const tree = useMemo(() => {
+    if (selectedTags.length === 0) return fullTree;
+    const tagSet = new Set(selectedTags);
+
+    const filterNode = (node: TreeNode): TreeNode | null => {
+      if (node.kind === 'task') {
+        return node.tags && node.tags.some((t) => tagSet.has(t.trim())) ? node : null;
+      }
+      if (node.kind === 'theory') {
+        return null;
+      }
+      const filteredChildren: TreeNode[] = [];
+      for (const child of node.children) {
+        const filteredChild = filterNode(child);
+        if (filteredChild) {
+          filteredChildren.push(filteredChild);
+        }
+      }
+      if (filteredChildren.length === 0) return null;
+      return {
+        ...node,
+        children: filteredChildren,
+        done: filteredChildren.reduce((a, c) => a + c.done, 0),
+        total: filteredChildren.reduce((a, c) => a + c.total, 0),
+      };
+    };
+
+    return fullTree
+      .map(filterNode)
+      .filter((n): n is TreeNode => n !== null);
+  }, [fullTree, selectedTags]);
+
+  const isSingleGroup = isSingleTrackCourse && tree.length === 1 && tree[0].kind === 'group';
+  const displayNodes = isSingleGroup ? tree[0].children : tree;
+  const startDepth = isSingleGroup ? 1 : 0;
+
   const totalDone = useMemo(() => tree.reduce((a, n) => a + n.done, 0), [tree]);
   const total = useMemo(() => tree.reduce((a, n) => a + n.total, 0), [tree]);
   const treeRef = useRef<HTMLDivElement>(null);
@@ -330,13 +408,13 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
         if (containsActive(track)) initOpen[track.id] = true;
       }
     }
-    return computeAutoFitWidth(tree, initOpen);
+    return computeAutoFitWidth(tree, initOpen, isSingleTrackCourse);
   });
 
   const [isDragging, setIsDragging] = useState(false);
 
   const measureRealDom = useCallback((): number => {
-    if (!treeRef.current) return computeAutoFitWidth(tree, open);
+    if (!treeRef.current) return computeAutoFitWidth(tree, open, isSingleGroup);
     const container = treeRef.current;
     const containerRect = container.getBoundingClientRect();
     let maxNeeded = 270;
@@ -344,7 +422,7 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
     const rows = container.querySelectorAll<HTMLElement>('button, .select-none');
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    if (!ctx) return computeAutoFitWidth(tree, open);
+    if (!ctx) return computeAutoFitWidth(tree, open, isSingleGroup);
 
     rows.forEach((row) => {
       const textSpan = row.querySelector<HTMLElement>('.truncate');
@@ -355,8 +433,20 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
       const computed = window.getComputedStyle(textSpan);
       ctx.font = `${computed.fontWeight} ${computed.fontSize} ${computed.fontFamily}`;
       const naturalTextWidth = ctx.measureText(textSpan.textContent).width;
-      const badge = row.querySelector<HTMLElement>('.rounded-full');
-      const badgeW = badge ? badge.offsetWidth + 12 : 0;
+
+      let badgeW = 0;
+      // Progress badge in groups (has .rounded-full, exclude tiny topic indicator .w-1)
+      const progressBadge = row.querySelector<HTMLElement>('.rounded-full:not(.w-1)');
+      if (progressBadge && progressBadge.offsetWidth > 10) {
+        badgeW += progressBadge.offsetWidth + 8;
+      }
+
+      // Difficulty badge in task rows
+      const diffBadge = row.querySelector<HTMLElement>('.difficulty-badge, [title^="Сложность"]');
+      if (diffBadge) {
+        badgeW += diffBadge.offsetWidth + 8;
+      }
+
       const iconW = 24;
 
       const totalNeeded = leftOffset + iconW + naturalTextWidth + badgeW + 36;
@@ -366,7 +456,7 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
     });
 
     return Math.min(Math.max(Math.ceil(maxNeeded), 260), 650);
-  }, [tree, open]);
+  }, [tree, open, isSingleGroup]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -417,6 +507,23 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
       return changed ? next : prev;
     });
   }, [activeTaskSlug, activeUnitSlug, tree]);
+
+  // When filtering by tags, auto-open all matching branches so user immediately sees results
+  useEffect(() => {
+    if (selectedTags.length > 0) {
+      const nextOpen: Record<string, boolean> = {};
+      const openAll = (nodes: TreeNode[]) => {
+        for (const n of nodes) {
+          if (n.kind === 'group') {
+            nextOpen[n.id] = true;
+            openAll(n.children);
+          }
+        }
+      };
+      openAll(tree);
+      setOpen((prev) => ({ ...prev, ...nextOpen }));
+    }
+  }, [selectedTags, tree]);
 
   const toggle = (id: string) => setOpen((m) => ({ ...m, [id]: !m[id] }));
 
@@ -471,53 +578,137 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
             <span>Содержание</span>
           </div>
 
-          <button
-            type="button"
-            onClick={toggleAll}
-            title={allExpanded ? 'Свернуть все' : 'Развернуть все'}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-tx-3 hover:text-tx-1 hover:bg-bg-3 active:scale-95 transition-all"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="shrink-0"
+          {!isSingleGroup && trackIds.length > 1 && (
+            <button
+              type="button"
+              onClick={toggleAll}
+              title={allExpanded ? 'Свернуть все' : 'Развернуть все'}
+              className="w-7 h-7 flex items-center justify-center rounded-md text-tx-3 hover:text-tx-1 hover:bg-bg-3 active:scale-95 transition-all"
             >
-              {allExpanded ? (
-                <>
-                  <polyline points="4 2 8 6 12 2" />
-                  <polyline points="4 14 8 10 12 14" />
-                </>
-              ) : (
-                <>
-                  <polyline points="4 6 8 2 12 6" />
-                  <polyline points="4 10 8 14 12 10" />
-                </>
-              )}
-            </svg>
-          </button>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="shrink-0"
+              >
+                {allExpanded ? (
+                  <>
+                    <polyline points="4 2 8 6 12 2" />
+                    <polyline points="4 14 8 10 12 14" />
+                  </>
+                ) : (
+                  <>
+                    <polyline points="4 6 8 2 12 6" />
+                    <polyline points="4 10 8 14 12 10" />
+                  </>
+                )}
+              </svg>
+            </button>
+          )}
         </div>
+
+        {/* Dynamic Tag Filter (rendered ONLY when course has tagged tasks) */}
+        {allTags.length > 0 && (
+          <div className="px-3 py-2 border-b border-bdr bg-bg-1/40 select-none space-y-1.5 shrink-0">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 text-tx-3 font-medium">
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                </svg>
+                <span>Фильтр по тегам</span>
+                {selectedTags.length > 0 && (
+                  <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded-full bg-brand/15 text-brand">
+                    {selectedTags.length}
+                  </span>
+                )}
+              </div>
+
+              {selectedTags.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedTags([])}
+                  className="text-[11px] text-tx-3 hover:text-brand transition-colors cursor-pointer"
+                >
+                  Сбросить
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-0.5">
+              {allTags.map((tag) => {
+                const active = selectedTags.includes(tag);
+                const count = tagCounts[tag];
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => {
+                      setSelectedTags((prev) =>
+                        prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+                      );
+                    }}
+                    className={clsx(
+                      'inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md font-medium border transition-all cursor-pointer',
+                      active
+                        ? 'bg-brand/15 text-brand border-brand/40 shadow-xs'
+                        : 'bg-bg-3 hover:bg-bg-4 text-tx-3 hover:text-tx-2 border-bdr-s',
+                    )}
+                  >
+                    <span>{tag}</span>
+                    {count !== undefined && (
+                      <span className={clsx('text-[10px]', active ? 'text-brand/70' : 'text-tx-3/70')}>
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Tree Content */}
         <div ref={treeRef} className="px-2 py-2.5 space-y-1 flex-1 overflow-y-auto">
-          {tree.map((node) => (
-            <TreeRow
-              key={node.id}
-              node={node}
-              depth={0}
-              open={open}
-              toggle={toggle}
-              activeTaskSlug={activeTaskSlug}
-              activeUnitSlug={activeUnitSlug}
-              onTask={onTask}
-              onTheory={onTheory}
-            />
-          ))}
+          {displayNodes.length === 0 ? (
+            <div className="p-4 text-center space-y-2 select-none">
+              <p className="text-xs text-tx-3">Нет задач с выбранными тегами</p>
+              <button
+                type="button"
+                onClick={() => setSelectedTags([])}
+                className="text-xs text-brand hover:underline font-medium cursor-pointer"
+              >
+                Сбросить фильтр
+              </button>
+            </div>
+          ) : (
+            displayNodes.map((node) => (
+              <TreeRow
+                key={node.id}
+                node={node}
+                depth={startDepth}
+                open={open}
+                toggle={toggle}
+                activeTaskSlug={activeTaskSlug}
+                activeUnitSlug={activeUnitSlug}
+                onTask={onTask}
+                onTheory={onTheory}
+              />
+            ))
+          )}
         </div>
 
         {/* Bottom Progress & Actions Panel */}

@@ -20,6 +20,8 @@ export interface CatalogItem {
 export interface TaskItem {
   slug: string;
   title: string;
+  difficulty?: number;
+  tags?: string[];
   languages: string[];
   editorial_url?: string;
 }

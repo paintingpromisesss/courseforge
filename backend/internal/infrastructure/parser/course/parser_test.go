@@ -52,6 +52,10 @@ tasks:
 		"go-interview/week-1/slices/02-chunk/chunk/task.yaml": f(`
 slug: chunk
 title: Chunk-функция
+difficulty: 2
+tags:
+  - slices
+  - arrays
 statement: statement.md
 languages:
   go:
@@ -92,6 +96,12 @@ func TestParseValid(t *testing.T) {
 	task := topic.Units[1].Tasks[0]
 	if task.Slug != "chunk" || task.Languages["go"].Tests != "solution_test.go" {
 		t.Fatalf("task wrong: %+v", task)
+	}
+	if task.Difficulty != 2 {
+		t.Fatalf("expected difficulty 2, got %d", task.Difficulty)
+	}
+	if len(task.Tags) != 2 || task.Tags[0] != "slices" || task.Tags[1] != "arrays" {
+		t.Fatalf("expected tags [slices arrays], got %v", task.Tags)
 	}
 }
 

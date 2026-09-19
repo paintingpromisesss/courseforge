@@ -58,6 +58,8 @@ type UnitItem struct {
 type TaskItem struct {
 	Slug         string   `json:"slug"`
 	Title        string   `json:"title"`
+	Difficulty   int      `json:"difficulty,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
 	Languages    []string `json:"languages"`
 	EditorialURL string   `json:"editorial_url,omitempty"`
 }
@@ -114,7 +116,14 @@ func ToCourseDetail(c *domain.Course) CourseDetail {
 						langs = append(langs, lang)
 					}
 					sort.Strings(langs)
-					tasks[l] = TaskItem{Slug: task.Slug, Title: task.Title, Languages: langs, EditorialURL: task.EditorialURL}
+					tasks[l] = TaskItem{
+						Slug:         task.Slug,
+						Title:        task.Title,
+						Difficulty:   task.Difficulty,
+						Tags:         task.Tags,
+						Languages:    langs,
+						EditorialURL: task.EditorialURL,
+					}
 				}
 				units[k] = UnitItem{Slug: u.Slug, Title: u.Title, HasTheory: u.Theory != "", VideoURL: u.VideoURL, Tasks: tasks}
 			}

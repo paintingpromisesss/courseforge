@@ -150,3 +150,14 @@ func TestMCPActiveTaskHandlers(t *testing.T) {
 	}
 }
 
+func TestFindMCPCommand(t *testing.T) {
+	cmd, args, ok := findMCPCommand("./courses", "./data")
+	if !filepath.IsAbs(cmd) {
+		t.Errorf("expected absolute command path, got %q", cmd)
+	}
+	if len(args) != 3 {
+		t.Errorf("expected 3 args, got %v", args)
+	}
+	t.Logf("found cmd: %s (available: %v)", cmd, ok)
+}
+

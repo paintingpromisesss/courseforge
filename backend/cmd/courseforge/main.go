@@ -73,17 +73,30 @@ func runServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	host := fs.String("host", "127.0.0.1", "host to bind")
 	port := fs.Int("port", 8080, "port to listen on")
-	coursesDir := fs.String("courses-dir", "./courses", "directory with course files")
-	dataDir := fs.String("data-dir", "./data", "directory for app state")
+	coursesDir := fs.String("courses-dir", config.DefaultCoursesDir(), "directory with course files")
+	dataDir := fs.String("data-dir", config.DefaultDataDir(), "directory for app state")
 	dbPath := fs.String("db-path", "", "path to submissions sqlite db")
 	frontendDir := fs.String("frontend-dir", defaultFrontendDir(), "directory with built frontend assets")
 	enableTray := fs.Bool("tray", true, "show system tray icon")
 	fs.Parse(args)
 
+	resolvedCourses := *coursesDir
+	if resolvedCourses == "" || resolvedCourses == "./courses" {
+		if fi, err := os.Stat(resolvedCourses); err != nil || !fi.IsDir() {
+			resolvedCourses = config.DefaultCoursesDir()
+		}
+	}
+	resolvedData := *dataDir
+	if resolvedData == "" || resolvedData == "./data" {
+		if fi, err := os.Stat(resolvedData); err != nil || !fi.IsDir() {
+			resolvedData = config.DefaultDataDir()
+		}
+	}
+
 	cfg := &config.Config{
-		DataDir:     *dataDir,
-		CoursesDir:  *coursesDir,
-		RunnersJSON: config.DefaultRunnersJSON(*dataDir),
+		DataDir:     resolvedData,
+		CoursesDir:  resolvedCourses,
+		RunnersJSON: config.DefaultRunnersJSON(resolvedData),
 		FrontendDir: *frontendDir,
 		Addr:        *host + ":" + strconv.Itoa(*port),
 		DBPath:      *dbPath,
@@ -93,7 +106,7 @@ func runServe(args []string) {
 		hideConsoleWindowIfOwned()
 	}
 	if cfg.DBPath == "" {
-		cfg.DBPath = config.DefaultDBPath(*dataDir)
+		cfg.DBPath = config.DefaultDBPath(resolvedData)
 	}
 
 	if err := di.Run(cfg); err != nil {

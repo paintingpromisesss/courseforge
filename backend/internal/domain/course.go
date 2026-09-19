@@ -57,12 +57,14 @@ type Unit struct {
 
 // Task is a coding exercise: one shared statement and per-language file sets.
 type Task struct {
-	Slug      string              `yaml:"slug"`
-	Title     string              `yaml:"title"`
+	Slug         string              `yaml:"slug"`
+	Title        string              `yaml:"title"`
+	Difficulty   int                 `yaml:"difficulty,omitempty"`
+	Tags         []string            `yaml:"tags,omitempty"`
 	Statement    string              `yaml:"statement"` // path relative to task folder
 	EditorialURL string              `yaml:"editorial_url"`
 	Languages    map[string]Language `yaml:"languages"`
-	Limits    *Limits             `yaml:"limits"`
+	Limits       *Limits             `yaml:"limits"`
 }
 
 // Language holds files for one language; paths are relative to the language subfolder (e.g. go/).

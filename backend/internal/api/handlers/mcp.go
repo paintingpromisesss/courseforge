@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/paintingpromisesss/courseforge/internal/api/dto"
+	"github.com/paintingpromisesss/courseforge/internal/config"
 	"github.com/paintingpromisesss/courseforge/internal/domain"
 	"github.com/paintingpromisesss/courseforge/internal/mcp"
 )
@@ -35,13 +36,21 @@ func (h *Handler) getMCPConfig(w http.ResponseWriter, r *http.Request) {
 	if coursesDir == "" || coursesDir == "./courses" {
 		coursesDir = h.coursesDir
 	}
+	if coursesDir == "" || coursesDir == "./courses" {
+		coursesDir = config.DefaultCoursesDir()
+	} else {
+		coursesDir = resolveExistingDir(coursesDir)
+	}
+
 	dataDir := cfg.DataDir
 	if dataDir == "" || dataDir == "./data" {
 		dataDir = h.dataDir
 	}
-
-	coursesDir = resolveExistingDir(coursesDir)
-	dataDir = resolveExistingDir(dataDir)
+	if dataDir == "" || dataDir == "./data" {
+		dataDir = config.DefaultDataDir()
+	} else {
+		dataDir = resolveExistingDir(dataDir)
+	}
 
 	// Detect binary command and args
 	command, args, available := findMCPCommand(coursesDir, dataDir)
@@ -289,15 +298,39 @@ func findMCPCommand(coursesDir, dataDir string) (string, []string, bool) {
 	}
 
 	// 2. Check for compiled courseforge binary in bin/ or ../bin/
-	candidates := []string{
-		filepath.Join("bin", "courseforge"+exeExt),
-		filepath.Join("..", "bin", "courseforge"+exeExt),
+	searchDirs := []string{
+		"bin",
+		filepath.Join("..", "bin"),
+	}
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		searchDirs = append(searchDirs, dir, filepath.Join(dir, "bin"), filepath.Join(dir, "..", "bin"))
 	}
 
-	for _, c := range candidates {
-		if abs, err := filepath.Abs(c); err == nil {
-			if fi, err := os.Stat(abs); err == nil && !fi.IsDir() {
-				return abs, args, true
+	platformName := fmt.Sprintf("courseforge-%s-%s%s", runtime.GOOS, runtime.GOARCH, exeExt)
+
+	for _, dir := range searchDirs {
+		// Exact match: courseforge.exe or courseforge-<os>-<arch>.exe
+		exactCandidates := []string{
+			filepath.Join(dir, "courseforge"+exeExt),
+			filepath.Join(dir, platformName),
+		}
+		for _, c := range exactCandidates {
+			if abs, err := filepath.Abs(c); err == nil {
+				if fi, err := os.Stat(abs); err == nil && !fi.IsDir() {
+					return abs, args, true
+				}
+			}
+		}
+
+		// Pattern match: courseforge*
+		if matches, err := filepath.Glob(filepath.Join(dir, "courseforge*"+exeExt)); err == nil {
+			for _, m := range matches {
+				if abs, err := filepath.Abs(m); err == nil {
+					if fi, err := os.Stat(abs); err == nil && !fi.IsDir() {
+						return abs, args, true
+					}
+				}
 			}
 		}
 	}
@@ -310,7 +343,25 @@ func findMCPCommand(coursesDir, dataDir string) (string, []string, bool) {
 		}
 		return abs, args, true
 	}
+	if p, err := exec.LookPath(platformName); err == nil {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			abs = p
+		}
+		return abs, args, true
+	}
 
-	// Fallback: standard command name without path
+	// Fallback: return absolute path candidate to bin/courseforge.exe so the agent knows the full path
+	for _, dir := range searchDirs {
+		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
+			if abs, err := filepath.Abs(filepath.Join(dir, "courseforge"+exeExt)); err == nil {
+				return abs, args, false
+			}
+		}
+	}
+
+	if abs, err := filepath.Abs("courseforge" + exeExt); err == nil {
+		return abs, args, false
+	}
 	return "courseforge" + exeExt, args, false
 }

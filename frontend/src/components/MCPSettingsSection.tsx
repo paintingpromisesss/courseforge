@@ -540,6 +540,16 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
 
         {transport === 'stdio' ? (
           <div className="space-y-2">
+            {!currentStatus.available && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-start gap-2">
+                <span className="shrink-0 mt-0.5 text-sm">⚠️</span>
+                <div>
+                  <span className="font-semibold block mb-0.5">Бинарник не найден на диске</span>
+                  Бинарник CourseForge ещё не собран (или сервер запущен в режиме разработки через <code className="font-mono text-[11px] bg-bg-3 px-1 py-0.5 rounded text-tx-1">go run</code>).
+                  Для работы по stdio соберите бинарник командой <code className="font-mono text-[11px] bg-bg-3 px-1 py-0.5 rounded text-tx-1">./scripts/build.sh</code> (на Windows: <code className="font-mono text-[11px] bg-bg-3 px-1 py-0.5 rounded text-tx-1">.\scripts\build.ps1</code>), либо используйте SSE-транспорт.
+                </div>
+              </div>
+            )}
             <div className="p-2.5 rounded-xl bg-bg-3/60 border border-bdr flex items-center justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <span className="text-tx-3 text-[11px] block">Команда запуска (stdio):</span>

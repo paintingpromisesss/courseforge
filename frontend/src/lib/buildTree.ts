@@ -18,6 +18,8 @@ export interface TreeNode {
   total: number;
   nav?: NavTarget;
   doneFlag?: boolean;
+  difficulty?: number;
+  tags?: string[];
 }
 
 type Done = Record<string, boolean>;
@@ -44,6 +46,8 @@ function taskLeaf(base: NavTarget, t: TaskItem, done: Done): TreeNode {
     total: 1,
     nav: { ...base, task: t.slug },
     doneFlag: flag,
+    difficulty: t.difficulty,
+    tags: t.tags ? t.tags.map((tag) => tag.trim()).filter(Boolean) : undefined,
   };
 }
 
