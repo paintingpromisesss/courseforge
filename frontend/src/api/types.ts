@@ -17,6 +17,11 @@ export interface CatalogItem {
   courses: CourseItem[];
 }
 
+export interface VideoSource {
+  src: string;
+  size?: number;
+}
+
 export interface TaskItem {
   slug: string;
   title: string;
@@ -24,6 +29,8 @@ export interface TaskItem {
   tags?: string[];
   languages: string[];
   editorial_url?: string;
+  video_url?: string;
+  video_sources?: VideoSource[];
 }
 
 export interface UnitItem {
@@ -31,6 +38,7 @@ export interface UnitItem {
   title: string;
   has_theory: boolean;
   video_url?: string;
+  video_sources?: VideoSource[];
   tasks: TaskItem[];
 }
 

@@ -72,8 +72,9 @@ export function TheoryPage() {
   const assetBase = `${BASE}/courses/${courseSlug}/tracks/${trackSlug}/topics/${topicSlug}/units/${unitSlug}`;
 
   const hasContent = !!data?.trim();
-  const hasVideo = !!unit?.video_url;
-  const contentHasUnitVideo = !!(unit?.video_url && data?.includes(unit.video_url));
+  const hasVideo = !!(unit?.video_url || (unit?.video_sources && unit.video_sources.length > 0));
+  const primaryVideoURL = unit?.video_url ?? unit?.video_sources?.[0]?.src;
+  const contentHasUnitVideo = !!(primaryVideoURL && data?.includes(primaryVideoURL));
   const showTopVideo = hasVideo && !contentHasUnitVideo;
   const showUnitTitle = unit?.title && (!hasContent || !data?.trim().startsWith('#'));
 
@@ -82,7 +83,7 @@ export function TheoryPage() {
       {showUnitTitle && (
         <h1 className="text-2xl font-bold text-tx-1 mb-6">{unit.title}</h1>
       )}
-      {showTopVideo && <VideoEmbed href={unit.video_url!} />}
+      {showTopVideo && <VideoEmbed href={unit?.video_url} sources={unit?.video_sources} />}
       {hasContent && <Markdown content={data!} assetBase={assetBase} />}
       {!hasContent && !hasVideo && !isLoading && (
         <div className="text-tx-3 text-sm italic py-4">В этой теме пока нет материалов.</div>

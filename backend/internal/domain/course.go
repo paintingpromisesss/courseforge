@@ -46,25 +46,29 @@ type Topic struct {
 
 // Unit is a theory document and/or an ordered list of tasks; at least one must be set.
 type Unit struct {
-	Slug      string   `yaml:"slug"`
-	Title     string   `yaml:"title"`
-	Theory    string   `yaml:"theory"`    // path relative to unit folder, or ""
-	VideoURL  string   `yaml:"video_url"` // optional intro video shown above theory
-	TaskSlugs []string `yaml:"tasks"`
+	Slug      string            `yaml:"slug"`
+	Title     string            `yaml:"title"`
+	Theory    string            `yaml:"theory"`    // path relative to unit folder, or ""
+	VideoURL  string            `yaml:"video_url"` // optional intro video shown above theory
+	Videos    map[string]string `yaml:"videos"`    // optional map of qualities, e.g. "1080": "...", "720p": "..."
+	TaskSlugs []string          `yaml:"tasks"`
 
 	Tasks []*Task `yaml:"-"`
 }
 
 // Task is a coding exercise: one shared statement and per-language file sets.
 type Task struct {
-	Slug         string              `yaml:"slug"`
-	Title        string              `yaml:"title"`
-	Difficulty   int                 `yaml:"difficulty,omitempty"`
-	Tags         []string            `yaml:"tags,omitempty"`
-	Statement    string              `yaml:"statement"` // path relative to task folder
-	EditorialURL string              `yaml:"editorial_url"`
-	Languages    map[string]Language `yaml:"languages"`
-	Limits       *Limits             `yaml:"limits"`
+	Slug            string              `yaml:"slug"`
+	Title           string              `yaml:"title"`
+	Difficulty      int                 `yaml:"difficulty,omitempty"`
+	Tags            []string            `yaml:"tags,omitempty"`
+	Statement       string              `yaml:"statement"` // path relative to task folder
+	EditorialURL    string              `yaml:"editorial_url"`
+	EditorialVideos map[string]string   `yaml:"editorial_videos"`
+	VideoURL        string              `yaml:"video_url"`
+	Videos          map[string]string   `yaml:"videos"`
+	Languages       map[string]Language `yaml:"languages"`
+	Limits          *Limits             `yaml:"limits"`
 }
 
 // Language holds files for one language; paths are relative to the language subfolder (e.g. go/).

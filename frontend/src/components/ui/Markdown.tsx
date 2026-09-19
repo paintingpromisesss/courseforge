@@ -26,20 +26,23 @@ function embedSrc(href: string): string | null {
   return null;
 }
 
+import { PlyrPlayer } from './PlyrPlayer';
+import type { VideoSource } from '../../api/types';
+
 function isVideoFile(href: string): boolean {
   return /\.(mp4|webm|ogg)(\?|#|$)/i.test(href);
 }
 
-export function VideoEmbed({ href }: { href: string }) {
-  if (isVideoFile(href)) {
-    return (
-      <video
-        src={href}
-        controls
-        style={{ width: '100%', aspectRatio: '16 / 9', margin: '1rem 0', background: '#000' }}
-      />
-    );
+export interface VideoEmbedProps {
+  href?: string;
+  sources?: VideoSource[];
+}
+
+export function VideoEmbed({ href, sources }: VideoEmbedProps) {
+  if ((sources && sources.length > 0) || (href && isVideoFile(href))) {
+    return <PlyrPlayer sources={sources} src={href} />;
   }
+  if (!href) return null;
   const src = embedSrc(href);
   if (!src) {
     return (

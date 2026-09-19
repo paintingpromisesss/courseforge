@@ -592,6 +592,9 @@ export function TaskPage() {
     .flatMap((p) => p.units)
     .find((u) => u.tasks.some((t) => t.slug === taskSlug));
 
+  const hasTaskVideo = !!(task?.video_url || task?.editorial_url || (task?.video_sources && task.video_sources.length > 0));
+  const taskVideoURL = task?.video_url ?? task?.editorial_url;
+
   const [lang, setLang] = useState<string>('');
   const [code, setCode] = useState<string>('');
   const codeRef = useRef<string>('');
@@ -753,11 +756,11 @@ export function TaskPage() {
       setLeftTab((currentTab) => {
         if (currentTab === 'theory') return 'theory';
         if (currentTab === 'statement') return 'statement';
-        if (currentTab === 'video' && task?.editorial_url) return 'video';
+        if (currentTab === 'video' && hasTaskVideo) return 'video';
         return 'statement';
       });
     }
-  }, [unitSlug, taskSlug, unit, progress, theoryDone, task?.editorial_url]);
+  }, [unitSlug, taskSlug, unit, progress, theoryDone, hasTaskVideo]);
 
   const activeTab = leftTab ?? 'statement';
 
@@ -839,7 +842,7 @@ export function TaskPage() {
   const leftTabs = [
     ...(unit?.has_theory ? [{ id: 'theory', label: 'Теория' }] : []),
     { id: 'statement', label: task?.title ?? 'Задача' },
-    ...(task?.editorial_url ? [{ id: 'video', label: 'Видео-разбор' }] : []),
+    ...(hasTaskVideo ? [{ id: 'video', label: 'Видео-разбор' }] : []),
     { id: 'submissions', label: 'Посылки' },
     { id: 'solution', label: <span className="flex items-center gap-1">Решение {!solutionUnlocked && '🔒'}</span> },
   ] as { id: string; label: React.ReactNode }[];
@@ -949,13 +952,14 @@ export function TaskPage() {
             {activeTab === 'theory' && (() => {
               const BASE = import.meta.env.VITE_API_URL ?? '/api';
               const assetBase = `${BASE}/courses/${courseSlug}/tracks/${trackSlug}/topics/${topicSlug}/units/${unitSlug}`;
-              const hasVideo = !!unit?.video_url;
-              const contentHasUnitVideo = !!(unit?.video_url && theory?.includes(unit.video_url));
+              const hasVideo = !!(unit?.video_url || (unit?.video_sources && unit.video_sources.length > 0));
+              const primaryVideoURL = unit?.video_url ?? unit?.video_sources?.[0]?.src;
+              const contentHasUnitVideo = !!(primaryVideoURL && theory?.includes(primaryVideoURL));
               const showTopVideo = hasVideo && !contentHasUnitVideo;
 
               return (theory || hasVideo)
                 ? <>
-                    {showTopVideo && <VideoEmbed href={unit.video_url!} />}
+                    {showTopVideo && <VideoEmbed href={unit?.video_url} sources={unit?.video_sources} />}
                     {theory && <Markdown content={theory} assetBase={assetBase} />}
                     <div className="mt-8 flex justify-end">
                       <button
@@ -1014,8 +1018,8 @@ export function TaskPage() {
                 </motion.div>
               );
             })()}
-            {activeTab === 'video' && task?.editorial_url && (
-              <VideoEmbed href={task.editorial_url} />
+            {activeTab === 'video' && hasTaskVideo && (
+              <VideoEmbed href={taskVideoURL} sources={task?.video_sources} />
             )}
             {activeTab === 'submissions' && (
               <SubmissionsList

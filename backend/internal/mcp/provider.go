@@ -41,6 +41,7 @@ type TaskDetails struct {
 	Tags         []string   `json:"tags,omitempty"`
 	Statement    string     `json:"statement"`
 	EditorialURL string     `json:"editorial_url,omitempty"`
+	VideoURL     string     `json:"video_url,omitempty"`
 	Languages    []string   `json:"languages"`
 	Limits       TaskLimits `json:"limits"`
 	IsCompleted  bool       `json:"is_completed"`
@@ -230,6 +231,11 @@ func (p *CourseForgeProvider) GetTaskDetails(ctx context.Context, courseSlug, ta
 		}
 	}
 
+	editorialURL := task.VideoURL
+	if editorialURL == "" {
+		editorialURL = task.EditorialURL
+	}
+
 	return &TaskDetails{
 		CourseSlug:   c.Slug,
 		TaskSlug:     task.Slug,
@@ -237,7 +243,8 @@ func (p *CourseForgeProvider) GetTaskDetails(ctx context.Context, courseSlug, ta
 		Difficulty:   task.Difficulty,
 		Tags:         task.Tags,
 		Statement:    string(statementBytes),
-		EditorialURL: task.EditorialURL,
+		EditorialURL: editorialURL,
+		VideoURL:     editorialURL,
 		Languages:    langs,
 		Limits:       limits,
 		IsCompleted:  isCompleted,
