@@ -596,6 +596,13 @@ function RunnerCard({ def, driver, defaultDriver }: { def: RunnerDef; driver?: L
     onError: (e: Error) => setErr(e.message),
   });
 
+  // postgres is opt-in: the cluster only runs after the user starts it here
+  const pgToggle = useMutation({
+    mutationFn: (on: boolean) => api.setPostgres(on),
+    onSuccess: () => { setErr(''); detect.refetch(); },
+    onError: (e: Error) => setErr(e.message),
+  });
+
   const status = detect.data?.status;
   const version = detect.data?.version;
   const message = detect.data?.message;
@@ -738,6 +745,16 @@ function RunnerCard({ def, driver, defaultDriver }: { def: RunnerDef; driver?: L
                   <span className={clsx('inline-flex items-center justify-center shrink-0 w-[13px] h-4', detect.isFetching && 'animate-spin')}><WrenchIcon /></span>
                   {detect.isFetching ? 'Проверка…' : 'Проверить'}
                 </button>
+                {def.id === 'postgres' && detect.data?.path && (
+                  <button
+                    onClick={() => pgToggle.mutate(status !== 'ok')}
+                    disabled={pgToggle.isPending}
+                    className="ml-auto h-7 px-3 rounded bg-brand text-white text-xs hover:opacity-90 disabled:opacity-40 transition-opacity"
+                  >
+                    {pgToggle.isPending ? '…' : status === 'ok' ? 'Остановить' : 'Запустить'}
+                  </button>
+                )}
+                {def.id === 'postgres' && err && <p className="text-err text-xs">{err}</p>}
               </div>
             </div>
           </motion.div>

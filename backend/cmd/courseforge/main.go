@@ -34,6 +34,8 @@ func main() {
 		runDoctor(args[1:])
 	case "open":
 		runOpen(args[1:])
+	case "stop":
+		runStop(args[1:])
 	case "update":
 		runUpdate(args[1:])
 	case "version", "-v", "--version":
@@ -59,7 +61,8 @@ Usage:
   courseforge [flags]              start the server (default command)
   courseforge serve [flags]        start the server
   courseforge open [course-slug]   open the app in your browser, starting the server if needed
-  courseforge doctor               check which language toolchains are usable
+  courseforge stop [--port N]      stop the running server
+  courseforge doctor             check which language toolchains are usable
   courseforge update [--tag vX.Y.Z] update to the latest (or a specific) release
   courseforge mcp [flags]          run the MCP server
   courseforge version              print the version

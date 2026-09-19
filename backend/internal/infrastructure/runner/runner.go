@@ -59,6 +59,61 @@ type Runner struct {
 	file    string // path to runners.json, empty if not set
 	pgHost  string // postgres host for the "postgres" driver (Unix socket dir, or a TCP host on Windows); empty if not configured
 	pgPort  int    // postgres port; paired with pgHost
+
+	pgLife sync.Mutex       // serializes StartPostgres/StopPostgres
+	pgMgr  *PostgresManager // non-nil while the cluster started by StartPostgres is up
+}
+
+const pgEnabledMarker = "postgres.enabled"
+
+// PostgresEnabled reports whether the user opted in to auto-starting the
+// postgres cluster (the marker file lives in the app data dir).
+func PostgresEnabled(appDataDir string) bool {
+	_, err := os.Stat(filepath.Join(appDataDir, pgEnabledMarker))
+	return err == nil
+}
+
+// SetPostgresEnabled persists the opt-in checked by PostgresEnabled.
+func SetPostgresEnabled(appDataDir string, on bool) error {
+	p := filepath.Join(appDataDir, pgEnabledMarker)
+	if !on {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	return os.WriteFile(p, nil, 0644)
+}
+
+// StartPostgres starts the cluster rooted at pgDataDir and enables the
+// "postgres" driver. No-op if already running.
+func (r *Runner) StartPostgres(ctx context.Context, pgDataDir string) error {
+	r.pgLife.Lock()
+	defer r.pgLife.Unlock()
+	if r.pgMgr != nil {
+		return nil
+	}
+	m := NewPostgresManager(pgDataDir)
+	if err := m.Start(ctx); err != nil {
+		return err
+	}
+	r.pgMgr = m
+	r.ConfigurePostgres(m.Host(), m.Port())
+	return nil
+}
+
+// StopPostgres disables the "postgres" driver and stops the cluster.
+// No-op if it isn't running.
+func (r *Runner) StopPostgres() error {
+	r.pgLife.Lock()
+	defer r.pgLife.Unlock()
+	if r.pgMgr == nil {
+		return nil
+	}
+	r.ConfigurePostgres("", 0)
+	err := r.pgMgr.Stop()
+	r.pgMgr = nil
+	return err
 }
 
 // New creates a Runner preloaded with the built-in language drivers.
