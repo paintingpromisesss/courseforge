@@ -18,6 +18,11 @@ function embedSrc(href: string): string | null {
   if (yt) return `https://www.youtube.com/embed/${yt[1]}`;
   const ia = href.match(/archive\.org\/(?:details|embed)\/([^/?#]+)/);
   if (ia) return `https://archive.org/embed/${ia[1]}`;
+  const kine = href.match(/kinescope\.io\/(?:embed\/)?([a-zA-Z0-9_-]+)/);
+  if (kine) return `https://kinescope.io/embed/${kine[1]}`;
+  const rt = href.match(/rutube\.ru\/(?:play\/embed|video)\/([a-zA-Z0-9_-]+)/);
+  if (rt) return `https://rutube.ru/play/embed/${rt[1]}`;
+  if (/^https?:\/\//i.test(href) && href.includes('/embed/')) return href;
   return null;
 }
 
@@ -36,12 +41,19 @@ export function VideoEmbed({ href }: { href: string }) {
     );
   }
   const src = embedSrc(href);
-  if (!src) return <a href={href}>{href}</a>;
+  if (!src) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline">
+        {href}
+      </a>
+    );
+  }
   return (
     <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, margin: '1rem 0' }}>
       <iframe
         src={src}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowFullScreen
       />
     </div>

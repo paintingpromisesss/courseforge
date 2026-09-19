@@ -949,10 +949,14 @@ export function TaskPage() {
             {activeTab === 'theory' && (() => {
               const BASE = import.meta.env.VITE_API_URL ?? '/api';
               const assetBase = `${BASE}/courses/${courseSlug}/tracks/${trackSlug}/topics/${topicSlug}/units/${unitSlug}`;
-              return theory
+              const hasVideo = !!unit?.video_url;
+              const contentHasUnitVideo = !!(unit?.video_url && theory?.includes(unit.video_url));
+              const showTopVideo = hasVideo && !contentHasUnitVideo;
+
+              return (theory || hasVideo)
                 ? <>
-                    {unit?.video_url && <VideoEmbed href={unit.video_url} />}
-                    <Markdown content={theory} assetBase={assetBase} />
+                    {showTopVideo && <VideoEmbed href={unit.video_url!} />}
+                    {theory && <Markdown content={theory} assetBase={assetBase} />}
                     <div className="mt-8 flex justify-end">
                       <button
                         type="button"
