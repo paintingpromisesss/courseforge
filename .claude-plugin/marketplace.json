@@ -1,0 +1,14 @@
+{
+  "name": "courseforge",
+  "owner": { "name": "paintingpromisesss" },
+  "metadata": {
+    "description": "Claude Code plugins for CourseForge, a local programming course platform."
+  },
+  "plugins": [
+    {
+      "name": "courseforge",
+      "source": "./plugin",
+      "description": "CourseForge MCP server and tutor skill: browse courses, read tasks, run solutions."
+    }
+  ]
+}

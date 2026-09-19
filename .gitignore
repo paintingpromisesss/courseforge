@@ -6,7 +6,8 @@ frontend/dist/
 frontend/node_modules/
 /courses
 /data
-.agents/
+.agents/*
+!.agents/plugins/
 agent/
 skills-lock.json
 .serena

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../api/client';
 import type { MCPConfig, MCPStatusResponse } from '../api/types';
 import { buildMCPSetupPrompt } from '../lib/mcpPrompt';
+import { buildMCPClients } from '../lib/mcpClients';
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
 
@@ -154,7 +155,8 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
   const queryClient = useQueryClient();
 
   const [promptCopied, setPromptCopied] = useState(false);
-  const [jsonCopied, setJsonCopied] = useState(false);
+  const [clientCopied, setClientCopied] = useState(false);
+  const [clientId, setClientId] = useState('claude-code');
   const [cmdCopied, setCmdCopied] = useState(false);
   const [sseCopied, setSseCopied] = useState(false);
   const [showPromptPreview, setShowPromptPreview] = useState(false);
@@ -230,44 +232,8 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
     setTimeout(() => setCopiedState(false), 1500);
   };
 
-  const clientConfigSnippet = useMemo(() => {
-    const command = currentStatus.command || currentStatus.binary_path || 'courseforge';
-    const courses = currentStatus.courses_dir || './courses';
-    const data = currentStatus.data_dir || './data';
-    const args = currentStatus.args && currentStatus.args.length > 0
-      ? currentStatus.args
-      : ['mcp', `--courses-dir=${courses}`, `--data-dir=${data}`];
-    const sseUrl = currentStatus.sse_url || `http://${currentStatus.host || '127.0.0.1'}:${currentStatus.port || 8080}/api/mcp/sse`;
-
-    if (currentStatus.transport === 'sse') {
-      return JSON.stringify(
-        {
-          courseforge: {
-            url: sseUrl,
-          },
-        },
-        null,
-        2,
-      );
-    }
-
-    return JSON.stringify(
-      {
-        courseforge: {
-          command,
-          args,
-        },
-      },
-      null,
-      2,
-    );
-  }, [currentStatus]);
-
-  const handleCopyJson = async () => {
-    await navigator.clipboard.writeText(clientConfigSnippet);
-    setJsonCopied(true);
-    setTimeout(() => setJsonCopied(false), 1500);
-  };
+  const clients = useMemo(() => buildMCPClients(currentStatus), [currentStatus]);
+  const client = clients.find((c) => c.id === clientId) ?? clients[0];
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -521,21 +487,6 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
                 : 'Агент подключается по сети к уже работающему серверу CourseForge'}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleCopyJson}
-            className="shrink-0 flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-bg-3 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer select-none whitespace-nowrap"
-          >
-            <span className="shrink-0">{jsonCopied ? <CheckIcon /> : <CopyIcon />}</span>
-            <span className="grid">
-              <span className={clsx('col-start-1 row-start-1 whitespace-nowrap', !jsonCopied && 'invisible')}>
-                Скопировано
-              </span>
-              <span className={clsx('col-start-1 row-start-1 whitespace-nowrap', jsonCopied && 'invisible')}>
-                Скопировать JSON
-              </span>
-            </span>
-          </button>
         </div>
 
         {transport === 'stdio' ? (
@@ -605,9 +556,45 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
           </div>
         )}
 
-        <pre className="p-3 rounded-xl bg-bg-3 border border-bdr text-xs font-mono text-tx-2 overflow-x-auto">
-          {clientConfigSnippet}
-        </pre>
+        <div className="pt-3 border-t border-bdr space-y-2.5">
+          <div className="text-xs font-semibold text-tx-1">Подключение к агенту</div>
+          <div className="flex flex-wrap gap-1.5">
+            {clients.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setClientId(c.id)}
+                className={clsx(
+                  'px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors cursor-pointer',
+                  c.id === client.id
+                    ? 'bg-brand/10 border-brand/40 text-brand'
+                    : 'bg-bg-3 border-bdr text-tx-3 hover:text-tx-1',
+                )}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-tx-3 leading-relaxed">
+            Куда добавить: <code className="font-mono text-tx-2">{client.target}</code>
+          </p>
+          {client.snippet && (
+            <div className="relative">
+              <pre className="p-3 pr-28 rounded-xl bg-bg-3 border border-bdr text-xs font-mono text-tx-2 overflow-x-auto">
+                {client.snippet}
+              </pre>
+              <button
+                type="button"
+                onClick={() => copyText(client.snippet, setClientCopied)}
+                className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-lg bg-bg-2 hover:bg-bg-1 border border-bdr text-[11px] text-tx-2 hover:text-tx-1 transition-colors cursor-pointer select-none"
+              >
+                {clientCopied ? <CheckIcon /> : <CopyIcon />}
+                <span>{clientCopied ? 'Скопировано' : 'Копировать'}</span>
+              </button>
+            </div>
+          )}
+          {client.note && <p className="text-[11px] text-tx-3 leading-relaxed">{client.note}</p>}
+        </div>
       </div>
 
       {/* ── 5. Protocol Tools Registry ──────────────────────────────────── */}

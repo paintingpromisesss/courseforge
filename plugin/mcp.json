@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "courseforge": {
+      "command": "courseforge",
+      "args": ["mcp"]
+    }
+  }
+}
