@@ -84,6 +84,11 @@ The [`plugin/`](../plugin) folder bundles the MCP server and a tutor skill for
 agents that have a plugin system. The same `mcp.json` and `skills/` are shared;
 each agent has its own manifest next to them. Requires `courseforge` on `PATH`.
 
+Skills: `tutor` (hints without spoilers), `review` (code review), `debug`
+(diagnose failing tests via `run_solution`), `next` (pick the next task),
+`explain` (walk through the reference solution, only after the task is solved
+or the student gave up). In Claude Code they appear as `courseforge:tutor` etc.
+
 | Agent | Manifest | Install |
 |-------|----------|---------|
 | Claude Code | `.claude-plugin/` | `/plugin marketplace add paintingpromisesss/courseforge`, then `/plugin install courseforge@courseforge` |
