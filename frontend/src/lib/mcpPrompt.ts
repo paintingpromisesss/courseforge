@@ -12,6 +12,9 @@ export function buildMCPSetupPrompt(status: MCPStatusResponse): string {
 
   const lines: string[] = [];
 
+  const currentCommandStr = `${command} ${args.join(' ')}`;
+  const buildCmd = platform === 'windows' ? '.\\scripts\\build.ps1' : './scripts/build.sh';
+
   if (!status.enabled) {
     lines.push(
       '⚠️ ВНИМАНИЕ: В интерфейсе CourseForge сервер сейчас выключен. Перед проверкой включите тоггл в CourseForge: Настройки → MCP-сервер.',
@@ -19,7 +22,25 @@ export function buildMCPSetupPrompt(status: MCPStatusResponse): string {
     );
   }
 
-  const currentCommandStr = `${command} ${args.join(' ')}`;
+  if (!isSSE && !status.available) {
+    lines.push(
+      `⚠️ ВНИМАНИЕ: Бинарник CourseForge ещё не собран на диске (файл по пути \`${command}\` не найден).`,
+      `Для работы MCP через stdio сначала соберите бинарник командой \`${buildCmd}\` (или установите релиз), либо переключитесь на транспорт SSE в Настройках CourseForge.`,
+      '',
+    );
+  }
+
+  const contextBinaryLabel = isSSE
+    ? 'URL MCP-сервера:'
+    : status.available
+      ? 'Бинарник уже собран:'
+      : 'Бинарник ещё не собран (требуется сборка или установка):';
+
+  const contextBinaryValue = isSSE
+    ? sseUrl
+    : status.available
+      ? currentCommandStr
+      : `Для сборки выполните: ${buildCmd}\nКоманда MCP после сборки: ${currentCommandStr}`;
 
   lines.push(
     '# Подключение MCP-сервера CourseForge',
@@ -27,8 +48,8 @@ export function buildMCPSetupPrompt(status: MCPStatusResponse): string {
     '## Контекст',
     'CourseForge — платформа для самообучения программированию: курсы состоят из задач с теорией, условием, эталонным решением, тест-кейсами и шаблоном. У проекта есть свой MCP-сервер — он встроен в основной бинарник и поднимается командой `mcp`, отдавая агенту доступ к курсам и данным платформы.',
     '',
-    isSSE ? 'URL MCP-сервера:' : 'Бинарник уже собран:',
-    isSSE ? sseUrl : currentCommandStr,
+    contextBinaryLabel,
+    contextBinaryValue,
     '',
     '## Задача',
     'Добавь MCP-сервер `courseforge` в конфигурацию того инструмента, в котором ты сейчас работаешь. Я использую один и тот же запрос в разных агентах (OpenCode, Claude Code, Cursor и др.), поэтому конкретный файл и формат зависят от того, кто именно его выполняет — определи это сам и используй подходящий вариант ниже.',
@@ -40,7 +61,9 @@ export function buildMCPSetupPrompt(status: MCPStatusResponse): string {
     '4. Задача касается только MCP-конфигурации — код проекта (`backend/`, `frontend/`, `courses/` и т.д.) менять не нужно.',
     '5. После записи проверь, что получившийся JSON валиден.',
     '6. У большинства клиентов нет горячей подгрузки MCP — новый инструмент появится только после перезапуска сессии/клиента. Поэтому вызывать инструменты courseforge прямо сейчас не нужно — это ожидаемо, что они пока недоступны.',
-    '7. В конце коротко напиши, какой файл ты изменил и нужен ли перезапуск.',
+    status.available || isSSE
+      ? '7. В конце коротко напиши, какой файл ты изменил и нужен ли перезапуск.'
+      : `7. Так как бинарник ещё не собран (available: false), предупреди пользователя, что перед запуском MCP-сервера нужно собрать бинарник командой \`${buildCmd}\`, и укажи, какой файл конфигурации ты изменил.`,
     '',
     '## Варианты конфигурации',
     '',

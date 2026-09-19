@@ -47,7 +47,7 @@ function taskLeaf(base: NavTarget, t: TaskItem, done: Done): TreeNode {
     nav: { ...base, task: t.slug },
     doneFlag: flag,
     difficulty: t.difficulty,
-    tags: t.tags,
+    tags: t.tags ? t.tags.map((tag) => tag.trim()).filter(Boolean) : undefined,
   };
 }
 

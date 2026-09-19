@@ -339,7 +339,7 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
 
     const filterNode = (node: TreeNode): TreeNode | null => {
       if (node.kind === 'task') {
-        return node.tags && node.tags.some((t) => tagSet.has(t)) ? node : null;
+        return node.tags && node.tags.some((t) => tagSet.has(t.trim())) ? node : null;
       }
       if (node.kind === 'theory') {
         return null;

@@ -80,4 +80,28 @@ describe('mcpPrompt', () => {
     const prompt = buildMCPSetupPrompt(status);
     expect(prompt).toContain('сервер сейчас выключен');
   });
+
+  it('handles unavailable binary gracefully without claiming it is built', () => {
+    const status: MCPStatusResponse = {
+      enabled: true,
+      transport: 'stdio',
+      host: '127.0.0.1',
+      port: 8090,
+      courses_dir: 'F:/Proga/courseforge/courses',
+      data_dir: 'F:/Proga/courseforge/data',
+      binary_path: 'F:/Proga/courseforge/bin/courseforge.exe',
+      command: 'F:/Proga/courseforge/bin/courseforge.exe',
+      args: ['mcp', '--courses-dir=F:/Proga/courseforge/courses', '--data-dir=F:/Proga/courseforge/data'],
+      sse_url: 'http://127.0.0.1:8080/api/mcp/sse',
+      platform: 'windows',
+      tools_count: 9,
+      available: false,
+    };
+
+    const prompt = buildMCPSetupPrompt(status);
+    expect(prompt).not.toContain('Бинарник уже собран:');
+    expect(prompt).toContain('Бинарник ещё не собран (требуется сборка или установка):');
+    expect(prompt).toContain('.\\scripts\\build.ps1');
+    expect(prompt).toContain('Бинарник CourseForge ещё не собран на диске');
+  });
 });
