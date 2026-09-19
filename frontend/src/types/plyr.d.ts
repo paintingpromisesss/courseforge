@@ -23,6 +23,8 @@ declare module 'plyr' {
       forced?: boolean;
       onChange?: (quality: number) => void;
     };
+    iconUrl?: string;
+    loadSprite?: boolean;
     i18n?: Record<string, unknown>;
     ratio?: string;
     seekTime?: number;
@@ -46,4 +48,9 @@ declare module 'plyr' {
     on(event: string, callback: (event: CustomEvent) => void): void;
     quality: number;
   }
+}
+
+declare module '*.svg' {
+  const content: string;
+  export default content;
 }

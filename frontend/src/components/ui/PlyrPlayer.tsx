@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function PlyrPlayer({ sources, src }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const normalizedSources = useMemo<VideoSource[]>(() => {
     if (sources && sources.length > 0) {
@@ -31,9 +31,31 @@ export function PlyrPlayer({ sources, src }: Props) {
   const defaultQuality = qualityOptions[0] ?? 1080;
 
   useEffect(() => {
-    if (!videoRef.current || normalizedSources.length === 0) return;
+    const container = containerRef.current;
+    if (!container || normalizedSources.length === 0) return;
 
-    const player = new Plyr(videoRef.current, {
+    // Reset container contents
+    container.innerHTML = '';
+
+    const video = document.createElement('video');
+    video.playsInline = true;
+    video.controls = true;
+    video.className = 'w-full h-full';
+
+    for (const s of normalizedSources) {
+      const source = document.createElement('source');
+      source.src = s.src;
+      source.type = 'video/mp4';
+      if (s.size) {
+        source.setAttribute('size', String(s.size));
+      }
+      video.appendChild(source);
+    }
+
+    container.appendChild(video);
+
+    const player = new Plyr(video, {
+      iconUrl: '/plyr.svg',
       controls: [
         'play-large',
         'play',
@@ -90,7 +112,14 @@ export function PlyrPlayer({ sources, src }: Props) {
     });
 
     return () => {
-      player.destroy();
+      try {
+        player.destroy();
+      } catch {
+        // ignore destroy errors
+      }
+      if (container) {
+        container.innerHTML = '';
+      }
     };
   }, [normalizedSources, qualityOptions, defaultQuality]);
 
@@ -98,16 +127,7 @@ export function PlyrPlayer({ sources, src }: Props) {
 
   return (
     <div className="my-4 rounded-lg overflow-hidden bg-black aspect-video shadow-md">
-      <video ref={videoRef} playsInline controls className="w-full h-full">
-        {normalizedSources.map((s, idx) => (
-          <source
-            key={idx}
-            src={s.src}
-            type="video/mp4"
-            {...(s.size ? { size: String(s.size) } : {})}
-          />
-        ))}
-      </video>
+      <div ref={containerRef} className="w-full h-full" />
     </div>
   );
 }
