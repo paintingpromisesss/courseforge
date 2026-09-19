@@ -1,0 +1,8 @@
+{
+  "name": "courseforge",
+  "version": "1.0.0",
+  "description": "CourseForge MCP server and tutor skill: browse courses, read tasks, run solutions in the sandbox.",
+  "author": { "name": "paintingpromisesss" },
+  "repository": "https://github.com/paintingpromisesss/courseforge",
+  "mcpServers": "./mcp.json"
+}

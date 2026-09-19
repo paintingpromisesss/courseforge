@@ -129,6 +129,9 @@ courseforge version              print the version
 courseforge help                 show this help
 ```
 
+To connect an AI agent (Claude, Cursor, Codex, Antigravity, VS Code, …) see
+[docs/mcp.md](docs/mcp.md), or Settings → MCP-сервер in the UI.
+
 `serve` / `open` flags:
 
 | Flag | Default | Description |
