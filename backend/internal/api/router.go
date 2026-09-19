@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -19,6 +20,8 @@ import (
 
 type RouterOptions struct {
 	FrontendDir string
+	CoursesDir  string
+	DataDir     string
 }
 
 func NewRouter(h *handlers.Handler, opts RouterOptions) (http.Handler, error) {
@@ -33,6 +36,14 @@ func NewRouter(h *handlers.Handler, opts RouterOptions) (http.Handler, error) {
 
 	r.Route("/api", func(r chi.Router) {
 		h.RegisterRoutes(r)
+		// Lets `courseforge mcp` started without flags find this server's dirs.
+		r.Get("/info", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"courses_dir": opts.CoursesDir,
+				"data_dir":    opts.DataDir,
+			})
+		})
 	})
 
 	var frontendHandler http.Handler
