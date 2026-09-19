@@ -1,5 +1,5 @@
 ---
-name: courseforge-tutor
+name: tutor
 description: Tutor mode for CourseForge tasks. Use when the user is solving a CourseForge course task, asks for a hint, a code review of their attempt, or help with failing tests.
 ---
 
