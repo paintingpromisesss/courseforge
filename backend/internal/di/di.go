@@ -114,7 +114,7 @@ func Run(cfg *config.Config) error {
 
 	h := handlers.New(cfg.CoursesDir, cfg.DataDir, courses, catalogs, r, ps, ss, aiService, mcpRepo, mcpServer)
 
-	router, err := api.NewRouter(h, api.RouterOptions{FrontendDir: cfg.FrontendDir})
+	router, err := api.NewRouter(h, api.RouterOptions{FrontendDir: cfg.FrontendDir, CoursesDir: cfg.CoursesDir, DataDir: cfg.DataDir})
 	if err != nil {
 		return err
 	}

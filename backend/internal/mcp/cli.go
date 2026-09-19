@@ -2,10 +2,12 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,6 +19,24 @@ import (
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
 )
+
+// discoverServerDirs asks the local CourseForge server (GET /api/info) for its dirs.
+func discoverServerDirs() (coursesDir, dataDir string, ok bool) {
+	client := http.Client{Timeout: 300 * time.Millisecond}
+	resp, err := client.Get("http://127.0.0.1:8080/api/info")
+	if err != nil {
+		return "", "", false
+	}
+	defer resp.Body.Close()
+	var info struct {
+		CoursesDir string `json:"courses_dir"`
+		DataDir    string `json:"data_dir"`
+	}
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&info) != nil {
+		return "", "", false
+	}
+	return info.CoursesDir, info.DataDir, info.CoursesDir != "" && info.DataDir != ""
+}
 
 // RunCLI parses flags from args and executes the MCP server.
 // If MCP is disabled in CourseForge settings (mcp_server_config.json),
@@ -37,6 +57,18 @@ func RunCLI(args []string) {
 	force := fs.Bool("force", false, "bypass disabled check in settings")
 
 	_ = fs.Parse(args)
+
+	// Without explicit dirs, adopt the ones of a running server so both share courses and data.
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	if !set["courses-dir"] && !set["data-dir"] {
+		c, d, ok := discoverServerDirs()
+		if !ok {
+			fmt.Fprintln(os.Stderr, "CourseForge server is not running on 127.0.0.1:8080. Start it (courseforge serve) or pass --courses-dir and --data-dir.")
+			os.Exit(1)
+		}
+		*coursesDir, *dataDir = c, d
+	}
 
 	if *coursesDir == "" || *coursesDir == "./courses" {
 		if fi, err := os.Stat(*coursesDir); err != nil || !fi.IsDir() {
