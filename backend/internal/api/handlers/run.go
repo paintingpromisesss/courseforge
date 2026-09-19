@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -92,6 +93,33 @@ func (h *Handler) detectRunner(w http.ResponseWriter, r *http.Request) {
 		Message:  res.Message,
 		Platform: runtime.GOOS,
 	})
+}
+
+// @Summary Start or stop the managed postgres cluster and remember the choice
+// @Tags runners
+// @Produce json
+// @Success 204
+// @Failure 500 {object} map[string]string
+// @Router /runners/postgres/start [post]
+// @Router /runners/postgres/stop [post]
+func (h *Handler) setPostgres(on bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		if on {
+			err = h.runner.StartPostgres(r.Context(), filepath.Join(h.dataDir, "postgres"))
+		} else {
+			err = h.runner.StopPostgres()
+		}
+		if err != nil {
+			h.writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if err := runner.SetPostgresEnabled(h.dataDir, on); err != nil {
+			h.writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 // @Summary Partially update an existing language driver

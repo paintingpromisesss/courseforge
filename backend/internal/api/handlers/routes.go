@@ -31,6 +31,8 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/runners/defaults", h.listRunnerDefaults)
 	r.Patch("/runners/{lang}", h.patchRunner)
 	r.Post("/runners/{lang}/detect", h.detectRunner)
+	r.Post("/runners/postgres/start", h.setPostgres(true))
+	r.Post("/runners/postgres/stop", h.setPostgres(false))
 
 	r.Get("/submissions", h.listSubmissions)
 	r.Post("/submissions", h.createSubmission)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -46,27 +47,24 @@ func Run(cfg *config.Config) error {
 		return fmt.Errorf("load runners: %w", err)
 	}
 
-	// Start the Postgres cluster in the background so initdb/pg_ctl never
-	// delay HTTP startup; postgres runs that arrive before it's ready get a
-	// clear "cluster is not running" error from the runner.
-	pgMgr := runner.NewPostgresManager(filepath.Join(cfg.DataDir, "postgres"))
+	// Postgres is opt-in (Settings -> PostgreSQL -> Start). If the user
+	// enabled it earlier, bring it back up in the background so initdb/pg_ctl
+	// never delay HTTP startup.
 	pgDone := make(chan struct{})
-	var pgStarted bool
 	go func() {
 		defer close(pgDone)
-		if err := pgMgr.Start(context.Background()); err != nil {
+		if !runner.PostgresEnabled(cfg.DataDir) {
+			return
+		}
+		if err := r.StartPostgres(context.Background(), filepath.Join(cfg.DataDir, "postgres")); err != nil {
 			log.Printf("postgres runner disabled: %v", err)
 			return
 		}
-		r.ConfigurePostgres(pgMgr.Host(), pgMgr.Port())
-		pgStarted = true
-		log.Printf("postgres runner ready on %s:%d", pgMgr.Host(), pgMgr.Port())
+		log.Printf("postgres runner ready")
 	}()
 	defer func() {
 		<-pgDone
-		if pgStarted {
-			_ = pgMgr.Stop()
-		}
+		_ = r.StopPostgres()
 	}()
 
 	pr := repo.NewFileProgressRepository(cfg.CoursesDir)
@@ -121,7 +119,8 @@ func Run(cfg *config.Config) error {
 		return err
 	}
 
-	srv := &http.Server{Addr: cfg.Addr, Handler: router}
+	stopCh := make(chan struct{}, 1)
+	srv := &http.Server{Addr: cfg.Addr, Handler: shutdownHandler(router, stopCh)}
 
 	log.Printf("listening on http://%s", displayAddr(cfg.Addr))
 	if swaggerEnabled {
@@ -134,9 +133,35 @@ func Run(cfg *config.Config) error {
 	}
 
 	if cfg.EnableTray {
+		go func() {
+			<-stopCh
+			tray.Quit()
+		}()
 		return runWithTray(cfg, srv)
 	}
-	return runHeadless(srv)
+	return runHeadless(srv, stopCh)
+}
+
+// shutdownHandler serves POST /api/shutdown (used by `courseforge stop`).
+// Loopback only, and the custom header forces a CORS preflight, which
+// corsMiddleware doesn't allow, so web pages can't trigger it.
+func shutdownHandler(next http.Handler, stopCh chan<- struct{}) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/shutdown" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		host, _, _ := net.SplitHostPort(r.RemoteAddr)
+		if r.Method != http.MethodPost || r.Header.Get("X-Courseforge-Stop") == "" || !net.ParseIP(host).IsLoopback() {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		select {
+		case stopCh <- struct{}{}:
+		default:
+		}
+		w.WriteHeader(http.StatusAccepted)
+	})
 }
 
 // runWithTray delegates the application lifecycle to the system tray icon.
@@ -167,7 +192,7 @@ func runWithTray(cfg *config.Config, srv *http.Server) error {
 }
 
 // runHeadless keeps the original signal-based lifecycle (no tray icon).
-func runHeadless(srv *http.Server) error {
+func runHeadless(srv *http.Server, stopCh <-chan struct{}) error {
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()
 
@@ -180,12 +205,19 @@ func runHeadless(srv *http.Server) error {
 			return err
 		}
 	case <-stop:
-		log.Printf("shutting down...")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(ctx); err != nil {
-			return fmt.Errorf("shutdown: %w", err)
-		}
+		return shutdown(srv)
+	case <-stopCh:
+		return shutdown(srv)
+	}
+	return nil
+}
+
+func shutdown(srv *http.Server) error {
+	log.Printf("shutting down...")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		return fmt.Errorf("shutdown: %w", err)
 	}
 	return nil
 }

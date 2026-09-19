@@ -165,7 +165,7 @@ func (r *Runner) detectPostgres(ctx context.Context, bin, path string) DetectRes
 	port := r.pgPort
 	r.mu.RUnlock()
 	if host == "" {
-		return DetectResult{Status: StatusMissing, Binary: bin, Path: path, Message: "postgres cluster not running"}
+		return DetectResult{Status: StatusMissing, Binary: bin, Path: path, Message: "postgres cluster not started (enable it in Settings)"}
 	}
 	out, err := newCommandContext(ctx, "psql", "-h", host, "-p", strconv.Itoa(port), "-d", "postgres",
 		"-tAc", "SHOW server_version").CombinedOutput()

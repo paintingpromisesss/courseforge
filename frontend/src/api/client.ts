@@ -162,6 +162,7 @@ export const api = {
   patchRunner: (lang: string, body: { run_cmd: string[]; test_cmd: string[] }) =>
     patch<void>(`/runners/${lang}`, body),
   detectRunner: (lang: string) => post<RunnerStatus>(`/runners/${lang}/detect`, {}),
+  setPostgres: (on: boolean) => post<void>(`/runners/postgres/${on ? 'start' : 'stop'}`, {}),
 
   // Upload one course/catalog folder. `files` carry their root-prefixed relative
   // paths (e.g. "mycourse/course.yaml"), which is what the backend expects.
