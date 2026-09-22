@@ -15,6 +15,10 @@
   --bdr-s: hsla(0,0%,100%,0.08);
   --bdr:   hsla(0,0%,100%,0.12);
   --bdr-e: hsla(0,0%,100%,0.20);
+  --plyr-color-main: #8251EE;
+  --plyr-video-background: #000000;
+  --plyr-menu-background: hsl(240,5%,14%);
+  --plyr-menu-color: #FFFFFF;
 }
 
 .light {

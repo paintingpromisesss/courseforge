@@ -7,7 +7,7 @@ import { api } from '../api/client';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { DifficultyBadge } from '../components/ui/DifficultyBadge';
-import type { TrackItem } from '../api/types';
+import type { TrackItem, CourseDetail } from '../api/types';
 import { buildTree, type TreeNode, type NavTarget } from '../lib/buildTree';
 
 const TreeRow = memo(function TreeRow({
@@ -768,6 +768,7 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
 
 export interface CoursePageContext {
   mainRef: React.RefObject<HTMLElement | null>;
+  course?: CourseDetail;
 }
 
 const taskTransitionVariants = {
@@ -862,7 +863,7 @@ export function CoursePage() {
     },
   });
 
-  const outlet = useOutlet({ mainRef } satisfies CoursePageContext);
+  const outlet = useOutlet({ mainRef, course } satisfies CoursePageContext);
 
   if (isLoading) return <div className="p-8 text-tx-3">Загрузка...</div>;
   if (!course) return <div className="p-8 text-err">Курс не найден</div>;
