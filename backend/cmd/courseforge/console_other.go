@@ -2,4 +2,4 @@
 
 package main
 
-func hideConsoleWindowIfOwned() {}
+func attachConsoleIfAvailable() {}

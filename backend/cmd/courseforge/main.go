@@ -19,6 +19,8 @@ import (
 var version = "dev"
 
 func main() {
+	attachConsoleIfAvailable()
+
 	args := os.Args[1:]
 	if len(args) == 0 {
 		runServe(args)
@@ -104,9 +106,6 @@ func runServe(args []string) {
 		Addr:        *host + ":" + strconv.Itoa(*port),
 		DBPath:      *dbPath,
 		EnableTray:  *enableTray,
-	}
-	if cfg.EnableTray {
-		hideConsoleWindowIfOwned()
 	}
 	if cfg.DBPath == "" {
 		cfg.DBPath = config.DefaultDBPath(resolvedData)
