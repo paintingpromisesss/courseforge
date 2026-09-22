@@ -59,6 +59,33 @@ BINARY_PATH="${INSTALL_DIR}/courseforge"
 
 echo "Downloading ${ASSET} (${TAG})..."
 curl -fsSL "$URL" -o "$BINARY_PATH"
+
+CHECKSUM_URL="${URL%/*}/checksums.txt"
+CHECKSUM_FILE="${INSTALL_DIR}/checksums.txt"
+if curl -fsSL "$CHECKSUM_URL" -o "$CHECKSUM_FILE" 2>/dev/null; then
+  echo "Verifying SHA256 checksum..."
+  EXPECTED_HASH="$(grep -w "${ASSET}" "$CHECKSUM_FILE" 2>/dev/null | awk '{print $1}')"
+  if [[ -n "$EXPECTED_HASH" ]]; then
+    if command -v sha256sum >/dev/null 2>&1; then
+      ACTUAL_HASH="$(sha256sum "$BINARY_PATH" | awk '{print $1}')"
+    elif command -v shasum >/dev/null 2>&1; then
+      ACTUAL_HASH="$(shasum -a 256 "$BINARY_PATH" | awk '{print $1}')"
+    else
+      ACTUAL_HASH=""
+    fi
+
+    if [[ -n "$ACTUAL_HASH" ]]; then
+      if [[ "$EXPECTED_HASH" != "$ACTUAL_HASH" ]]; then
+        rm -f "$BINARY_PATH" "$CHECKSUM_FILE"
+        echo "Error: Checksum mismatch! Expected ${EXPECTED_HASH}, got ${ACTUAL_HASH}" >&2
+        exit 1
+      fi
+      echo "Checksum verified: SHA256 matches."
+    fi
+  fi
+  rm -f "$CHECKSUM_FILE"
+fi
+
 chmod +x "$BINARY_PATH"
 
 echo "Installed to $BINARY_PATH"

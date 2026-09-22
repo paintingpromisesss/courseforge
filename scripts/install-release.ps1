@@ -37,6 +37,22 @@ $BinaryPath = Join-Path $InstallDir 'courseforge.exe'
 Write-Host "Downloading $($Asset.name) ($($Release.tag_name))..."
 Invoke-WebRequest -Uri $Asset.browser_download_url -OutFile $BinaryPath
 
+$ChecksumAsset = $Release.assets | Where-Object { $_.name -eq 'checksums.txt' }
+if ($ChecksumAsset) {
+  Write-Host "Verifying SHA256 checksum..."
+  $ChecksumLines = (Invoke-RestMethod -Uri $ChecksumAsset.browser_download_url) -split "`r?`n"
+  $ExpectedLine = $ChecksumLines | Where-Object { $_ -match "\b$([regex]::Escape($Asset.name))\b" }
+  if ($ExpectedLine) {
+    $ExpectedHash = ($ExpectedLine.Trim() -split '\s+')[0].ToLower()
+    $ActualHash = (Get-FileHash -Path $BinaryPath -Algorithm SHA256).Hash.ToLower()
+    if ($ExpectedHash -ne $ActualHash) {
+      Remove-Item -Force $BinaryPath
+      throw "Checksum verification failed! Expected: $ExpectedHash, Got: $ActualHash"
+    }
+    Write-Host "Checksum verified: SHA256 matches."
+  }
+}
+
 $UserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $PathEntries = $UserPath -split ';' | Where-Object { $_ -ne '' }
 if ($PathEntries -notcontains $InstallDir) {
