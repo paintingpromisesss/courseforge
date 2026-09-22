@@ -40,7 +40,7 @@ export function PlyrPlayer({ sources, src }: Props) {
     const video = document.createElement('video');
     video.playsInline = true;
     video.controls = true;
-    video.className = 'w-full h-full';
+    video.className = 'w-full h-full object-contain';
 
     for (const s of normalizedSources) {
       const source = document.createElement('source');
@@ -56,6 +56,7 @@ export function PlyrPlayer({ sources, src }: Props) {
 
     const player = new Plyr(video, {
       iconUrl: '/plyr.svg',
+      ratio: '16:9',
       controls: [
         'play-large',
         'play',
@@ -127,7 +128,7 @@ export function PlyrPlayer({ sources, src }: Props) {
 
   return (
     <div className="my-4 rounded-lg overflow-hidden bg-black aspect-video shadow-md">
-      <div ref={containerRef} className="w-full h-full" />
+      <div ref={containerRef} className="w-full h-full [&>.plyr]:h-full [&>.plyr]:w-full" />
     </div>
   );
 }
