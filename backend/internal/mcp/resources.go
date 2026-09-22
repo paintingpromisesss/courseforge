@@ -67,11 +67,12 @@ func (s *Server) registerResources() {
 }
 
 func (s *Server) handleReadActiveTaskResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	if s.session == nil {
+	_, session := s.getDeps()
+	if session == nil {
 		return nil, fmt.Errorf("сессионный менеджер не настроен")
 	}
 
-	active, err := s.session.GetActiveTask(ctx)
+	active, err := session.GetActiveTask(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +94,12 @@ func (s *Server) handleReadActiveTaskResource(ctx context.Context, request mcp.R
 }
 
 func (s *Server) handleReadCoursesResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	courses, err := s.provider.ListCourses(ctx)
+	provider, _ := s.getDeps()
+	if provider == nil {
+		return nil, fmt.Errorf("провайдер CourseForge не инициализирован")
+	}
+
+	courses, err := provider.ListCourses(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -112,8 +118,12 @@ func (s *Server) handleReadCoursesResource(ctx context.Context, request mcp.Read
 	}, nil
 }
 
-
 func (s *Server) handleReadTaskStatementResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	provider, _ := s.getDeps()
+	if provider == nil {
+		return nil, fmt.Errorf("провайдер CourseForge не инициализирован")
+	}
+
 	// URI shape: courseforge://courses/{course_slug}/tasks/{task_slug}/statement
 	parts := strings.Split(strings.TrimPrefix(request.Params.URI, "courseforge://courses/"), "/")
 	if len(parts) < 4 || parts[1] != "tasks" || parts[3] != "statement" {
@@ -123,7 +133,7 @@ func (s *Server) handleReadTaskStatementResource(ctx context.Context, request mc
 	courseSlug := parts[0]
 	taskSlug := parts[2]
 
-	statement, err := s.provider.GetTaskStatement(ctx, courseSlug, taskSlug)
+	statement, err := provider.GetTaskStatement(ctx, courseSlug, taskSlug)
 	if err != nil {
 		return nil, err
 	}
@@ -138,6 +148,11 @@ func (s *Server) handleReadTaskStatementResource(ctx context.Context, request mc
 }
 
 func (s *Server) handleReadTaskTemplateResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	provider, _ := s.getDeps()
+	if provider == nil {
+		return nil, fmt.Errorf("провайдер CourseForge не инициализирован")
+	}
+
 	// URI shape: courseforge://courses/{course_slug}/tasks/{task_slug}/template/{language}
 	parts := strings.Split(strings.TrimPrefix(request.Params.URI, "courseforge://courses/"), "/")
 	if len(parts) < 5 || parts[1] != "tasks" || parts[3] != "template" {
@@ -148,7 +163,7 @@ func (s *Server) handleReadTaskTemplateResource(ctx context.Context, request mcp
 	taskSlug := parts[2]
 	language := parts[4]
 
-	_, code, err := s.provider.GetTaskTemplate(ctx, courseSlug, taskSlug, language)
+	_, code, err := provider.GetTaskTemplate(ctx, courseSlug, taskSlug, language)
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +178,11 @@ func (s *Server) handleReadTaskTemplateResource(ctx context.Context, request mcp
 }
 
 func (s *Server) handleReadTaskSolutionResource(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	provider, _ := s.getDeps()
+	if provider == nil {
+		return nil, fmt.Errorf("провайдер CourseForge не инициализирован")
+	}
+
 	// URI shape: courseforge://courses/{course_slug}/tasks/{task_slug}/solution/{language}
 	parts := strings.Split(strings.TrimPrefix(request.Params.URI, "courseforge://courses/"), "/")
 	if len(parts) < 5 || parts[1] != "tasks" || parts[3] != "solution" {
@@ -173,7 +193,7 @@ func (s *Server) handleReadTaskSolutionResource(ctx context.Context, request mcp
 	taskSlug := parts[2]
 	language := parts[4]
 
-	_, code, err := s.provider.GetTaskSolution(ctx, courseSlug, taskSlug, language)
+	_, code, err := provider.GetTaskSolution(ctx, courseSlug, taskSlug, language)
 	if err != nil {
 		return nil, err
 	}

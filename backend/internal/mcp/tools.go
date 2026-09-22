@@ -103,11 +103,15 @@ func (s *Server) registerTools() {
 }
 
 func (s *Server) handleGetCurrentTask(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if s.session == nil {
+	provider, session := s.getDeps()
+	if session == nil {
 		return toolError("сессионный менеджер не настроен"), nil
 	}
+	if provider == nil {
+		return toolError("провайдер CourseForge не инициализирован"), nil
+	}
 
-	active, err := s.session.GetActiveTask(ctx)
+	active, err := session.GetActiveTask(ctx)
 	if err != nil {
 		return toolError("ошибка получения сессии: %v", err), nil
 	}
@@ -119,7 +123,7 @@ func (s *Server) handleGetCurrentTask(ctx context.Context, request mcp.CallToolR
 		})
 	}
 
-	details, err := s.provider.GetTaskDetails(ctx, active.CourseSlug, active.TaskSlug)
+	details, err := provider.GetTaskDetails(ctx, active.CourseSlug, active.TaskSlug)
 	if err != nil {
 		return toolError("не удалось загрузить детали активной задачи: %v", err), nil
 	}
@@ -131,11 +135,11 @@ func (s *Server) handleGetCurrentTask(ctx context.Context, request mcp.CallToolR
 
 	var templateCode, testsCode string
 	if lang != "" {
-		_, templateCode, _ = s.provider.GetTaskTemplate(ctx, active.CourseSlug, active.TaskSlug, lang)
-		_, testsCode, _ = s.provider.GetTaskTests(ctx, active.CourseSlug, active.TaskSlug, lang)
+		_, templateCode, _ = provider.GetTaskTemplate(ctx, active.CourseSlug, active.TaskSlug, lang)
+		_, testsCode, _ = provider.GetTaskTests(ctx, active.CourseSlug, active.TaskSlug, lang)
 	}
 
-	lastSub, _ := s.provider.GetLastSubmission(ctx, active.CourseSlug, active.TaskSlug)
+	lastSub, _ := provider.GetLastSubmission(ctx, active.CourseSlug, active.TaskSlug)
 
 	resp := map[string]any{
 		"has_active_task": true,
@@ -157,8 +161,12 @@ func (s *Server) handleGetCurrentTask(ctx context.Context, request mcp.CallToolR
 }
 
 func (s *Server) handleSetActiveTaskContext(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if s.session == nil {
+	provider, session := s.getDeps()
+	if session == nil {
 		return toolError("сессионный менеджер не настроен"), nil
+	}
+	if provider == nil {
+		return toolError("провайдер CourseForge не инициализирован"), nil
 	}
 
 	courseSlug, err := request.RequireString("course_slug")
@@ -171,12 +179,12 @@ func (s *Server) handleSetActiveTaskContext(ctx context.Context, request mcp.Cal
 	}
 	language := request.GetString("language", "")
 
-	details, err := s.provider.GetTaskDetails(ctx, courseSlug, taskSlug)
+	details, err := provider.GetTaskDetails(ctx, courseSlug, taskSlug)
 	if err != nil {
 		return toolError("задача не найдена: %v", err), nil
 	}
 
-	active, err := s.session.SetActiveTask(ctx, courseSlug, taskSlug, language)
+	active, err := session.SetActiveTask(ctx, courseSlug, taskSlug, language)
 	if err != nil {
 		return toolError("не удалось сохранить активную задачу: %v", err), nil
 	}
@@ -193,7 +201,12 @@ func (s *Server) handleSetActiveTaskContext(ctx context.Context, request mcp.Cal
 }
 
 func (s *Server) handleListCourses(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	courses, err := s.provider.ListCourses(ctx)
+	provider, _ := s.getDeps()
+	if provider == nil {
+		return toolError("провайдер CourseForge не инициализирован"), nil
+	}
+
+	courses, err := provider.ListCourses(ctx)
 	if err != nil {
 		return toolError("ошибка загрузки курсов: %v", err), nil
 	}
@@ -203,6 +216,11 @@ func (s *Server) handleListCourses(ctx context.Context, request mcp.CallToolRequ
 }
 
 func (s *Server) handleGetTaskDetails(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	provider, _ := s.getDeps()
+	if provider == nil {
+		return toolError("провайдер CourseForge не инициализирован"), nil
+	}
+
 	courseSlug, err := request.RequireString("course_slug")
 	if err != nil {
 		return toolError("course_slug обязателен"), nil
@@ -212,7 +230,7 @@ func (s *Server) handleGetTaskDetails(ctx context.Context, request mcp.CallToolR
 		return toolError("task_slug обязателен"), nil
 	}
 
-	details, err := s.provider.GetTaskDetails(ctx, courseSlug, taskSlug)
+	details, err := provider.GetTaskDetails(ctx, courseSlug, taskSlug)
 	if err != nil {
 		return toolError("ошибка: %v", err), nil
 	}
@@ -220,6 +238,11 @@ func (s *Server) handleGetTaskDetails(ctx context.Context, request mcp.CallToolR
 }
 
 func (s *Server) handleGetTaskTemplate(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	provider, _ := s.getDeps()
+	if provider == nil {
+		return toolError("провайдер CourseForge не инициализирован"), nil
+	}
+
 	courseSlug, err := request.RequireString("course_slug")
 	if err != nil {
 		return toolError("course_slug обязателен"), nil
@@ -233,7 +256,7 @@ func (s *Server) handleGetTaskTemplate(ctx context.Context, request mcp.CallTool
 		return toolError("language обязателен"), nil
 	}
 
-	filename, code, err := s.provider.GetTaskTemplate(ctx, courseSlug, taskSlug, language)
+	filename, code, err := provider.GetTaskTemplate(ctx, courseSlug, taskSlug, language)
 	if err != nil {
 		return toolError("ошибка получения шаблона: %v", err), nil
 	}
@@ -245,6 +268,11 @@ func (s *Server) handleGetTaskTemplate(ctx context.Context, request mcp.CallTool
 }
 
 func (s *Server) handleGetTaskSolution(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	provider, _ := s.getDeps()
+	if provider == nil {
+		return toolError("провайдер CourseForge не инициализирован"), nil
+	}
+
 	courseSlug, err := request.RequireString("course_slug")
 	if err != nil {
 		return toolError("course_slug обязателен"), nil
@@ -258,7 +286,7 @@ func (s *Server) handleGetTaskSolution(ctx context.Context, request mcp.CallTool
 		return toolError("language обязателен"), nil
 	}
 
-	filename, code, err := s.provider.GetTaskSolution(ctx, courseSlug, taskSlug, language)
+	filename, code, err := provider.GetTaskSolution(ctx, courseSlug, taskSlug, language)
 	if err != nil {
 		return toolError("ошибка получения решения: %v", err), nil
 	}
@@ -270,6 +298,11 @@ func (s *Server) handleGetTaskSolution(ctx context.Context, request mcp.CallTool
 }
 
 func (s *Server) handleGetTaskTests(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	provider, _ := s.getDeps()
+	if provider == nil {
+		return toolError("провайдер CourseForge не инициализирован"), nil
+	}
+
 	courseSlug, err := request.RequireString("course_slug")
 	if err != nil {
 		return toolError("course_slug обязателен"), nil
@@ -283,7 +316,7 @@ func (s *Server) handleGetTaskTests(ctx context.Context, request mcp.CallToolReq
 		return toolError("language обязателен"), nil
 	}
 
-	filename, code, err := s.provider.GetTaskTests(ctx, courseSlug, taskSlug, language)
+	filename, code, err := provider.GetTaskTests(ctx, courseSlug, taskSlug, language)
 	if err != nil {
 		return toolError("ошибка получения тестов: %v", err), nil
 	}
@@ -295,6 +328,11 @@ func (s *Server) handleGetTaskTests(ctx context.Context, request mcp.CallToolReq
 }
 
 func (s *Server) handleListSubmissions(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	provider, _ := s.getDeps()
+	if provider == nil {
+		return toolError("провайдер CourseForge не инициализирован"), nil
+	}
+
 	courseSlug, err := request.RequireString("course_slug")
 	if err != nil {
 		return toolError("course_slug обязателен"), nil
@@ -306,7 +344,7 @@ func (s *Server) handleListSubmissions(ctx context.Context, request mcp.CallTool
 
 	limit := int(request.GetFloat("limit", 10))
 
-	subs, err := s.provider.ListSubmissions(ctx, courseSlug, taskSlug, limit)
+	subs, err := provider.ListSubmissions(ctx, courseSlug, taskSlug, limit)
 	if err != nil {
 		return toolError("ошибка получения сабмитов: %v", err), nil
 	}
@@ -317,6 +355,11 @@ func (s *Server) handleListSubmissions(ctx context.Context, request mcp.CallTool
 }
 
 func (s *Server) handleRunSolution(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	provider, _ := s.getDeps()
+	if provider == nil {
+		return toolError("провайдер CourseForge не инициализирован"), nil
+	}
+
 	courseSlug, err := request.RequireString("course_slug")
 	if err != nil {
 		return toolError("course_slug обязателен"), nil
@@ -335,7 +378,7 @@ func (s *Server) handleRunSolution(ctx context.Context, request mcp.CallToolRequ
 	}
 	saveSubmission := request.GetBool("save_submission", true)
 
-	result, err := s.provider.RunSolution(ctx, RunSolutionRequest{
+	result, err := provider.RunSolution(ctx, RunSolutionRequest{
 		CourseSlug:     courseSlug,
 		TaskSlug:       taskSlug,
 		Language:       language,
