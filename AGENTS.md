@@ -126,9 +126,12 @@ data/                          # runtime state (gitignored: SQLite, runners.json
   }
   ```
 
-## No CI, no pre-commit, no lint-on-save
+## CI / CD
 
-No `.github/` workflows, no pre-commit hooks, no Husky. Lint and test manually.
+- `.github/workflows/ci.yml`: runs on push/merge to `main`, PRs to `main`, and manual dispatch. Tests backend (`go test ./internal/...`), dev server build (`go build ./cmd/server`), frontend tests (`vitest run`), and frontend bundle build (`tsc -b && vite build`).
+- `.github/workflows/release.yml`: runs on tag push (`v*`) and manual dispatch. Matrix build across 6 OS targets and release publishing.
+- No pre-commit hooks, no Husky. Lint and test manually before pushing.
+
 
 ## MCP Tools & Execution Rules
 
