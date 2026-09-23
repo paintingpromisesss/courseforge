@@ -218,11 +218,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
 
   const currentCommandStr = useMemo(() => {
     const command = currentStatus.command || currentStatus.binary_path || 'courseforge';
-    const courses = currentStatus.courses_dir || './courses';
-    const data = currentStatus.data_dir || './data';
-    const args = currentStatus.args && currentStatus.args.length > 0
-      ? currentStatus.args
-      : ['mcp', `--courses-dir=${courses}`, `--data-dir=${data}`];
+    const args = currentStatus.args && currentStatus.args.length > 0 ? currentStatus.args : ['mcp'];
     return `${command} ${args.join(' ')}`;
   }, [currentStatus]);
 

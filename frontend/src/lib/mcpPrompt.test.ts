@@ -13,7 +13,7 @@ describe('mcpPrompt', () => {
       data_dir: 'F:/Proga/courseforge/data',
       binary_path: 'F:/Proga/courseforge/bin/courseforge.exe',
       command: 'F:/Proga/courseforge/bin/courseforge.exe',
-      args: ['mcp', '--courses-dir=F:/Proga/courseforge/courses', '--data-dir=F:/Proga/courseforge/data'],
+      args: ['mcp'],
       sse_url: 'http://127.0.0.1:8080/api/mcp/sse',
       platform: 'windows',
       tools_count: 9,
@@ -24,9 +24,7 @@ describe('mcpPrompt', () => {
     expect(prompt).toContain('# Подключение MCP-сервера CourseForge');
     expect(prompt).toContain('## Контекст');
     expect(prompt).toContain('Бинарник уже собран:');
-    expect(prompt).toContain('F:/Proga/courseforge/bin/courseforge.exe');
-    expect(prompt).toContain('--courses-dir=F:/Proga/courseforge/courses');
-    expect(prompt).toContain('--data-dir=F:/Proga/courseforge/data');
+    expect(prompt).toContain('F:/Proga/courseforge/bin/courseforge.exe mcp');
     expect(prompt).toContain('opencode.json');
     expect(prompt).toContain('"type": "local"');
     expect(prompt).toContain('.mcp.json');
@@ -47,7 +45,7 @@ describe('mcpPrompt', () => {
       data_dir: 'F:/Proga/courseforge/data',
       binary_path: 'F:/Proga/courseforge/bin/courseforge.exe',
       command: 'F:/Proga/courseforge/bin/courseforge.exe',
-      args: ['mcp', '--courses-dir=F:/Proga/courseforge/courses', '--data-dir=F:/Proga/courseforge/data'],
+      args: ['mcp'],
       sse_url: 'http://127.0.0.1:8080/api/mcp/sse',
       platform: 'windows',
       tools_count: 9,

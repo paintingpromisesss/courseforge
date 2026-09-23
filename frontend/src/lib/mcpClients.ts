@@ -14,10 +14,8 @@ const json = (v: unknown) => JSON.stringify(v, null, 2);
 const shellQuote = (s: string) => (/\s/.test(s) ? `"${s}"` : s);
 
 export function buildMCPClients(status: MCPStatusResponse): MCPClientGuide[] {
-  const coursesDir = status.courses_dir || './courses';
-  const dataDir = status.data_dir || './data';
   const command = status.command || status.binary_path || 'courseforge';
-  const args = status.args && status.args.length > 0 ? status.args : ['mcp', `--courses-dir=${coursesDir}`, `--data-dir=${dataDir}`];
+  const args = status.args && status.args.length > 0 ? status.args : ['mcp'];
   const url = status.sse_url || `http://${status.host || '127.0.0.1'}:${status.port || 8080}/api/mcp/sse`;
   const sse = status.transport === 'sse';
   const cmdLine = [command, ...args].map(shellQuote).join(' ');

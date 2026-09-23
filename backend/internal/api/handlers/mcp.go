@@ -289,11 +289,7 @@ func findMCPCommand(coursesDir, dataDir string) (string, []string, bool) {
 		exeExt = ".exe"
 	}
 
-	args := []string{
-		"mcp",
-		"--courses-dir=" + coursesDir,
-		"--data-dir=" + dataDir,
-	}
+	args := []string{"mcp"}
 
 	// 1. Check current running executable
 	if exe, err := os.Executable(); err == nil {
