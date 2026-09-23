@@ -99,47 +99,49 @@ func RunCLI(args []string) {
 			}
 		}
 
-		for _, dir := range []string{*dataDir, *coursesDir} {
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				log.Fatalf("failed to create directory %s: %v", dir, err)
+		if *coursesDir != "" && *dataDir != "" {
+			for _, dir := range []string{*dataDir, *coursesDir} {
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					log.Fatalf("failed to create directory %s: %v", dir, err)
+				}
 			}
-		}
 
-		resolvedDBPath := *dbPath
-		if resolvedDBPath == "" {
-			resolvedDBPath = config.DefaultDBPath(*dataDir)
-		}
-		resolvedStateFile := *stateFile
-		if resolvedStateFile == "" {
-			resolvedStateFile = filepath.Join(*dataDir, "mcp_session.json")
-		}
+			resolvedDBPath := *dbPath
+			if resolvedDBPath == "" {
+				resolvedDBPath = config.DefaultDBPath(*dataDir)
+			}
+			resolvedStateFile := *stateFile
+			if resolvedStateFile == "" {
+				resolvedStateFile = filepath.Join(*dataDir, "mcp_session.json")
+			}
 
-		db, err := repo.NewDB(resolvedDBPath)
-		if err != nil {
-			log.Fatalf("failed to open submissions database: %v", err)
-		}
-		dbCloser = db
+			db, err := repo.NewDB(resolvedDBPath)
+			if err != nil {
+				log.Fatalf("failed to open submissions database: %v", err)
+			}
+			dbCloser = db
 
-		subRepo := repo.NewSubmissionRepository(db)
-		progRepo := repo.NewFileProgressRepository(*coursesDir)
+			subRepo := repo.NewSubmissionRepository(db)
+			progRepo := repo.NewFileProgressRepository(*coursesDir)
 
-		r := runner.New()
-		runnersJSON := config.DefaultRunnersJSON(*dataDir)
-		if err := r.UseFile(runnersJSON); err != nil {
-			log.Printf("warning: failed to load runners.json: %v", err)
-		}
+			r := runner.New()
+			runnersJSON := config.DefaultRunnersJSON(*dataDir)
+			if err := r.UseFile(runnersJSON); err != nil {
+				log.Printf("warning: failed to load runners.json: %v", err)
+			}
 
-		prov, err := NewCourseForgeProvider(*coursesDir, progRepo, subRepo, r)
-		if err != nil {
-			log.Fatalf("failed to initialize CourseForge provider: %v", err)
-		}
-		provider = prov
+			prov, err := NewCourseForgeProvider(*coursesDir, progRepo, subRepo, r)
+			if err != nil {
+				log.Fatalf("failed to initialize CourseForge provider: %v", err)
+			}
+			provider = prov
 
-		sess, err := NewFileSessionManager(resolvedStateFile)
-		if err != nil {
-			log.Fatalf("failed to initialize session manager: %v", err)
+			sess, err := NewFileSessionManager(resolvedStateFile)
+			if err != nil {
+				log.Fatalf("failed to initialize session manager: %v", err)
+			}
+			session = sess
 		}
-		session = sess
 	}
 
 	srv, err := NewServer(Config{
