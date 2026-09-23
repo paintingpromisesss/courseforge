@@ -23,15 +23,7 @@ import (
 // @Tags mcp
 // @Produce json
 // @Success 200 {object} dto.MCPStatusResp
-// @Router /mcp/config [get]
-func (h *Handler) getMCPConfig(w http.ResponseWriter, r *http.Request) {
-	cfg, err := h.mcpConfigRepo.Get(r.Context())
-	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	// Resolve absolute courses and data dir defaults if relative
+func (h *Handler) buildMCPStatusResp(cfg *domain.MCPConfig, host string) dto.MCPStatusResp {
 	coursesDir := cfg.CoursesDir
 	if coursesDir == "" || coursesDir == "./courses" {
 		coursesDir = h.coursesDir
@@ -52,17 +44,14 @@ func (h *Handler) getMCPConfig(w http.ResponseWriter, r *http.Request) {
 		dataDir = resolveExistingDir(dataDir)
 	}
 
-	// Detect binary command and args
 	command, args, available := findMCPCommand(coursesDir, dataDir)
 
-	// SSE URL on current host
-	host := r.Host
 	if host == "" {
 		host = "127.0.0.1:8080"
 	}
 	sseURL := fmt.Sprintf("http://%s/api/mcp/sse", host)
 
-	resp := dto.MCPStatusResp{
+	return dto.MCPStatusResp{
 		Enabled:    cfg.Enabled,
 		Transport:  cfg.Transport,
 		Host:       cfg.Host,
@@ -77,8 +66,21 @@ func (h *Handler) getMCPConfig(w http.ResponseWriter, r *http.Request) {
 		ToolsCount: 9,
 		Available:  available,
 	}
+}
 
-	h.writeJSON(w, http.StatusOK, resp)
+// @Summary Get MCP server configuration and status
+// @Tags mcp
+// @Produce json
+// @Success 200 {object} dto.MCPStatusResp
+// @Router /mcp/config [get]
+func (h *Handler) getMCPConfig(w http.ResponseWriter, r *http.Request) {
+	cfg, err := h.mcpConfigRepo.Get(r.Context())
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, h.buildMCPStatusResp(cfg, r.Host))
 }
 
 // @Summary Update MCP server configuration
@@ -89,37 +91,48 @@ func (h *Handler) getMCPConfig(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} dto.MCPStatusResp
 // @Router /mcp/config [patch]
 func (h *Handler) patchMCPConfig(w http.ResponseWriter, r *http.Request) {
-	var req domain.MCPConfig
+	var req dto.MCPConfigReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	existing, _ := h.mcpConfigRepo.Get(r.Context())
+	cfg := domain.MCPConfig{
+		Enabled:   true,
+		Transport: "stdio",
+		Host:      "127.0.0.1",
+		Port:      8085,
+	}
 	if existing != nil {
-		if req.Transport == "" {
-			req.Transport = existing.Transport
-		}
-		if req.Host == "" {
-			req.Host = existing.Host
-		}
-		if req.Port == 0 {
-			req.Port = existing.Port
-		}
-		if req.CoursesDir == "" {
-			req.CoursesDir = existing.CoursesDir
-		}
-		if req.DataDir == "" {
-			req.DataDir = existing.DataDir
-		}
+		cfg = *existing
 	}
 
-	if err := h.mcpConfigRepo.Save(r.Context(), &req); err != nil {
+	if req.Enabled != nil {
+		cfg.Enabled = *req.Enabled
+	}
+	if req.Transport != nil && *req.Transport != "" {
+		cfg.Transport = *req.Transport
+	}
+	if req.Host != nil && *req.Host != "" {
+		cfg.Host = *req.Host
+	}
+	if req.Port != nil && *req.Port > 0 {
+		cfg.Port = *req.Port
+	}
+	if req.CoursesDir != nil && *req.CoursesDir != "" {
+		cfg.CoursesDir = *req.CoursesDir
+	}
+	if req.DataDir != nil && *req.DataDir != "" {
+		cfg.DataDir = *req.DataDir
+	}
+
+	if err := h.mcpConfigRepo.Save(r.Context(), &cfg); err != nil {
 		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, req)
+	h.writeJSON(w, http.StatusOK, h.buildMCPStatusResp(&cfg, r.Host))
 }
 
 func (h *Handler) handleMCPSSE(w http.ResponseWriter, r *http.Request) {

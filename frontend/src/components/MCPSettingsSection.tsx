@@ -491,7 +491,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
 
         {transport === 'stdio' ? (
           <div className="space-y-2">
-            {!currentStatus.available && (
+            {currentStatus.available === false && (
               <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-start gap-2">
                 <span className="shrink-0 mt-0.5 text-sm">⚠️</span>
                 <div>
