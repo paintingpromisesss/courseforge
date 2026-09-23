@@ -145,3 +145,72 @@ func TestAutoDiscover_ServerLifecycleDynamic(t *testing.T) {
 		t.Fatalf("phase 4: expected recovery when server is up again, got: %s", string(respBytes4))
 	}
 }
+
+func TestAutoDiscover_ToggleDisabledDynamically(t *testing.T) {
+	ctx := context.Background()
+
+	tmpDir, err := os.MkdirTemp("", "mcp-autodiscover-toggle-*")
+	if err != nil {
+		t.Fatalf("temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	coursesDir := filepath.Join(tmpDir, "courses")
+	dataDir := filepath.Join(tmpDir, "data")
+	_ = os.MkdirAll(coursesDir, 0755)
+	_ = os.MkdirAll(dataDir, 0755)
+
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/info" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"courses_dir": coursesDir,
+				"data_dir":    dataDir,
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer httpServer.Close()
+
+	srv, err := mcp.NewServer(mcp.Config{
+		Name:         "courseforge-mcp-test",
+		Version:      "1.0.0",
+		ServerURL:    httpServer.URL,
+		AutoDiscover: true,
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("failed to create MCP server: %v", err)
+	}
+	defer srv.Close()
+
+	// 1. Initially enabled -> succeeds
+	callReq := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_courses","arguments":{}}}`
+	resp := srv.MCPServer().HandleMessage(ctx, json.RawMessage(callReq))
+	respBytes, _ := json.Marshal(resp)
+	if strings.Contains(string(respBytes), `"isError":true`) {
+		t.Fatalf("step 1: expected success, got: %s", string(respBytes))
+	}
+
+	// 2. User disables MCP in settings
+	configFile := filepath.Join(dataDir, "mcp_server_config.json")
+	_ = os.WriteFile(configFile, []byte(`{"enabled":false}`), 0644)
+
+	// Call tool -> should immediately fail with disabled message
+	callReq2 := `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_courses","arguments":{}}}`
+	resp2 := srv.MCPServer().HandleMessage(ctx, json.RawMessage(callReq2))
+	respBytes2, _ := json.Marshal(resp2)
+	if !strings.Contains(string(respBytes2), "MCP-сервер отключен в настройках CourseForge") {
+		t.Fatalf("step 2: expected disabled error message, got: %s", string(respBytes2))
+	}
+
+	// 3. User re-enables MCP in settings
+	_ = os.WriteFile(configFile, []byte(`{"enabled":true}`), 0644)
+
+	callReq3 := `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_courses","arguments":{}}}`
+	resp3 := srv.MCPServer().HandleMessage(ctx, json.RawMessage(callReq3))
+	respBytes3, _ := json.Marshal(resp3)
+	if strings.Contains(string(respBytes3), `"isError":true`) {
+		t.Fatalf("step 3: expected re-enabled success, got: %s", string(respBytes3))
+	}
+}

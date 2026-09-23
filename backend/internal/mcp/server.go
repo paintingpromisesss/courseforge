@@ -142,17 +142,20 @@ func (s *Server) ensureActiveServer(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// If successfully pinged in the last second and dependencies are intact, reuse.
-	if s.lastServerOnline && time.Since(s.lastPing) < 1*time.Second && s.provider != nil && s.session != nil {
-		return nil
-	}
-
 	coursesDir, dataDir, ok := DiscoverServerDirs(serverURL)
 	s.lastPing = time.Now()
 	s.lastServerOnline = ok
 
 	if !ok {
 		return fmt.Errorf("Основное приложение CourseForge не запущено (%s). Запустите CourseForge, чтобы использовать этот инструмент.", serverURL)
+	}
+
+	// Always verify that MCP is enabled in CourseForge settings
+	mcpRepo := repo.NewMCPConfigRepository(dataDir)
+	if mcpCfg, err := mcpRepo.Get(ctx); err == nil && mcpCfg != nil {
+		if !mcpCfg.Enabled && !s.cfg.Force {
+			return errors.New("MCP-сервер отключен в настройках CourseForge (Настройки -> MCP-сервер)")
+		}
 	}
 
 	if s.provider == nil || s.session == nil || s.currentCoursesDir != coursesDir || s.currentDataDir != dataDir {

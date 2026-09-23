@@ -89,8 +89,13 @@ func RunCLI(args []string) {
 		mcpRepo := repo.NewMCPConfigRepository(*dataDir)
 		if mcpCfg, err := mcpRepo.Get(context.Background()); err == nil && mcpCfg != nil {
 			if !mcpCfg.Enabled && !*force {
-				fmt.Fprintf(os.Stderr, "CourseForge MCP server is disabled in settings. Enable it in CourseForge Settings -> MCP-сервер.\n")
-				os.Exit(1)
+				if !autoDiscover {
+					fmt.Fprintf(os.Stderr, "CourseForge MCP server is disabled in settings. Enable it in CourseForge Settings -> MCP-сервер.\n")
+					os.Exit(1)
+				}
+				log.Printf("CourseForge MCP server is disabled in settings. Starting in standby mode.")
+				*coursesDir = ""
+				*dataDir = ""
 			}
 		}
 
