@@ -141,6 +141,8 @@ export interface MCPStatusResponse extends MCPConfig {
   platform: string;
   tools_count: number;
   available: boolean;
+  default_courses_dir?: string;
+  default_data_dir?: string;
 }
 
 export interface MCPActiveTask {

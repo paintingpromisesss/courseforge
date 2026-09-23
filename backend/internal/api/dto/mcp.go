@@ -14,15 +14,17 @@ type MCPStatusResp struct {
 	Transport  string   `json:"transport"`
 	Host       string   `json:"host"`
 	Port       int      `json:"port"`
-	CoursesDir string   `json:"courses_dir"`
-	DataDir    string   `json:"data_dir"`
-	BinaryPath string   `json:"binary_path"`
-	Command    string   `json:"command"`
-	Args       []string `json:"args"`
-	SSEURL     string   `json:"sse_url"`
-	Platform   string   `json:"platform"`
-	ToolsCount int      `json:"tools_count"`
-	Available  bool     `json:"available"`
+	CoursesDir        string   `json:"courses_dir"`
+	DataDir           string   `json:"data_dir"`
+	DefaultCoursesDir string   `json:"default_courses_dir"`
+	DefaultDataDir    string   `json:"default_data_dir"`
+	BinaryPath        string   `json:"binary_path"`
+	Command           string   `json:"command"`
+	Args              []string `json:"args"`
+	SSEURL            string   `json:"sse_url"`
+	Platform          string   `json:"platform"`
+	ToolsCount        int      `json:"tools_count"`
+	Available         bool     `json:"available"`
 }
 
 type MCPActiveTaskReq struct {

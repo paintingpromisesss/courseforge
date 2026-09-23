@@ -24,27 +24,40 @@ import (
 // @Produce json
 // @Success 200 {object} dto.MCPStatusResp
 func (h *Handler) buildMCPStatusResp(cfg *domain.MCPConfig, host string) dto.MCPStatusResp {
-	coursesDir := cfg.CoursesDir
-	if coursesDir == "" || coursesDir == "./courses" {
-		coursesDir = h.coursesDir
-	}
-	if coursesDir == "" || coursesDir == "./courses" {
-		coursesDir = config.DefaultCoursesDir()
+	defaultCourses := h.coursesDir
+	if defaultCourses == "" || defaultCourses == "./courses" {
+		defaultCourses = config.DefaultCoursesDir()
 	} else {
-		coursesDir = resolveExistingDir(coursesDir)
+		defaultCourses = resolveExistingDir(defaultCourses)
 	}
 
-	dataDir := cfg.DataDir
-	if dataDir == "" || dataDir == "./data" {
-		dataDir = h.dataDir
-	}
-	if dataDir == "" || dataDir == "./data" {
-		dataDir = config.DefaultDataDir()
+	defaultData := h.dataDir
+	if defaultData == "" || defaultData == "./data" {
+		defaultData = config.DefaultDataDir()
 	} else {
-		dataDir = resolveExistingDir(dataDir)
+		defaultData = resolveExistingDir(defaultData)
 	}
 
-	command, args, available := findMCPCommand(coursesDir, dataDir)
+	coursesOverride := ""
+	if cfg.CoursesDir != "" && cfg.CoursesDir != "./courses" && cfg.CoursesDir != defaultCourses {
+		coursesOverride = cfg.CoursesDir
+	}
+
+	dataOverride := ""
+	if cfg.DataDir != "" && cfg.DataDir != "./data" && cfg.DataDir != defaultData {
+		dataOverride = cfg.DataDir
+	}
+
+	effectiveCourses := defaultCourses
+	if coursesOverride != "" {
+		effectiveCourses = resolveExistingDir(coursesOverride)
+	}
+	effectiveData := defaultData
+	if dataOverride != "" {
+		effectiveData = resolveExistingDir(dataOverride)
+	}
+
+	command, args, available := findMCPCommand(effectiveCourses, effectiveData)
 
 	if host == "" {
 		host = "127.0.0.1:8080"
@@ -52,19 +65,21 @@ func (h *Handler) buildMCPStatusResp(cfg *domain.MCPConfig, host string) dto.MCP
 	sseURL := fmt.Sprintf("http://%s/api/mcp/sse", host)
 
 	return dto.MCPStatusResp{
-		Enabled:    cfg.Enabled,
-		Transport:  cfg.Transport,
-		Host:       cfg.Host,
-		Port:       cfg.Port,
-		CoursesDir: coursesDir,
-		DataDir:    dataDir,
-		BinaryPath: command,
-		Command:    command,
-		Args:       args,
-		SSEURL:     sseURL,
-		Platform:   runtime.GOOS,
-		ToolsCount: 9,
-		Available:  available,
+		Enabled:           cfg.Enabled,
+		Transport:         cfg.Transport,
+		Host:              cfg.Host,
+		Port:              cfg.Port,
+		CoursesDir:        coursesOverride,
+		DataDir:           dataOverride,
+		DefaultCoursesDir: defaultCourses,
+		DefaultDataDir:    defaultData,
+		BinaryPath:        command,
+		Command:           command,
+		Args:              args,
+		SSEURL:            sseURL,
+		Platform:          runtime.GOOS,
+		ToolsCount:        9,
+		Available:         available,
 	}
 }
 
