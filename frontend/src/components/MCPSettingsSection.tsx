@@ -440,8 +440,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
         )}
 
         {/* Directories */}
-        <div className="space-y-1.5 pt-2">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-tx-3 text-xs block">
@@ -498,10 +497,6 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
                 className="w-full px-3 py-1.5 rounded-lg bg-bg-3 border border-bdr text-tx-1 placeholder:text-tx-3/40 placeholder:font-mono text-xs font-mono focus:outline-none focus:border-brand transition-colors"
               />
             </div>
-          </div>
-          <p className="text-[11px] text-tx-3/70">
-            Затемнённым шрифтом показаны стандартные пути, определённые бинарником. Заполняйте поля только в случае, если хотите переопределить их.
-          </p>
         </div>
 
         <div className="flex justify-end pt-2">
@@ -563,9 +558,6 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
                 </span>
               </button>
             </div>
-            <p className="text-[11px] text-tx-3 leading-relaxed px-1">
-              Агент сам запускает процесс CourseForge в момент обращения. Веб-интерфейс CourseForge при этом может быть закрыт.
-            </p>
           </div>
         ) : (
           <div className="space-y-2">
