@@ -85,30 +85,29 @@ function ExternalLinkIcon() {
   );
 }
 
-function CopyIcon() {
+function CourseForgeLogoIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="9" y="9" width="13" height="13" rx="2" />
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-    </svg>
-  );
-}
-
-function AnvilIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M7 10H6a4 4 0 0 1-4-4 1 1 0 0 1 1-1h18a1 1 0 0 1 1 1 4 4 0 0 1-4 4h-1" />
-      <path d="M9 10v4a3 3 0 0 0 3 3h0a3 3 0 0 0 3-3v-4" />
-      <path d="M5 20h14" />
-      <path d="M9 17v3" />
-      <path d="M15 17v3" />
+    <svg
+      width="28"
+      height="28"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M7 10H6a4 4 0 0 1-4-4 1 1 0 0 1 1-1h4" />
+      <path d="M7 5a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1 7 7 0 0 1-7 7H8a1 1 0 0 1-1-1z" />
+      <path d="M9 12v5" />
+      <path d="M15 12v5" />
+      <path d="M5 20a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3 1 1 0 0 1-1 1H6a1 1 0 0 1-1-1" />
     </svg>
   );
 }
 
 export function AboutSection() {
   const qc = useQueryClient();
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isRestarting, setIsRestarting] = useState(false);
   const [changelogLang, setChangelogLang] = useState<'ru' | 'en'>('ru');
 
@@ -164,12 +163,6 @@ export function AboutSection() {
     return () => clearInterval(interval);
   }, [isRestarting]);
 
-  const copyToClipboard = async (text: string, key: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 1500);
-  };
-
   const status = verInfo?.status;
   const check = verInfo?.check;
   const currentVersion = verInfo?.version ?? 'dev';
@@ -185,7 +178,7 @@ export function AboutSection() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-2xl bg-brand/10 border border-brand/25 flex items-center justify-center text-brand shadow-inner shrink-0">
-              <AnvilIcon />
+              <CourseForgeLogoIcon />
             </div>
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
@@ -424,50 +417,9 @@ export function AboutSection() {
         )}
       </div>
 
-      {/* ── System Details & Directories ─────────────────────────────────── */}
-      <div className="rounded-2xl border border-bdr bg-bg-2/40 p-5 space-y-3">
-        <h3 className="text-xs font-semibold text-tx-2 uppercase tracking-wider">
-          Рабочее окружение
-        </h3>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="rounded-xl border border-bdr bg-bg-3/60 p-3 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-[11px] text-tx-3">Каталог курсов</div>
-              <div className="text-xs font-mono text-tx-1 truncate" title="courses">
-                ./courses
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => copyToClipboard('courses', 'courses')}
-              className="p-1.5 rounded-lg text-tx-3 hover:text-tx-1 hover:bg-bg-4 transition-colors shrink-0"
-              title="Копировать путь"
-            >
-              {copiedKey === 'courses' ? <CheckIcon /> : <CopyIcon />}
-            </button>
-          </div>
-
-          <div className="rounded-xl border border-bdr bg-bg-3/60 p-3 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-[11px] text-tx-3">Каталог данных и состояния</div>
-              <div className="text-xs font-mono text-tx-1 truncate" title="data">
-                ./data
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => copyToClipboard('data', 'data')}
-              className="p-1.5 rounded-lg text-tx-3 hover:text-tx-1 hover:bg-bg-4 transition-colors shrink-0"
-              title="Копировать путь"
-            >
-              {copiedKey === 'data' ? <CheckIcon /> : <CopyIcon />}
-            </button>
-          </div>
-        </div>
-
-        {/* Project Links */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-2 border-t border-bdr/60 text-xs text-tx-3">
+      {/* ── Project Links Footer ────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 pt-2 border-t border-bdr/60 text-xs text-tx-3 px-1">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <a
             href="https://github.com/paintingpromisesss/courseforge"
             target="_blank"
@@ -495,10 +447,10 @@ export function AboutSection() {
             <span>Сообщить об ошибке</span>
             <ExternalLinkIcon />
           </a>
-          <span className="ml-auto text-[11px] text-tx-3/70">
-            MIT License • CourseForge
-          </span>
         </div>
+        <span className="text-[11px] text-tx-3/70">
+          MIT License • CourseForge
+        </span>
       </div>
     </div>
   );
