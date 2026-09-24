@@ -39,9 +39,17 @@ func NewRouter(h *handlers.Handler, opts RouterOptions) (http.Handler, error) {
 		// Lets `courseforge mcp` started without flags find this server's dirs.
 		r.Get("/info", func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
+			absCourses, err := filepath.Abs(opts.CoursesDir)
+			if err != nil {
+				absCourses = opts.CoursesDir
+			}
+			absData, err := filepath.Abs(opts.DataDir)
+			if err != nil {
+				absData = opts.DataDir
+			}
 			_ = json.NewEncoder(w).Encode(map[string]string{
-				"courses_dir": opts.CoursesDir,
-				"data_dir":    opts.DataDir,
+				"courses_dir": absCourses,
+				"data_dir":    absData,
 			})
 		})
 	})

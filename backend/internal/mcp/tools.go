@@ -198,6 +198,26 @@ func (s *Server) registerTools() {
 		),
 		s.handleGetNote,
 	)
+
+	// 17. delete_task
+	s.mcpServer.AddTool(
+		mcp.NewTool("delete_task",
+			mcp.WithDescription("Удалить задачу курса и исключить её из манифеста юнита"),
+			mcp.WithString("course_slug", mcp.Required(), mcp.Description("Слаг курса")),
+			mcp.WithString("task_slug", mcp.Required(), mcp.Description("Слаг задачи")),
+		),
+		s.handleDeleteTask,
+	)
+
+	// 18. delete_note
+	s.mcpServer.AddTool(
+		mcp.NewTool("delete_note",
+			mcp.WithDescription("Удалить персональный конспект студента по указанному юниту курса"),
+			mcp.WithString("course_slug", mcp.Required(), mcp.Description("Слаг курса")),
+			mcp.WithString("unit_slug", mcp.Required(), mcp.Description("Слаг юнита")),
+		),
+		s.handleDeleteNote,
+	)
 }
 
 func (s *Server) handleGetCurrentTask(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -790,5 +810,55 @@ func (s *Server) handleGetNote(ctx context.Context, request mcp.CallToolRequest)
 		"course_slug": courseSlug,
 		"unit_slug":   unitSlug,
 		"content":     content,
+	})
+}
+
+func (s *Server) handleDeleteTask(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	provider, _ := s.getDeps()
+	if provider == nil {
+		return toolError("провайдер CourseForge не инициализирован"), nil
+	}
+
+	courseSlug, err := request.RequireString("course_slug")
+	if err != nil {
+		return toolError("course_slug обязателен"), nil
+	}
+	taskSlug, err := request.RequireString("task_slug")
+	if err != nil {
+		return toolError("task_slug обязателен"), nil
+	}
+
+	if err := provider.DeleteTask(ctx, courseSlug, taskSlug); err != nil {
+		return toolError("ошибка удаления задачи: %v", err), nil
+	}
+
+	return toolJSON(map[string]any{
+		"success": true,
+		"message": fmt.Sprintf("Задача %s курса %s успешно удалена", taskSlug, courseSlug),
+	})
+}
+
+func (s *Server) handleDeleteNote(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	provider, _ := s.getDeps()
+	if provider == nil {
+		return toolError("провайдер CourseForge не инициализирован"), nil
+	}
+
+	courseSlug, err := request.RequireString("course_slug")
+	if err != nil {
+		return toolError("course_slug обязателен"), nil
+	}
+	unitSlug, err := request.RequireString("unit_slug")
+	if err != nil {
+		return toolError("unit_slug обязателен"), nil
+	}
+
+	if err := provider.DeleteNote(ctx, courseSlug, unitSlug); err != nil {
+		return toolError("ошибка удаления конспекта: %v", err), nil
+	}
+
+	return toolJSON(map[string]any{
+		"success": true,
+		"message": fmt.Sprintf("Конспект по юниту %s курса %s успешно удален", unitSlug, courseSlug),
 	})
 }

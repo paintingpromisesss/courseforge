@@ -133,12 +133,14 @@ type Provider interface {
 	ReloadCourses(ctx context.Context) error
 
 	CreateTask(ctx context.Context, req CreateTaskRequest) (*TaskDetails, error)
+	DeleteTask(ctx context.Context, courseSlug, taskSlug string) error
 	EditTaskStatement(ctx context.Context, courseSlug, taskSlug, content string) error
 	EditTaskCode(ctx context.Context, courseSlug, taskSlug, language, fileType, content string) (string, error)
 	UpdateTaskMetadata(ctx context.Context, req UpdateTaskMetadataRequest) (*TaskDetails, error)
 	EditUnitTheory(ctx context.Context, courseSlug, unitSlug, content string) error
 	SaveNote(ctx context.Context, courseSlug, unitSlug, content, mode string) error
 	GetNote(ctx context.Context, courseSlug, unitSlug string) (content string, hasNote bool, err error)
+	DeleteNote(ctx context.Context, courseSlug, unitSlug string) error
 }
 
 // CourseForgeProvider adapts CourseForge core parser, runner, and repos to MCP.
@@ -506,14 +508,14 @@ func (p *CourseForgeProvider) RunSolution(ctx context.Context, req RunSolutionRe
 	}, nil
 }
 
-var slugRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+var slugRegex = regexp.MustCompile(`^[\p{L}\p{N}_-]+$`)
 
 func validateSlug(slug, name string) error {
 	if slug == "" {
 		return fmt.Errorf("%s cannot be empty", name)
 	}
 	if !slugRegex.MatchString(slug) {
-		return fmt.Errorf("invalid %s format: %q (only alphanumeric, hyphens and underscores allowed)", name, slug)
+		return fmt.Errorf("invalid %s format: %q (only alphanumeric/unicode letters, digits, hyphens and underscores allowed)", name, slug)
 	}
 	return nil
 }
@@ -1053,6 +1055,76 @@ func (p *CourseForgeProvider) GetNote(ctx context.Context, courseSlug, unitSlug 
 		return "", false, fmt.Errorf("read note: %w", err)
 	}
 	return string(data), true, nil
+}
+
+func (p *CourseForgeProvider) DeleteTask(ctx context.Context, courseSlug, taskSlug string) error {
+	if err := validateSlug(courseSlug, "course_slug"); err != nil {
+		return err
+	}
+	if err := validateSlug(taskSlug, "task_slug"); err != nil {
+		return err
+	}
+
+	c, tr, tp, u, task, err := p.findTask(courseSlug, taskSlug)
+	if err != nil {
+		return err
+	}
+
+	unitDir := filepath.Join(p.coursesDir, c.Dir, tr.Slug, tp.Slug, u.Slug)
+	taskDir := filepath.Join(unitDir, task.Slug)
+	if !isPathUnder(taskDir, p.coursesDir) {
+		return errors.New("invalid path traversal target")
+	}
+
+	if err := os.RemoveAll(taskDir); err != nil {
+		return fmt.Errorf("remove task directory: %w", err)
+	}
+
+	unitYAMLPath := filepath.Join(unitDir, "unit.yaml")
+	unitRaw, err := os.ReadFile(unitYAMLPath)
+	if err == nil {
+		var unitMap map[string]any
+		if err := yaml.Unmarshal(unitRaw, &unitMap); err == nil {
+			if existing, ok := unitMap["tasks"].([]any); ok {
+				var newTasks []any
+				for _, t := range existing {
+					if s, ok := t.(string); ok && s == taskSlug {
+						continue
+					}
+					newTasks = append(newTasks, t)
+				}
+				unitMap["tasks"] = newTasks
+				if unitBytes, err := yaml.Marshal(unitMap); err == nil {
+					_ = atomicWriteFile(unitYAMLPath, unitBytes, 0644)
+				}
+			}
+		}
+	}
+
+	return p.ReloadCourses(ctx)
+}
+
+func (p *CourseForgeProvider) DeleteNote(ctx context.Context, courseSlug, unitSlug string) error {
+	if err := validateSlug(courseSlug, "course_slug"); err != nil {
+		return err
+	}
+	if err := validateSlug(unitSlug, "unit_slug"); err != nil {
+		return err
+	}
+	if p.dataDir == "" {
+		return errors.New("data directory is not configured")
+	}
+
+	notesBase := filepath.Join(p.dataDir, "notes")
+	notePath := filepath.Join(notesBase, courseSlug, unitSlug+".md")
+	if !isPathUnder(notePath, notesBase) {
+		return errors.New("invalid path traversal target")
+	}
+
+	if err := os.Remove(notePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove note: %w", err)
+	}
+	return nil
 }
 
 var _ Provider = (*CourseForgeProvider)(nil)

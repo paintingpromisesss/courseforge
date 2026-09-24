@@ -139,6 +139,19 @@ func TestContent_Notes(t *testing.T) {
 	if err := prov.SaveNote(ctx, "demo-course", "unit-1", "bad", "random_mode"); err == nil {
 		t.Fatal("expected error for invalid mode, got nil")
 	}
+
+	// 6. Delete note
+	if err := prov.DeleteNote(ctx, "demo-course", "unit-1"); err != nil {
+		t.Fatalf("delete note: %v", err)
+	}
+
+	content, hasNote, err = prov.GetNote(ctx, "demo-course", "unit-1")
+	if err != nil {
+		t.Fatalf("get note after delete: %v", err)
+	}
+	if hasNote || content != "" {
+		t.Fatalf("expected note to be deleted, got hasNote=%v, content=%q", hasNote, content)
+	}
 }
 
 func TestContent_EditUnitTheory(t *testing.T) {
@@ -264,6 +277,22 @@ func TestContent_CreateTaskAndEdits(t *testing.T) {
 	if updatedDetails.Title != newTitle || updatedDetails.Difficulty != 3 || len(updatedDetails.Tags) != 2 {
 		t.Fatalf("unexpected updated details: %+v", updatedDetails)
 	}
+
+	// 5. Delete task
+	if err := prov.DeleteTask(ctx, "demo-course", "task-sum"); err != nil {
+		t.Fatalf("delete task: %v", err)
+	}
+
+	// Verify task details return error (not found)
+	if _, err := prov.GetTaskDetails(ctx, "demo-course", "task-sum"); err == nil {
+		t.Fatal("expected error getting deleted task details, got nil")
+	}
+
+	// Verify unit.yaml no longer contains task-sum
+	unitYAMLBytes, _ = os.ReadFile(unitYAMLPath)
+	if strings.Contains(string(unitYAMLBytes), "task-sum") {
+		t.Fatalf("unit.yaml still contains task-sum after deletion:\n%s", string(unitYAMLBytes))
+	}
 }
 
 func TestServer_ContentToolsRegistrationAndExecution(t *testing.T) {
@@ -301,6 +330,8 @@ func TestServer_ContentToolsRegistrationAndExecution(t *testing.T) {
 		"edit_unit_theory",
 		"save_note",
 		"get_note",
+		"delete_task",
+		"delete_note",
 	}
 
 	tools := mcpSrv.ListTools()

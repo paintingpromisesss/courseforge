@@ -186,6 +186,14 @@ func (m *mockProvider) GetNote(ctx context.Context, courseSlug, unitSlug string)
 	return "# Note", true, nil
 }
 
+func (m *mockProvider) DeleteTask(ctx context.Context, courseSlug, taskSlug string) error {
+	return nil
+}
+
+func (m *mockProvider) DeleteNote(ctx context.Context, courseSlug, unitSlug string) error {
+	return nil
+}
+
 func setupTestServer(t *testing.T) (*mcp.Server, *mockProvider, mcp.SessionManager) {
 	t.Helper()
 	prov := newMockProvider()
@@ -225,6 +233,8 @@ func TestServer_ToolsList(t *testing.T) {
 		"edit_unit_theory",
 		"save_note",
 		"get_note",
+		"delete_task",
+		"delete_note",
 	}
 
 	for _, name := range expectedTools {
