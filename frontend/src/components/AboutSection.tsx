@@ -28,6 +28,27 @@ function formatRelativeTime(dateStr?: string): string {
   return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 }
 
+function splitChangelog(body?: string): { ru: string; en: string; isBilingual: boolean } {
+  if (!body) return { ru: '', en: '', isBilingual: false };
+
+  const ruMatch = body.search(/##\s+Что нового/i);
+  const enMatch = body.search(/##\s+What's Changed/i);
+
+  if (ruMatch !== -1 && enMatch !== -1) {
+    if (ruMatch > enMatch) {
+      const enPart = body.slice(enMatch, ruMatch).replace(/---\s*$/, '').trim();
+      const ruPart = body.slice(ruMatch).trim();
+      return { ru: ruPart, en: enPart, isBilingual: true };
+    } else {
+      const ruPart = body.slice(ruMatch, enMatch).replace(/---\s*$/, '').trim();
+      const enPart = body.slice(enMatch).trim();
+      return { ru: ruPart, en: enPart, isBilingual: true };
+    }
+  }
+
+  return { ru: body, en: body, isBilingual: false };
+}
+
 function CheckIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -89,6 +110,7 @@ export function AboutSection() {
   const qc = useQueryClient();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isRestarting, setIsRestarting] = useState(false);
+  const [changelogLang, setChangelogLang] = useState<'ru' | 'en'>('ru');
 
   // Poll version status frequently while downloading, otherwise standard 30s
   const { data: verInfo } = useQuery({
@@ -326,14 +348,53 @@ export function AboutSection() {
             </div>
 
             {/* Changelog preview */}
-            {release?.body && (
-              <div className="mt-3 pt-3 border-t border-bdr/60">
-                <div className="text-[11px] font-semibold text-tx-2 mb-1.5">Что нового:</div>
-                <div className="max-h-48 overflow-y-auto rounded-xl bg-bg-1/70 border border-bdr p-3.5 text-xs text-tx-2 prose prose-invert prose-xs max-w-none">
-                  <Markdown content={release.body} />
+            {release?.body && (() => {
+              const parsed = splitChangelog(release.body);
+              const content = (changelogLang === 'en' ? parsed.en : parsed.ru) || release.body;
+
+              return (
+                <div className="mt-3 pt-3 border-t border-bdr/60">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-[11px] font-semibold text-tx-2">
+                      {changelogLang === 'en' ? "What's new:" : 'Что нового:'}
+                    </span>
+
+                    {parsed.isBilingual && (
+                      <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-bg-3 border border-bdr text-[10px] font-medium">
+                        <button
+                          type="button"
+                          onClick={() => setChangelogLang('ru')}
+                          className={clsx(
+                            'px-1.5 py-0.5 rounded transition-colors cursor-pointer',
+                            changelogLang === 'ru'
+                              ? 'bg-brand text-white font-semibold'
+                              : 'text-tx-3 hover:text-tx-1',
+                          )}
+                        >
+                          RU
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setChangelogLang('en')}
+                          className={clsx(
+                            'px-1.5 py-0.5 rounded transition-colors cursor-pointer',
+                            changelogLang === 'en'
+                              ? 'bg-brand text-white font-semibold'
+                              : 'text-tx-3 hover:text-tx-1',
+                          )}
+                        >
+                          EN
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="max-h-48 overflow-y-auto rounded-xl bg-bg-1/70 border border-bdr p-3.5 text-xs text-tx-2 prose prose-invert prose-xs max-w-none">
+                    <Markdown content={content} />
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         ) : (
           <div className="rounded-xl border border-bdr bg-bg-3/40 p-4 flex items-center justify-between gap-3">

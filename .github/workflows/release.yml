@@ -119,6 +119,13 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -133,6 +140,18 @@ jobs:
           (cd dist && sha256sum courseforge-* > checksums.txt)
           cat dist/checksums.txt
 
+      - name: Generate Release Notes
+        shell: bash
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_BASE_URL: ${{ vars.AI_BASE_URL }}
+          AI_MODEL: ${{ vars.AI_MODEL }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          echo "Generating release notes for ${tag}..."
+          go run ./scripts/release-notes.go "${tag}" > dist/release_notes.md || true
+          cat dist/release_notes.md
+
       - name: Publish Release
         shell: bash
         env:
@@ -140,10 +159,14 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME}"
 
-          # Create release if it doesn't exist yet (generates release notes exactly once)
+          # Create release if it doesn't exist yet
           if ! gh release view "${tag}" >/dev/null 2>&1; then
             echo "Creating release ${tag}..."
-            gh release create "${tag}" --generate-notes
+            if [ -s dist/release_notes.md ]; then
+              gh release create "${tag}" --notes-file dist/release_notes.md
+            else
+              gh release create "${tag}" --generate-notes
+            fi
           fi
 
           # Upload assets with retries (includes binaries and checksums.txt)
