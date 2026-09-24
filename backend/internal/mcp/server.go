@@ -204,7 +204,7 @@ func (s *Server) initDependenciesLocked(coursesDir, dataDir string) error {
 		s.logger.Printf("warning: failed to load runners.json: %v", err)
 	}
 
-	provider, err := NewCourseForgeProvider(coursesDir, progRepo, subRepo, r)
+	provider, err := NewCourseForgeProvider(coursesDir, dataDir, progRepo, subRepo, r)
 	if err != nil {
 		_ = db.Close()
 		return fmt.Errorf("init CourseForge provider: %w", err)

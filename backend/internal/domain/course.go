@@ -136,3 +136,18 @@ func (c *Course) FindTaskPath(taskSlug string) (*Track, *Topic, *Unit, *Task) {
 	}
 	return nil, nil, nil, nil
 }
+
+// FindUnitPath locates a unit by slug anywhere in the course, returning the
+// track and topic it lives under (needed to build its on-disk path).
+func (c *Course) FindUnitPath(unitSlug string) (*Track, *Topic, *Unit) {
+	for _, tr := range c.Tracks {
+		for _, tp := range tr.Topics {
+			for _, u := range tp.Units {
+				if u.Slug == unitSlug {
+					return tr, tp, u
+				}
+			}
+		}
+	}
+	return nil, nil, nil
+}

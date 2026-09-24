@@ -130,7 +130,7 @@ func RunCLI(args []string) {
 				log.Printf("warning: failed to load runners.json: %v", err)
 			}
 
-			prov, err := NewCourseForgeProvider(*coursesDir, progRepo, subRepo, r)
+			prov, err := NewCourseForgeProvider(*coursesDir, *dataDir, progRepo, subRepo, r)
 			if err != nil {
 				log.Fatalf("failed to initialize CourseForge provider: %v", err)
 			}
