@@ -11,7 +11,7 @@ const base: MCPStatusResponse = {
   data_dir: 'C:/cf/data',
   binary_path: 'C:/Program Files/cf/courseforge.exe',
   command: 'C:/Program Files/cf/courseforge.exe',
-  args: ['mcp', '--courses-dir=C:/cf/courses', '--data-dir=C:/cf/data'],
+  args: ['mcp'],
   sse_url: 'http://127.0.0.1:8080/api/mcp/sse',
   platform: 'windows',
   tools_count: 9,
@@ -23,7 +23,7 @@ const get = (s: MCPStatusResponse, id: string) => buildMCPClients(s).find((c) =>
 describe('mcpClients', () => {
   it('stdio: quotes paths with spaces and uses each client schema', () => {
     expect(get(base, 'claude-code').snippet).toBe(
-      'claude mcp add courseforge -- "C:/Program Files/cf/courseforge.exe" mcp --courses-dir=C:/cf/courses --data-dir=C:/cf/data',
+      'claude mcp add courseforge -- "C:/Program Files/cf/courseforge.exe" mcp',
     );
     expect(JSON.parse(get(base, 'cursor').snippet).mcpServers.courseforge.command).toBe(base.command);
     expect(JSON.parse(get(base, 'vscode').snippet).servers.courseforge.type).toBe('stdio');

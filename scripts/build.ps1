@@ -58,12 +58,10 @@ try {
   Invoke-CheckedNative go @('run', 'github.com/swaggo/swag/cmd/swag', 'init', '-g', 'main.go', '-d', './cmd/server,./internal/api/handlers,./internal/api/dto', '-o', './docs', '--exclude', './courses')
 
   $Version = (git -C $RepoRoot describe --tags --always --dirty 2>$null)
-  if ([string]::IsNullOrWhiteSpace($Version)) { $Version = 'dev' }
-  # Always build as a console-subsystem exe: the "-H=windowsgui" this used to
-  # get for the tray/serve launch made every subcommand's stdout/stderr go
-  # nowhere in an existing terminal. The no-console-flash tray look is
-  # recovered at runtime instead (see hideConsoleWindowIfOwned in cmd/courseforge).
-  $LdFlags = "-X main.version=$Version"
+  # Built with -H=windowsgui: no console window is ever allocated when double-clicked
+  # from Explorer. When run from a terminal (CLI/MCP), attachConsoleIfAvailable()
+  # attaches to the parent console at startup so stdout/stderr work properly.
+  $LdFlags = "-X main.version=$Version -H=windowsgui"
   if ($GoArch) { $env:GOARCH = $GoArch }
   Invoke-CheckedNative go @('build', '-tags', 'swagger', '-ldflags', $LdFlags, '-o', $BinaryPath, './cmd/courseforge')
 } finally {

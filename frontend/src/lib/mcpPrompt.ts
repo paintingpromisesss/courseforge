@@ -2,10 +2,8 @@ import type { MCPStatusResponse } from '../api/types';
 
 export function buildMCPSetupPrompt(status: MCPStatusResponse): string {
   const platform = status.platform || 'windows';
-  const coursesDir = status.courses_dir || './courses';
-  const dataDir = status.data_dir || './data';
   const command = status.command || status.binary_path || (platform === 'windows' ? 'courseforge.exe' : 'courseforge');
-  const args = status.args && status.args.length > 0 ? status.args : ['mcp', `--courses-dir=${coursesDir}`, `--data-dir=${dataDir}`];
+  const args = status.args && status.args.length > 0 ? status.args : ['mcp'];
   const sseUrl = status.sse_url || `http://${status.host || '127.0.0.1'}:${status.port || 8080}/api/mcp/sse`;
   const isSSE = status.transport === 'sse';
   const fullCommandArray = [command, ...args];

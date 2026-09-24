@@ -155,8 +155,8 @@ func TestFindMCPCommand(t *testing.T) {
 	if !filepath.IsAbs(cmd) {
 		t.Errorf("expected absolute command path, got %q", cmd)
 	}
-	if len(args) != 3 {
-		t.Errorf("expected 3 args, got %v", args)
+	if len(args) != 1 || args[0] != "mcp" {
+		t.Errorf("expected ['mcp'] args, got %v", args)
 	}
 	t.Logf("found cmd: %s (available: %v)", cmd, ok)
 }

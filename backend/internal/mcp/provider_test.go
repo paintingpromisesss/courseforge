@@ -35,7 +35,7 @@ func TestCourseForgeProvider_RealCourses(t *testing.T) {
 	progRepo := repo.NewFileProgressRepository(coursesDir)
 	r := runner.New()
 
-	prov, err := mcp.NewCourseForgeProvider(coursesDir, progRepo, subRepo, r)
+	prov, err := mcp.NewCourseForgeProvider(coursesDir, tmpDir, progRepo, subRepo, r)
 	if err != nil {
 		t.Fatalf("new courseforge provider: %v", err)
 	}

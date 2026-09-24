@@ -88,7 +88,7 @@ func Run(cfg *config.Config) error {
 
 	mcpRepo := repo.NewMCPConfigRepository(cfg.DataDir)
 
-	mcpProvider, err := mcp.NewCourseForgeProvider(cfg.CoursesDir, pr, sr, r)
+	mcpProvider, err := mcp.NewCourseForgeProvider(cfg.CoursesDir, cfg.DataDir, pr, sr, r)
 	if err != nil {
 		log.Printf("warning: init mcp provider: %v", err)
 	}

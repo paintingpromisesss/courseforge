@@ -149,6 +149,51 @@ func (m *mockProvider) ReloadCourses(ctx context.Context) error {
 	return nil
 }
 
+func (m *mockProvider) CreateTask(ctx context.Context, req mcp.CreateTaskRequest) (*mcp.TaskDetails, error) {
+	return &mcp.TaskDetails{
+		CourseSlug: req.CourseSlug,
+		TaskSlug:   req.TaskSlug,
+		Title:      req.Title,
+		Statement:  req.Statement,
+		Languages:  []string{req.Language},
+	}, nil
+}
+
+func (m *mockProvider) EditTaskStatement(ctx context.Context, courseSlug, taskSlug, content string) error {
+	return nil
+}
+
+func (m *mockProvider) EditTaskCode(ctx context.Context, courseSlug, taskSlug, language, fileType, content string) (string, error) {
+	return "template.go", nil
+}
+
+func (m *mockProvider) UpdateTaskMetadata(ctx context.Context, req mcp.UpdateTaskMetadataRequest) (*mcp.TaskDetails, error) {
+	return &mcp.TaskDetails{
+		CourseSlug: req.CourseSlug,
+		TaskSlug:   req.TaskSlug,
+	}, nil
+}
+
+func (m *mockProvider) EditUnitTheory(ctx context.Context, courseSlug, unitSlug, content string) error {
+	return nil
+}
+
+func (m *mockProvider) SaveNote(ctx context.Context, courseSlug, unitSlug, content, mode string) error {
+	return nil
+}
+
+func (m *mockProvider) GetNote(ctx context.Context, courseSlug, unitSlug string) (string, bool, error) {
+	return "# Note", true, nil
+}
+
+func (m *mockProvider) DeleteTask(ctx context.Context, courseSlug, taskSlug string) error {
+	return nil
+}
+
+func (m *mockProvider) DeleteNote(ctx context.Context, courseSlug, unitSlug string) error {
+	return nil
+}
+
 func setupTestServer(t *testing.T) (*mcp.Server, *mockProvider, mcp.SessionManager) {
 	t.Helper()
 	prov := newMockProvider()
@@ -181,6 +226,15 @@ func TestServer_ToolsList(t *testing.T) {
 		"get_task_tests",
 		"list_submissions",
 		"run_solution",
+		"create_task",
+		"edit_task_statement",
+		"edit_task_code",
+		"update_task_metadata",
+		"edit_unit_theory",
+		"save_note",
+		"get_note",
+		"delete_task",
+		"delete_note",
 	}
 
 	for _, name := range expectedTools {

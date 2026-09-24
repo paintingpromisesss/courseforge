@@ -167,8 +167,11 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
   const [transport, setTransport] = useState<'stdio' | 'sse'>(initialStatus.transport || 'stdio');
   const [host, setHost] = useState(initialStatus.host || '127.0.0.1');
   const [port, setPort] = useState(initialStatus.port || 8090);
-  const [coursesDir, setCoursesDir] = useState(initialStatus.courses_dir || './courses');
-  const [dataDir, setDataDir] = useState(initialStatus.data_dir || './data');
+  const defaultCourses = initialStatus.default_courses_dir || './courses';
+  const defaultData = initialStatus.default_data_dir || './data';
+
+  const [coursesDir, setCoursesDir] = useState(initialStatus.courses_dir || '');
+  const [dataDir, setDataDir] = useState(initialStatus.data_dir || '');
   const [isSaved, setIsSaved] = useState(false);
 
   const saveMutation = useMutation({
@@ -218,11 +221,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
 
   const currentCommandStr = useMemo(() => {
     const command = currentStatus.command || currentStatus.binary_path || 'courseforge';
-    const courses = currentStatus.courses_dir || './courses';
-    const data = currentStatus.data_dir || './data';
-    const args = currentStatus.args && currentStatus.args.length > 0
-      ? currentStatus.args
-      : ['mcp', `--courses-dir=${courses}`, `--data-dir=${data}`];
+    const args = currentStatus.args && currentStatus.args.length > 0 ? currentStatus.args : ['mcp'];
     return `${command} ${args.join(' ')}`;
   }, [currentStatus]);
 
@@ -442,24 +441,62 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
 
         {/* Directories */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-          <div>
-            <label className="text-tx-3 text-xs block mb-1">Директория курсов</label>
-            <input
-              value={coursesDir}
-              onChange={(e) => setCoursesDir(e.target.value)}
-              placeholder="./courses"
-              className="w-full px-3 py-1.5 rounded-lg bg-bg-3 border border-bdr text-tx-2 text-xs font-mono focus:outline-none focus:border-brand"
-            />
-          </div>
-          <div>
-            <label className="text-tx-3 text-xs block mb-1">Директория данных</label>
-            <input
-              value={dataDir}
-              onChange={(e) => setDataDir(e.target.value)}
-              placeholder="./data"
-              className="w-full px-3 py-1.5 rounded-lg bg-bg-3 border border-bdr text-tx-2 text-xs font-mono focus:outline-none focus:border-brand"
-            />
-          </div>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-tx-3 text-xs block">
+                  Директория курсов
+                  {coursesDir.trim() && (
+                    <span className="ml-1.5 text-[10px] text-amber-400/80 font-normal">
+                      (переопределено)
+                    </span>
+                  )}
+                </label>
+                {coursesDir.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setCoursesDir('')}
+                    className="text-[10px] text-tx-3 hover:text-brand transition-colors cursor-pointer select-none"
+                    title="Сбросить на значение по умолчанию"
+                  >
+                    Сбросить
+                  </button>
+                )}
+              </div>
+              <input
+                value={coursesDir}
+                onChange={(e) => setCoursesDir(e.target.value)}
+                placeholder={defaultCourses}
+                className="w-full px-3 py-1.5 rounded-lg bg-bg-3 border border-bdr text-tx-1 placeholder:text-tx-3/40 placeholder:font-mono text-xs font-mono focus:outline-none focus:border-brand transition-colors"
+              />
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-tx-3 text-xs block">
+                  Директория данных
+                  {dataDir.trim() && (
+                    <span className="ml-1.5 text-[10px] text-amber-400/80 font-normal">
+                      (переопределено)
+                    </span>
+                  )}
+                </label>
+                {dataDir.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setDataDir('')}
+                    className="text-[10px] text-tx-3 hover:text-brand transition-colors cursor-pointer select-none"
+                    title="Сбросить на значение по умолчанию"
+                  >
+                    Сбросить
+                  </button>
+                )}
+              </div>
+              <input
+                value={dataDir}
+                onChange={(e) => setDataDir(e.target.value)}
+                placeholder={defaultData}
+                className="w-full px-3 py-1.5 rounded-lg bg-bg-3 border border-bdr text-tx-1 placeholder:text-tx-3/40 placeholder:font-mono text-xs font-mono focus:outline-none focus:border-brand transition-colors"
+              />
+            </div>
         </div>
 
         <div className="flex justify-end pt-2">
@@ -491,7 +528,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
 
         {transport === 'stdio' ? (
           <div className="space-y-2">
-            {!currentStatus.available && (
+            {currentStatus.available === false && (
               <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-start gap-2">
                 <span className="shrink-0 mt-0.5 text-sm">⚠️</span>
                 <div>
@@ -521,9 +558,6 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
                 </span>
               </button>
             </div>
-            <p className="text-[11px] text-tx-3 leading-relaxed px-1">
-              Агент сам запускает процесс CourseForge в момент обращения. Веб-интерфейс CourseForge при этом может быть закрыт.
-            </p>
           </div>
         ) : (
           <div className="space-y-2">
