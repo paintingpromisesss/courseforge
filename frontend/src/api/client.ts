@@ -1,4 +1,4 @@
-import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission, AIConfig, AIMessage, AIModelItem, MCPConfig, MCPStatusResponse, MCPActiveTask } from './types';
+import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission, AIConfig, AIMessage, AIModelItem, MCPConfig, MCPStatusResponse, MCPActiveTask, VersionResponse, VersionCheckResult, UpdateStatus } from './types';
 
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api';
@@ -208,6 +208,11 @@ export const api = {
   mcpSetActiveTask: (body: { course_slug: string; task_slug: string; language?: string }) =>
     put('/mcp/active-task', body),
   mcpClearActiveTask: () => del('/mcp/active-task'),
+
+  getVersion: () => get<VersionResponse>('/version'),
+  checkUpdate: () => post<VersionCheckResult>('/version/check', {}),
+  startUpdate: () => post<UpdateStatus>('/version/update', {}),
+  restartServer: () => post<{ status: string }>('/version/restart', {}),
 };
 
 

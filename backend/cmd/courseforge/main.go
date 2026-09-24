@@ -13,6 +13,7 @@ import (
 	"github.com/paintingpromisesss/courseforge/internal/config"
 	"github.com/paintingpromisesss/courseforge/internal/di"
 	"github.com/paintingpromisesss/courseforge/internal/mcp"
+	"github.com/paintingpromisesss/courseforge/internal/updater"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".
@@ -20,6 +21,7 @@ var version = "dev"
 
 func main() {
 	attachConsoleIfAvailable()
+	updater.CleanupOldBinary()
 
 	args := os.Args[1:]
 	if len(args) == 0 {
@@ -99,6 +101,7 @@ func runServe(args []string) {
 	}
 
 	cfg := &config.Config{
+		Version:     version,
 		DataDir:     resolvedData,
 		CoursesDir:  resolvedCourses,
 		RunnersJSON: config.DefaultRunnersJSON(resolvedData),

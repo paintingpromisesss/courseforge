@@ -7,6 +7,7 @@ import (
 )
 
 type Config struct {
+	Version     string
 	DataDir     string
 	CoursesDir  string
 	RunnersJSON string

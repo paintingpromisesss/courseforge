@@ -23,6 +23,7 @@ import (
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
 	"github.com/paintingpromisesss/courseforge/internal/mcp"
 	"github.com/paintingpromisesss/courseforge/internal/tray"
+	"github.com/paintingpromisesss/courseforge/internal/updater"
 	"github.com/paintingpromisesss/courseforge/internal/web"
 	"github.com/paintingpromisesss/courseforge/logger"
 )
@@ -112,7 +113,14 @@ func Run(cfg *config.Config) error {
 		}
 	}
 
-	h := handlers.New(cfg.CoursesDir, cfg.DataDir, courses, catalogs, r, ps, ss, aiService, mcpRepo, mcpServer)
+	upd := updater.New(cfg.Version, cfg.DataDir)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		_, _ = upd.Check(ctx, false)
+	}()
+
+	h := handlers.New(cfg.CoursesDir, cfg.DataDir, courses, catalogs, r, ps, ss, aiService, mcpRepo, mcpServer, upd)
 
 	router, err := api.NewRouter(h, api.RouterOptions{FrontendDir: cfg.FrontendDir, CoursesDir: cfg.CoursesDir, DataDir: cfg.DataDir})
 	if err != nil {

@@ -152,5 +152,43 @@ export interface MCPActiveTask {
   updated_at?: string;
 }
 
+export interface ReleaseInfo {
+  tag_name: string;
+  name: string;
+  body: string;
+  published_at: string;
+  html_url: string;
+  asset_name: string;
+  browser_download_url: string;
+  asset_size: number;
+}
+
+export interface VersionCheckResult {
+  current_version: string;
+  latest_version: string;
+  update_available: boolean;
+  is_dev: boolean;
+  checked_at: string;
+  release?: ReleaseInfo;
+}
+
+export interface UpdateStatus {
+  state: 'idle' | 'checking' | 'downloading' | 'ready_restart' | 'error';
+  progress: number;
+  message?: string;
+  error?: string;
+}
+
+export interface VersionResponse {
+  version: string;
+  os: string;
+  arch: string;
+  go_version: string;
+  is_dev: boolean;
+  check?: VersionCheckResult;
+  status: UpdateStatus;
+}
+
+
 
 

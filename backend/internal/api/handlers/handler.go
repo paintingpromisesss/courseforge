@@ -12,6 +12,7 @@ import (
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
 	"github.com/paintingpromisesss/courseforge/internal/mcp"
+	"github.com/paintingpromisesss/courseforge/internal/updater"
 )
 
 type Handler struct {
@@ -28,6 +29,7 @@ type Handler struct {
 	mcpServer       *mcp.Server
 	sseServer       *mcpserver.SSEServer
 	fallbackSession mcp.SessionManager
+	updater         *updater.Updater
 }
 
 
@@ -42,6 +44,7 @@ func New(
 	aiService *service.AIService,
 	mcpConfigRepo *repo.MCPConfigRepository,
 	mcpServer *mcp.Server,
+	upd *updater.Updater,
 ) *Handler {
 	var sseServer *mcpserver.SSEServer
 	if mcpServer != nil {
@@ -64,6 +67,7 @@ func New(
 		mcpConfigRepo: mcpConfigRepo,
 		mcpServer:     mcpServer,
 		sseServer:     sseServer,
+		updater:       upd,
 	}
 }
 

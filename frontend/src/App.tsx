@@ -11,6 +11,7 @@ import { CatalogPage } from './pages/CatalogPage';
 import { CoursePage } from './pages/CoursePage';
 import { TaskPage } from './pages/TaskPage';
 import { TheoryPage } from './pages/TheoryPage';
+import { UpdateToast } from './components/UpdateToast';
 
 const SettingsPanel = lazy(() => import('./components/SettingsPanel').then((m) => ({ default: m.SettingsPanel })));
 
@@ -153,6 +154,7 @@ function AppLayout() {
           <SettingsPanel open={isSettingsOpen} onClose={closeSettings} />
         </Suspense>
       )}
+      <UpdateToast />
     </div>
   );
 }

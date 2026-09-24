@@ -8,6 +8,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useSettings, type SettingsTab } from '../context/SettingsContext';
 import { AISettingsSection } from './AISettingsSection';
 import { MCPSettingsSection } from './MCPSettingsSection';
+import { AboutSection } from './AboutSection';
 import { splitArgs, joinArgs } from '../lib/shlex';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -942,6 +943,16 @@ function CpuIcon() {
   );
 }
 
+function InfoIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+  );
+}
+
 
 function RunnersSection() {
   const [filterText, setFilterText] = useState('');
@@ -1073,6 +1084,13 @@ const TABS: TabConfig[] = [
     subtitle: 'Подключение внешних AI-ассистентов (Claude, Cursor, Antigravity) к инструментам CourseForge',
     icon: <CpuIcon />,
   },
+  {
+    id: 'about',
+    label: 'О программе',
+    title: 'О программе',
+    subtitle: 'Информация о системе, версии и обновление CourseForge',
+    icon: <InfoIcon />,
+  },
 ];
 
 export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -1175,6 +1193,7 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
                 {activeTab === 'runners' && <RunnersSection />}
                 {activeTab === 'ai' && <AISettingsSection />}
                 {activeTab === 'mcp' && <MCPSettingsSection />}
+                {activeTab === 'about' && <AboutSection />}
               </div>
             </div>
           </motion.div>

@@ -16,7 +16,7 @@ import (
 func TestMCPConfigHandlers(t *testing.T) {
 	tempDir := t.TempDir()
 	mcpRepo := repo.NewMCPConfigRepository(tempDir)
-	h := New(filepath.Join(tempDir, "courses"), tempDir, nil, nil, nil, nil, nil, nil, mcpRepo, nil)
+	h := New(filepath.Join(tempDir, "courses"), tempDir, nil, nil, nil, nil, nil, nil, mcpRepo, nil, nil)
 
 	// Test GET /mcp/config
 	req := httptest.NewRequest(http.MethodGet, "/mcp/config", nil)
@@ -86,7 +86,7 @@ func TestMCPConfigHandlers(t *testing.T) {
 
 func TestMCPActiveTaskHandlers(t *testing.T) {
 	tempDir := t.TempDir()
-	h := New(filepath.Join(tempDir, "courses"), tempDir, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := New(filepath.Join(tempDir, "courses"), tempDir, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	// 1. Initial GET -> empty
 	req := httptest.NewRequest(http.MethodGet, "/mcp/active-task", nil)
