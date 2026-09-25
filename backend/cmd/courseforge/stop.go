@@ -8,14 +8,16 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/paintingpromisesss/courseforge/internal/config"
 )
 
 func runStop(args []string) {
 	fs := flag.NewFlagSet("stop", flag.ExitOnError)
-	port := fs.Int("port", 8080, "port the server listens on")
+	port := fs.Int("port", config.DefaultPortFromEnv(), "port the server listens on")
 	fs.Parse(args)
 
-	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(*port))
+	addr := net.JoinHostPort(config.DefaultHost, strconv.Itoa(*port))
 	if !isUp(addr) {
 		fmt.Println("courseforge: not running")
 		return

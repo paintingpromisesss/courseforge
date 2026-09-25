@@ -6,6 +6,7 @@ import { api } from '../api/client';
 import type { MCPConfig, MCPStatusResponse } from '../api/types';
 import { buildMCPSetupPrompt } from '../lib/mcpPrompt';
 import { buildMCPClients } from '../lib/mcpClients';
+import { DEFAULT_BACKEND_HOST, DEFAULT_BACKEND_PORT } from '../lib/constants';
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
 
@@ -565,12 +566,12 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
               <div className="min-w-0 flex-1">
                 <span className="text-tx-3 text-[11px] block">SSE URL (HTTP):</span>
                 <code className="text-tx-1 font-mono text-[11px] truncate block">
-                  {currentStatus.sse_url || `http://${currentStatus.host || '127.0.0.1'}:${currentStatus.port || 8080}/api/mcp/sse`}
+                  {currentStatus.sse_url || `http://${currentStatus.host || DEFAULT_BACKEND_HOST}:${currentStatus.port || DEFAULT_BACKEND_PORT}/api/mcp/sse`}
                 </code>
               </div>
               <button
                 type="button"
-                onClick={() => copyText(currentStatus.sse_url || `http://${currentStatus.host || '127.0.0.1'}:${currentStatus.port || 8080}/api/mcp/sse`, setSseCopied)}
+                onClick={() => copyText(currentStatus.sse_url || `http://${currentStatus.host || DEFAULT_BACKEND_HOST}:${currentStatus.port || DEFAULT_BACKEND_PORT}/api/mcp/sse`, setSseCopied)}
                 className="shrink-0 flex items-center justify-center gap-1 px-3 py-1 rounded-lg bg-bg-2 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer select-none whitespace-nowrap"
               >
                 <span className="grid">

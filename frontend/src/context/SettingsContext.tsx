@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from 'react';
 
-export type SettingsTab = 'general' | 'courses' | 'runners' | 'ai' | 'mcp';
+export type SettingsTab = 'general' | 'courses' | 'runners' | 'ai' | 'mcp' | 'about';
 
 interface SettingsContextValue {
   isSettingsOpen: boolean;

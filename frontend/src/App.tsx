@@ -1,4 +1,3 @@
-import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, Link, useOutlet, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,8 +10,8 @@ import { CatalogPage } from './pages/CatalogPage';
 import { CoursePage } from './pages/CoursePage';
 import { TaskPage } from './pages/TaskPage';
 import { TheoryPage } from './pages/TheoryPage';
-
-const SettingsPanel = lazy(() => import('./components/SettingsPanel').then((m) => ({ default: m.SettingsPanel })));
+import { SettingsPanel } from './components/SettingsPanel';
+import { UpdateToast } from './components/UpdateToast';
 
 export function GearIcon() {
   return (
@@ -148,11 +147,8 @@ function AppLayout() {
           </motion.div>
         </AnimatePresence>
       </div>
-      {isSettingsOpen && (
-        <Suspense fallback={null}>
-          <SettingsPanel open={isSettingsOpen} onClose={closeSettings} />
-        </Suspense>
-      )}
+      <SettingsPanel open={isSettingsOpen} onClose={closeSettings} />
+      <UpdateToast />
     </div>
   );
 }

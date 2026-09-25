@@ -10,13 +10,14 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/paintingpromisesss/courseforge/internal/config"
 	"github.com/paintingpromisesss/courseforge/internal/tray"
 )
 
 func runOpen(args []string) {
 	fs := flag.NewFlagSet("open", flag.ExitOnError)
-	host := fs.String("host", "127.0.0.1", "host the server binds to")
-	port := fs.Int("port", 8080, "port the server listens on")
+	host := fs.String("host", config.DefaultHost, "host the server binds to")
+	port := fs.Int("port", config.DefaultPortFromEnv(), "port the server listens on")
 	coursesDir := fs.String("courses-dir", "./courses", "directory with course files")
 	dataDir := fs.String("data-dir", "./data", "directory for app state")
 	fs.Parse(args)

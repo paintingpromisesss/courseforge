@@ -1,5 +1,5 @@
 param(
-  [string]$Port = "8080",
+  [string]$Port = "6770",
   [string]$CoursesDir = "./backend/courses",
   [string]$DataDir = "./data"
 )
@@ -91,14 +91,14 @@ foreach ($t in $sampleTools) {
     throw "Expected tool $($t.Name) to fail when server is offline, but it succeeded!"
   }
   $errText = $callResp.result.content[0].text
-  if ($errText -notmatch "CourseForge.*127\.0\.0\.1:8080") {
+  if ($errText -notmatch "CourseForge.*127\.0\.0\.1:$Port") {
     throw "Unexpected error message for $($t.Name): $errText"
   }
 }
 Write-Host "  -> All tools correctly returned 'Server not running' error when offline" -ForegroundColor Green
 
 # =========================================================================
-# STEP 2: Start CourseForge Server on Port 8080
+# STEP 2: Start CourseForge Server on Port 6770
 # =========================================================================
 Write-Host "`n[STEP 2] Starting Main CourseForge Server on Port $Port..." -ForegroundColor Yellow
 
@@ -240,7 +240,7 @@ if (!$fallbackResp.result.isError) {
   throw "Expected tool call to fail after server stopped, but it succeeded!"
 }
 $fbErr = $fallbackResp.result.content[0].text
-if ($fbErr -notmatch "CourseForge.*127\.0\.0\.1:8080") {
+if ($fbErr -notmatch "CourseForge.*127\.0\.0\.1:$Port") {
   throw "Unexpected fallback error: $fbErr"
 }
 Write-Host "  -> Fallback verified: tool returned 'Server not running' error without crashing" -ForegroundColor Green

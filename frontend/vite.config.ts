@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const backendPort = process.env.COURSEFORGE_PORT || 6770;
+const backendHost = process.env.COURSEFORGE_HOST || '127.0.0.1';
+const backendTarget = `http://${backendHost}:${backendPort}`;
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
@@ -21,11 +25,11 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8080',
+        target: backendTarget,
         timeout: 300000,
         proxyTimeout: 300000,
       },
-      '/swagger': 'http://127.0.0.1:8080',
+      '/swagger': backendTarget,
     },
   },
 })

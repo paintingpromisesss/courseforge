@@ -5,12 +5,14 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/paintingpromisesss/courseforge/internal/config"
 )
 
 // DiscoverServerDirs asks the local CourseForge server (GET /api/info) for its dirs.
 func DiscoverServerDirs(serverURL string) (coursesDir, dataDir string, ok bool) {
 	if serverURL == "" {
-		serverURL = "http://127.0.0.1:8080"
+		serverURL = config.DefaultServerURL()
 	}
 	client := http.Client{Timeout: 500 * time.Millisecond}
 	apiURL := strings.TrimRight(serverURL, "/") + "/api/info"

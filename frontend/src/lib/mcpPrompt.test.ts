@@ -14,7 +14,7 @@ describe('mcpPrompt', () => {
       binary_path: 'F:/Proga/courseforge/bin/courseforge.exe',
       command: 'F:/Proga/courseforge/bin/courseforge.exe',
       args: ['mcp'],
-      sse_url: 'http://127.0.0.1:8080/api/mcp/sse',
+      sse_url: 'http://127.0.0.1:6770/api/mcp/sse',
       platform: 'windows',
       tools_count: 9,
       available: true,
@@ -46,7 +46,7 @@ describe('mcpPrompt', () => {
       binary_path: 'F:/Proga/courseforge/bin/courseforge.exe',
       command: 'F:/Proga/courseforge/bin/courseforge.exe',
       args: ['mcp'],
-      sse_url: 'http://127.0.0.1:8080/api/mcp/sse',
+      sse_url: 'http://127.0.0.1:6770/api/mcp/sse',
       platform: 'windows',
       tools_count: 9,
       available: true,
@@ -54,7 +54,7 @@ describe('mcpPrompt', () => {
 
     const prompt = buildMCPSetupPrompt(status);
     expect(prompt).toContain('URL MCP-сервера:');
-    expect(prompt).toContain('http://127.0.0.1:8080/api/mcp/sse');
+    expect(prompt).toContain('http://127.0.0.1:6770/api/mcp/sse');
     expect(prompt).toContain('OpenCode');
     expect(prompt).toContain('"type": "remote"');
   });
@@ -90,7 +90,7 @@ describe('mcpPrompt', () => {
       binary_path: 'F:/Proga/courseforge/bin/courseforge.exe',
       command: 'F:/Proga/courseforge/bin/courseforge.exe',
       args: ['mcp', '--courses-dir=F:/Proga/courseforge/courses', '--data-dir=F:/Proga/courseforge/data'],
-      sse_url: 'http://127.0.0.1:8080/api/mcp/sse',
+      sse_url: 'http://127.0.0.1:6770/api/mcp/sse',
       platform: 'windows',
       tools_count: 9,
       available: false,

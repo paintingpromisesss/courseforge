@@ -1,12 +1,44 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
+const (
+	DefaultPort = 6770
+	DefaultHost = "127.0.0.1"
+)
+
+// DefaultPortFromEnv returns COURSEFORGE_PORT as int if valid, otherwise DefaultPort.
+func DefaultPortFromEnv() int {
+	if p := os.Getenv("COURSEFORGE_PORT"); p != "" {
+		if v, err := strconv.Atoi(p); err == nil && v > 0 && v <= 65535 {
+			return v
+		}
+	}
+	return DefaultPort
+}
+
+// DefaultServerURL returns the default CourseForge HTTP URL (e.g. "http://127.0.0.1:6770").
+func DefaultServerURL() string {
+	return fmt.Sprintf("http://%s:%d", DefaultHost, DefaultPortFromEnv())
+}
+
+// DefaultAddr returns the default address string (e.g. "127.0.0.1:6770").
+// It respects COURSEFORGE_ADDR if set; otherwise combines DefaultHost and DefaultPortFromEnv().
+func DefaultAddr() string {
+	if addr := os.Getenv("COURSEFORGE_ADDR"); addr != "" {
+		return addr
+	}
+	return fmt.Sprintf("%s:%d", DefaultHost, DefaultPortFromEnv())
+}
+
 type Config struct {
+	Version     string
 	DataDir     string
 	CoursesDir  string
 	RunnersJSON string
@@ -23,7 +55,7 @@ func Load() *Config {
 		CoursesDir:  getenv("COURSEFORGE_COURSES_DIR", DefaultCoursesDir()),
 		RunnersJSON: DefaultRunnersJSON(dataDir),
 		FrontendDir: getenv("COURSEFORGE_FRONTEND_DIR", ""),
-		Addr:        getenv("COURSEFORGE_ADDR", ":8080"),
+		Addr:        DefaultAddr(),
 		DBPath:      getenv("COURSEFORGE_DB_PATH", DefaultDBPath(dataDir)),
 	}
 }

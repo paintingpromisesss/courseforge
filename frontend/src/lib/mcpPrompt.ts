@@ -1,10 +1,11 @@
 import type { MCPStatusResponse } from '../api/types';
+import { DEFAULT_BACKEND_HOST, DEFAULT_BACKEND_PORT } from './constants';
 
 export function buildMCPSetupPrompt(status: MCPStatusResponse): string {
   const platform = status.platform || 'windows';
   const command = status.command || status.binary_path || (platform === 'windows' ? 'courseforge.exe' : 'courseforge');
   const args = status.args && status.args.length > 0 ? status.args : ['mcp'];
-  const sseUrl = status.sse_url || `http://${status.host || '127.0.0.1'}:${status.port || 8080}/api/mcp/sse`;
+  const sseUrl = status.sse_url || `http://${status.host || DEFAULT_BACKEND_HOST}:${status.port || DEFAULT_BACKEND_PORT}/api/mcp/sse`;
   const isSSE = status.transport === 'sse';
   const fullCommandArray = [command, ...args];
 

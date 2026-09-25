@@ -13,6 +13,7 @@ import (
 	"github.com/paintingpromisesss/courseforge/internal/config"
 	"github.com/paintingpromisesss/courseforge/internal/di"
 	"github.com/paintingpromisesss/courseforge/internal/mcp"
+	"github.com/paintingpromisesss/courseforge/internal/updater"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".
@@ -20,6 +21,7 @@ var version = "dev"
 
 func main() {
 	attachConsoleIfAvailable()
+	updater.CleanupOldBinary()
 
 	args := os.Args[1:]
 	if len(args) == 0 {
@@ -76,8 +78,8 @@ Run "courseforge <command> -h" for flags on a specific command.
 
 func runServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	host := fs.String("host", "127.0.0.1", "host to bind")
-	port := fs.Int("port", 8080, "port to listen on")
+	host := fs.String("host", config.DefaultHost, "host to bind")
+	port := fs.Int("port", config.DefaultPortFromEnv(), "port to listen on")
 	coursesDir := fs.String("courses-dir", config.DefaultCoursesDir(), "directory with course files")
 	dataDir := fs.String("data-dir", config.DefaultDataDir(), "directory for app state")
 	dbPath := fs.String("db-path", "", "path to submissions sqlite db")
@@ -98,12 +100,29 @@ func runServe(args []string) {
 		}
 	}
 
+	addr := *host + ":" + strconv.Itoa(*port)
+	var hostPassed, portPassed bool
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "host" {
+			hostPassed = true
+		}
+		if f.Name == "port" {
+			portPassed = true
+		}
+	})
+	if !hostPassed && !portPassed {
+		if envAddr := os.Getenv("COURSEFORGE_ADDR"); envAddr != "" {
+			addr = envAddr
+		}
+	}
+
 	cfg := &config.Config{
+		Version:     version,
 		DataDir:     resolvedData,
 		CoursesDir:  resolvedCourses,
 		RunnersJSON: config.DefaultRunnersJSON(resolvedData),
 		FrontendDir: *frontendDir,
-		Addr:        *host + ":" + strconv.Itoa(*port),
+		Addr:        addr,
 		DBPath:      *dbPath,
 		EnableTray:  *enableTray,
 	}

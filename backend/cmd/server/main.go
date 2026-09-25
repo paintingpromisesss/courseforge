@@ -1,7 +1,7 @@
 // @title CourseForge API
 // @version 1.0
 // @description Self-hosted programming learning platform
-// @host localhost:8080
+// @host localhost:6770
 // @BasePath /api
 // @schemes http
 package main

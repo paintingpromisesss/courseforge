@@ -22,7 +22,7 @@ var (
 )
 
 // Run starts the system tray icon and blocks the calling goroutine.
-// addr is the display address (e.g. "localhost:8080") used for tooltip and browser URL.
+// addr is the display address (e.g. "localhost:6770") used for tooltip and browser URL.
 // onServerStart is called once the tray is ready — start the HTTP server here.
 // onQuit is called when the user selects Quit or a termination signal is received.
 func Run(addr string, onServerStart func(), onQuit func()) {
@@ -62,8 +62,10 @@ func Run(addr string, onServerStart func(), onQuit func()) {
 		onServerStart()
 	}
 
-	// Open the browser automatically on launch.
-	OpenBrowser("http://" + addr)
+	// Open the browser automatically on launch unless suppressed.
+	if os.Getenv("COURSEFORGE_NO_OPEN") == "" {
+		OpenBrowser("http://" + addr)
+	}
 
 	if err := t.Run(); err != nil {
 		log.Printf("tray error: %v", err)

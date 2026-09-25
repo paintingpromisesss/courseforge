@@ -68,7 +68,7 @@ func NewServer(cfg Config, provider Provider, session SessionManager) (*Server, 
 		cfg.Logger = defaultLogger{}
 	}
 	if cfg.ServerURL == "" {
-		cfg.ServerURL = "http://127.0.0.1:8080"
+		cfg.ServerURL = config.DefaultServerURL()
 	}
 
 	s := &Server{
@@ -136,7 +136,7 @@ func (s *Server) ensureActiveServer(ctx context.Context) error {
 
 	serverURL := s.cfg.ServerURL
 	if serverURL == "" {
-		serverURL = "http://127.0.0.1:8080"
+		serverURL = config.DefaultServerURL()
 	}
 
 	s.mu.Lock()

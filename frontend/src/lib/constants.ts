@@ -1,0 +1,2 @@
+export const DEFAULT_BACKEND_PORT = 6770;
+export const DEFAULT_BACKEND_HOST = '127.0.0.1';
