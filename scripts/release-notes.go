@@ -187,8 +187,8 @@ func getCodeDiff(prev, current string) string {
 		return ""
 	}
 	s := string(out)
-	// Generous 120 KB ceiling (~30k tokens) so massive files don't blow up context
-	const maxChars = 120_000
+	// 60 KB ceiling (~15k tokens) to prevent context blowup on reasoning models
+	const maxChars = 60_000
 	if len(s) > maxChars {
 		s = s[:maxChars] + "\n\n... [diff truncated for length] ...\n"
 	}
@@ -281,7 +281,7 @@ Do not output code blocks or markdown fences around the response. Output plain m
 			{"role": "user", "content": userPrompt},
 		},
 		"temperature": 0.2,
-		"max_tokens":  2000,
+		"max_tokens":  3000,
 	}
 
 	bodyBytes, err := json.Marshal(payload)
@@ -296,34 +296,65 @@ Do not output code blocks or markdown fences around the response. Output plain m
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 90 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read ai response body: %w", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("ai api status %s: %s", resp.Status, string(respBody))
 	}
 
 	var res struct {
 		Choices []struct {
 			Message struct {
-				Content string `json:"content"`
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
+				Reasoning        string `json:"reasoning"`
+				Refusal          string `json:"refusal"`
 			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		return "", err
+	if err := json.Unmarshal(respBody, &res); err != nil {
+		return "", fmt.Errorf("decode ai response: %w", err)
+	}
+	if res.Error != nil && res.Error.Message != "" {
+		return "", fmt.Errorf("ai api error: %s", res.Error.Message)
 	}
 	if len(res.Choices) == 0 {
-		return "", fmt.Errorf("empty choices from ai response")
+		return "", fmt.Errorf("empty choices from ai response: %s", string(respBody))
 	}
 
-	return res.Choices[0].Message.Content, nil
+	choice := res.Choices[0]
+	content := strings.TrimSpace(choice.Message.Content)
+	if content == "" {
+		if r := strings.TrimSpace(choice.Message.ReasoningContent); r != "" {
+			content = r
+		} else if r := strings.TrimSpace(choice.Message.Reasoning); r != "" {
+			content = r
+		}
+	}
+	if content == "" {
+		snippet := string(respBody)
+		if len(snippet) > 300 {
+			snippet = snippet[:300] + "..."
+		}
+		return "", fmt.Errorf("ai response content empty (finish_reason: %q, refusal: %q, body: %s)", choice.FinishReason, choice.Message.Refusal, snippet)
+	}
+
+	return content, nil
 }
 
 func generateFallbackNotes(commits []commitItem) string {
