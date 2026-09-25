@@ -16,6 +16,7 @@ import (
 type commitItem struct {
 	Hash    string
 	Subject string
+	Body    string
 	Type    string
 	Scope   string
 	Message string
@@ -41,6 +42,9 @@ func main() {
 		return
 	}
 
+	diffStat := getDiffStat(prevTag, tag)
+	codeDiff := getCodeDiff(prevTag, tag)
+
 	apiKey := getEnv("AI_API_KEY", getEnv("OPENAI_API_KEY", getEnv("GROQ_API_KEY", "")))
 	baseURL := getEnv("AI_BASE_URL", "https://api.openai.com/v1")
 	model := getEnv("AI_MODEL", "gpt-4o-mini")
@@ -52,10 +56,10 @@ func main() {
 			endpoint = strings.TrimRight(endpoint, "/") + "/chat/completions"
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 
-		notes, err := generateWithAI(ctx, endpoint, apiKey, model, tag, prevTag, commits)
+		notes, err := generateWithAI(ctx, endpoint, apiKey, model, tag, prevTag, commits, diffStat, codeDiff)
 		if err == nil && strings.TrimSpace(notes) != "" {
 			fmt.Println(strings.TrimSpace(notes))
 			return
@@ -108,36 +112,87 @@ func getCommitsBetween(prev, current string) ([]commitItem, error) {
 		rangeArg = fmt.Sprintf("%s..%s", prev, current)
 	}
 
-	cmd := exec.Command("git", "log", rangeArg, "--no-merges", "--pretty=format:%h|%s")
+	cmd := exec.Command("git", "log", rangeArg, "--no-merges", "--pretty=format:%h%x1f%s%x1f%b%x1e")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
 	}
 
 	var items []commitItem
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	rawCommits := strings.Split(string(out), "\x1e")
+	for _, raw := range rawCommits {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "|", 2)
+		parts := strings.Split(raw, "\x1f")
 		if len(parts) < 2 {
 			continue
 		}
-		hash := parts[0]
-		subj := parts[1]
+		hash := strings.TrimSpace(parts[0])
+		subj := strings.TrimSpace(parts[1])
+		body := ""
+		if len(parts) > 2 {
+			body = strings.TrimSpace(parts[2])
+		}
 
 		cType, scope, msg := parseConventional(subj)
 		items = append(items, commitItem{
 			Hash:    hash,
 			Subject: subj,
+			Body:    body,
 			Type:    cType,
 			Scope:   scope,
 			Message: msg,
 		})
 	}
 	return items, nil
+}
+
+func getDiffStat(prev, current string) string {
+	rangeArg := current
+	if prev != "" {
+		rangeArg = fmt.Sprintf("%s..%s", prev, current)
+	}
+	out, err := exec.Command("git", "diff", "--stat", rangeArg).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func getCodeDiff(prev, current string) string {
+	rangeArg := current
+	if prev != "" {
+		rangeArg = fmt.Sprintf("%s..%s", prev, current)
+	}
+	args := []string{
+		"diff",
+		rangeArg,
+		"--",
+		":(exclude)package-lock.json",
+		":(exclude)go.sum",
+		":(exclude)*.png",
+		":(exclude)*.jpg",
+		":(exclude)*.jpeg",
+		":(exclude)*.svg",
+		":(exclude)*.ico",
+		":(exclude)*.woff",
+		":(exclude)*.woff2",
+		":(exclude)dist/*",
+		":(exclude)bin/*",
+	}
+	out, err := exec.Command("git", args...).Output()
+	if err != nil {
+		return ""
+	}
+	s := string(out)
+	// Generous 120 KB ceiling (~30k tokens) so massive files don't blow up context
+	const maxChars = 120_000
+	if len(s) > maxChars {
+		s = s[:maxChars] + "\n\n... [diff truncated for length] ...\n"
+	}
+	return strings.TrimSpace(s)
 }
 
 func parseConventional(s string) (cType, scope, msg string) {
@@ -157,17 +212,26 @@ func parseConventional(s string) (cType, scope, msg string) {
 	return cType, scope, msg
 }
 
-func generateWithAI(ctx context.Context, endpoint, apiKey, model, tag, prevTag string, commits []commitItem) (string, error) {
+func generateWithAI(ctx context.Context, endpoint, apiKey, model, tag, prevTag string, commits []commitItem, diffStat, codeDiff string) (string, error) {
 	var commitList strings.Builder
 	for _, c := range commits {
 		fmt.Fprintf(&commitList, "- %s: %s\n", c.Hash, c.Subject)
+		if c.Body != "" {
+			for _, line := range strings.Split(c.Body, "\n") {
+				line = strings.TrimSpace(line)
+				if line != "" {
+					fmt.Fprintf(&commitList, "    %s\n", line)
+				}
+			}
+		}
 	}
 
 	systemPrompt := `You are the release manager for CourseForge, a self-hosted developer learning platform.
-Generate clean, concise, user-friendly release notes from the provided git commit history.
-Focus on user impact and key technical features (MCP, runners, settings, UI, updater, sqlite).
+Generate clean, concise, user-friendly release notes from the provided git commits, changed files, and code diff.
+Analyze the actual code changes and commit descriptions to understand what features, bugfixes, UI improvements, or architecture changes were introduced.
+Focus on user impact and key technical components (e.g. self-updater, MCP server, runners, settings, UI/UX, database).
 Group changes under standard section headings. Only include a section if there are relevant items.
-Ignore CI/CD maintenance or trivial internal refactors unless they affect user experience or performance.
+Ignore trivial internal changes, documentation typos, or build chores unless they affect developers or users.
 Do NOT use emojis anywhere in the output.
 
 Output EXACTLY in this format with two sections separated by "---":
@@ -196,9 +260,19 @@ Output EXACTLY in this format with two sections separated by "---":
 ### Улучшения
 - Описание пункта
 
-Do not output code blocks or markdown fences. Output plain markdown directly.`
+Do not output code blocks or markdown fences around the response. Output plain markdown directly.`
 
-	userPrompt := fmt.Sprintf("Release: %s (previous: %s)\nCommits:\n%s", tag, prevTag, commitList.String())
+	var promptBuilder strings.Builder
+	fmt.Fprintf(&promptBuilder, "Release: %s (previous: %s)\n\n", tag, prevTag)
+	fmt.Fprintf(&promptBuilder, "### Commits and descriptions:\n%s\n", commitList.String())
+	if diffStat != "" {
+		fmt.Fprintf(&promptBuilder, "### Changed Files (git diff --stat):\n%s\n\n", diffStat)
+	}
+	if codeDiff != "" {
+		fmt.Fprintf(&promptBuilder, "### Code Diff:\n```diff\n%s\n```\n", codeDiff)
+	}
+
+	userPrompt := promptBuilder.String()
 
 	payload := map[string]any{
 		"model": model,
@@ -207,7 +281,7 @@ Do not output code blocks or markdown fences. Output plain markdown directly.`
 			{"role": "user", "content": userPrompt},
 		},
 		"temperature": 0.2,
-		"max_tokens":  800,
+		"max_tokens":  2000,
 	}
 
 	bodyBytes, err := json.Marshal(payload)
