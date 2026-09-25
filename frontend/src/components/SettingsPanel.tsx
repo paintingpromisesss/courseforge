@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
@@ -6,10 +6,17 @@ import { api } from '../api/client';
 import type { LangDriver, RunnerStatus } from '../api/types';
 import { useTheme } from '../context/ThemeContext';
 import { useSettings, type SettingsTab } from '../context/SettingsContext';
-import { AISettingsSection } from './AISettingsSection';
-import { MCPSettingsSection } from './MCPSettingsSection';
-import { AboutSection } from './AboutSection';
 import { splitArgs, joinArgs } from '../lib/shlex';
+
+const AISettingsSection = lazy(() => import('./AISettingsSection').then((m) => ({ default: m.AISettingsSection })));
+const MCPSettingsSection = lazy(() => import('./MCPSettingsSection').then((m) => ({ default: m.MCPSettingsSection })));
+const AboutSection = lazy(() => import('./AboutSection').then((m) => ({ default: m.AboutSection })));
+
+const preloadSettingsTab = (tabId: SettingsTab) => {
+  if (tabId === 'ai') import('./AISettingsSection');
+  else if (tabId === 'mcp') import('./MCPSettingsSection');
+  else if (tabId === 'about') import('./AboutSection');
+};
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -1149,6 +1156,8 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
                       key={tab.id}
                       type="button"
                       onClick={() => setActiveTab(tab.id)}
+                      onMouseEnter={() => preloadSettingsTab(tab.id)}
+                      onFocus={() => preloadSettingsTab(tab.id)}
                       className={clsx(
                         'w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors text-left cursor-pointer',
                         isActive
@@ -1188,12 +1197,24 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
 
               {/* Body */}
               <div className="flex-1 overflow-y-auto p-6">
-                {activeTab === 'general' && <ThemeSection />}
-                {activeTab === 'courses' && <CoursesSection />}
-                {activeTab === 'runners' && <RunnersSection />}
-                {activeTab === 'ai' && <AISettingsSection />}
-                {activeTab === 'mcp' && <MCPSettingsSection />}
-                {activeTab === 'about' && <AboutSection />}
+                <Suspense
+                  fallback={
+                    <div className="flex items-center justify-center p-12 text-tx-3 text-xs">
+                      <svg className="animate-spin w-4 h-4 text-brand mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" />
+                        <path d="M12 2a10 10 0 0 1 10 10" />
+                      </svg>
+                      <span>Загрузка раздела...</span>
+                    </div>
+                  }
+                >
+                  {activeTab === 'general' && <ThemeSection />}
+                  {activeTab === 'courses' && <CoursesSection />}
+                  {activeTab === 'runners' && <RunnersSection />}
+                  {activeTab === 'ai' && <AISettingsSection />}
+                  {activeTab === 'mcp' && <MCPSettingsSection />}
+                  {activeTab === 'about' && <AboutSection />}
+                </Suspense>
               </div>
             </div>
           </motion.div>
