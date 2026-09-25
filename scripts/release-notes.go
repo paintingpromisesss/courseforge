@@ -56,7 +56,7 @@ func main() {
 			endpoint = strings.TrimRight(endpoint, "/") + "/chat/completions"
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 
 		notes, err := generateWithAI(ctx, endpoint, apiKey, model, tag, prevTag, commits, diffStat, codeDiff)
@@ -89,19 +89,29 @@ func findPreviousTag(current string) string {
 		return ""
 	}
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	var firstTag string
 	foundCurrent := false
 	for _, l := range lines {
 		t := strings.TrimSpace(l)
 		if t == "" {
 			continue
 		}
+		if firstTag == "" {
+			firstTag = t
+		}
 		if current != "" && (t == current || strings.TrimPrefix(t, "refs/tags/") == current) {
 			foundCurrent = true
 			continue
 		}
-		if foundCurrent || current == "" {
+		if foundCurrent {
 			return t
 		}
+	}
+	if current == "" {
+		return firstTag
+	}
+	if !foundCurrent {
+		return firstTag
 	}
 	return ""
 }
@@ -281,7 +291,14 @@ Do not output code blocks or markdown fences around the response. Output plain m
 			{"role": "user", "content": userPrompt},
 		},
 		"temperature": 0.2,
-		"max_tokens":  3000,
+		"max_tokens":  6000,
+	}
+
+	// Disable reasoning on OpenRouter so reasoning models don't burn tokens or slow down notes generation
+	if strings.Contains(endpoint, "openrouter.ai") {
+		payload["reasoning"] = map[string]any{
+			"enabled": false,
+		}
 	}
 
 	bodyBytes, err := json.Marshal(payload)
@@ -296,7 +313,7 @@ Do not output code blocks or markdown fences around the response. Output plain m
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	client := &http.Client{Timeout: 90 * time.Second}
+	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -338,6 +355,10 @@ Do not output code blocks or markdown fences around the response. Output plain m
 	}
 
 	choice := res.Choices[0]
+	if choice.FinishReason == "length" {
+		return "", fmt.Errorf("ai response truncated due to token limit (finish_reason: length)")
+	}
+
 	content := strings.TrimSpace(choice.Message.Content)
 	if content == "" {
 		if r := strings.TrimSpace(choice.Message.ReasoningContent); r != "" {
