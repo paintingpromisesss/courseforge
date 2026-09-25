@@ -1,4 +1,5 @@
 import type { MCPStatusResponse } from '../api/types';
+import { DEFAULT_BACKEND_HOST, DEFAULT_BACKEND_PORT } from './constants';
 
 export interface MCPClientGuide {
   id: string;
@@ -16,7 +17,7 @@ const shellQuote = (s: string) => (/\s/.test(s) ? `"${s}"` : s);
 export function buildMCPClients(status: MCPStatusResponse): MCPClientGuide[] {
   const command = status.command || status.binary_path || 'courseforge';
   const args = status.args && status.args.length > 0 ? status.args : ['mcp'];
-  const url = status.sse_url || `http://${status.host || '127.0.0.1'}:${status.port || 8080}/api/mcp/sse`;
+  const url = status.sse_url || `http://${status.host || DEFAULT_BACKEND_HOST}:${status.port || DEFAULT_BACKEND_PORT}/api/mcp/sse`;
   const sse = status.transport === 'sse';
   const cmdLine = [command, ...args].map(shellQuote).join(' ');
   const stdioOnly = 'Клиент поддерживает только stdio — переключите транспорт на stdio.';

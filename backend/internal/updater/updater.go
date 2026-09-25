@@ -69,6 +69,7 @@ type Updater struct {
 	status         Status
 	apiClient      *http.Client
 	downClient     *http.Client
+	restarting     bool
 }
 
 // New creates an Updater instance.
@@ -239,7 +240,7 @@ func (u *Updater) CheckTag(ctx context.Context, tag string, force bool) (*CheckR
 }
 
 // StartUpdate triggers the background download and atomic binary replacement.
-func (u *Updater) StartUpdate(ctx context.Context) error {
+func (u *Updater) StartUpdate() error {
 	u.mu.Lock()
 	if u.status.State == "downloading" {
 		u.mu.Unlock()
@@ -264,20 +265,30 @@ func (u *Updater) StartUpdate(ctx context.Context) error {
 	u.mu.Unlock()
 
 	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+
 		err := u.performUpdate(ctx, downloadURL, expectedSize)
 		u.mu.Lock()
-		defer u.mu.Unlock()
 		if err != nil {
 			u.status = Status{
 				State: "error",
 				Error: err.Error(),
 			}
+			u.mu.Unlock()
 		} else {
 			u.status = Status{
 				State:    "ready_restart",
 				Progress: 100,
-				Message:  fmt.Sprintf("Обновление до %s установлено. Требуется перезапуск.", targetTag),
+				Message:  fmt.Sprintf("Обновление до %s установлено. Перезапуск через 3 секунды...", targetTag),
 			}
+			u.mu.Unlock()
+
+			// Automatic restart after 3 seconds, independent of client actions
+			go func() {
+				time.Sleep(3 * time.Second)
+				_ = u.Restart()
+			}()
 		}
 	}()
 
@@ -387,6 +398,14 @@ func (u *Updater) performUpdate(ctx context.Context, downloadURL string, expecte
 
 // Restart spawns a new process of the current binary and terminates this process.
 func (u *Updater) Restart() error {
+	u.mu.Lock()
+	if u.restarting {
+		u.mu.Unlock()
+		return nil
+	}
+	u.restarting = true
+	u.mu.Unlock()
+
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("locate executable: %w", err)
@@ -399,6 +418,7 @@ func (u *Updater) Restart() error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
+	cmd.Env = append(os.Environ(), "COURSEFORGE_NO_OPEN=1")
 	setupDetachedProcess(cmd)
 
 	if err := cmd.Start(); err != nil {

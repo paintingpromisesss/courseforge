@@ -26,7 +26,7 @@ for your exact paths; the ones below assume `courseforge` is on `PATH`
 
 - **stdio** (default): the agent starts `courseforge mcp` itself. The UI does
   not need to be running.
-- **SSE**: the running app serves `http://127.0.0.1:8080/api/mcp/sse` (use your
+- **SSE**: the running app serves `http://127.0.0.1:6770/api/mcp/sse` (use your
   port). Standalone: `courseforge mcp --transport=sse --port=8085`, which
   serves `/sse` instead.
 

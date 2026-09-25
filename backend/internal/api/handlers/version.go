@@ -75,7 +75,7 @@ func (h *Handler) updateVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.updater.StartUpdate(r.Context()); err != nil {
+	if err := h.updater.StartUpdate(); err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

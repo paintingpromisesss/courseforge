@@ -60,7 +60,7 @@ func (h *Handler) buildMCPStatusResp(cfg *domain.MCPConfig, host string) dto.MCP
 	command, args, available := findMCPCommand(effectiveCourses, effectiveData)
 
 	if host == "" {
-		host = "127.0.0.1:8080"
+		host = config.DefaultAddr()
 	}
 	sseURL := fmt.Sprintf("http://%s/api/mcp/sse", host)
 

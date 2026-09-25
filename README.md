@@ -59,17 +59,17 @@ services, no cloud.
 
 ```powershell
 .\scripts\build.ps1
-.\bin\courseforge.exe --port=8080 --courses-dir=.\courses --data-dir=.\data --frontend-dir=.\frontend\dist
+.\bin\courseforge.exe --port=6770 --courses-dir=.\courses --data-dir=.\data --frontend-dir=.\frontend\dist
 ```
 
 ### Linux / macOS / WSL
 
 ```bash
 ./scripts/build.sh
-./bin/courseforge --port=8080 --courses-dir=./courses --data-dir=./data --frontend-dir=./frontend/dist
+./bin/courseforge --port=6770 --courses-dir=./courses --data-dir=./data --frontend-dir=./frontend/dist
 ```
 
-Open [http://localhost:8080](http://localhost:8080).
+Open [http://localhost:6770](http://localhost:6770).
 
 ### Requirements
 
@@ -137,7 +137,7 @@ To connect an AI agent (Claude, Cursor, Codex, Antigravity, VS Code, …) see
 | Flag | Default | Description |
 |---|---|---|
 | `--host` | `127.0.0.1` | address to bind the server to |
-| `--port` | `8080` | HTTP server port |
+| `--port` | `6770` | HTTP server port |
 | `--courses-dir` | `./courses` | directory with course files |
 | `--data-dir` | `./data` | app state (SQLite, runners, PostgreSQL cluster) |
 | `--db-path` | `{data-dir}/…` | path to the submissions SQLite database (`serve` only) |
@@ -223,7 +223,7 @@ Tasks are multilingual: `task.yaml` maps a language key to its
 # backend: hot swagger + go run (run make swagger after changing handlers)
 cd backend && make swagger && make run
 
-# frontend: Vite HMR, proxies /api to :8080
+# frontend: Vite HMR, proxies /api to :6770
 cd frontend && npm install && npm run dev
 
 # tests

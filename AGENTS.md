@@ -10,7 +10,7 @@
 
 **Run**:
 ```bash
-./bin/courseforge --port=8080 --courses-dir=./courses --data-dir=./data --frontend-dir=./frontend/dist
+./bin/courseforge --port=6770 --courses-dir=./courses --data-dir=./data --frontend-dir=./frontend/dist
 ```
 
 **MCP Server** (stdio mode for AI agents / IDE):
@@ -23,7 +23,7 @@
 **Dev** (run both terminals):
 ```bash
 cd backend && make run       # hot swagger regen + go run via cmd/server (swagger tag)
-cd frontend && npm run dev   # Vite HMR, proxies /api → 127.0.0.1:8080
+cd frontend && npm run dev   # Vite HMR, proxies /api → 127.0.0.1:6770
 ```
 
 **Tests**:

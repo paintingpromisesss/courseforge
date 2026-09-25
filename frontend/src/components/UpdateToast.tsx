@@ -36,7 +36,7 @@ export function UpdateToast() {
   });
 
   const check = verInfo?.check;
-  const updateAvailable = Boolean(check?.update_available && check?.latest_version);
+  const updateAvailable = Boolean(check?.update_available && check?.latest_version && !verInfo?.is_dev);
   const latestVersion = check?.latest_version ?? '';
 
   let previouslyDismissed: string | null = null;
@@ -98,7 +98,6 @@ export function UpdateToast() {
 
               <p className="text-[11px] text-tx-2 mt-1 leading-snug">
                 Вышла новая версия <span className="font-mono font-medium text-brand">{latestVersion}</span>.
-                Вы можете обновить бинарный файл в один клик.
               </p>
 
               <div className="flex items-center gap-2 mt-3">

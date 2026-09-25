@@ -33,7 +33,7 @@ func RunCLI(args []string) {
 	dataDir := fs.String("data-dir", "", "directory for application state")
 	dbPath := fs.String("db-path", "", "path to submissions sqlite db")
 	stateFile := fs.String("state-file", "", "path to active task session json file")
-	serverURL := fs.String("server-url", "http://127.0.0.1:8080", "CourseForge server URL to discover and ping")
+	serverURL := fs.String("server-url", config.DefaultServerURL(), "CourseForge server URL to discover and ping")
 	force := fs.Bool("force", false, "bypass disabled check in settings")
 
 	_ = fs.Parse(args)
