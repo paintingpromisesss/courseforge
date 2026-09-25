@@ -159,13 +159,18 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME}"
 
-          # Create release if it doesn't exist yet
+          # Create release if it doesn't exist yet, or update notes if it does
           if ! gh release view "${tag}" >/dev/null 2>&1; then
             echo "Creating release ${tag}..."
             if [ -s dist/release_notes.md ]; then
               gh release create "${tag}" --notes-file dist/release_notes.md
             else
               gh release create "${tag}" --generate-notes
+            fi
+          else
+            echo "Release ${tag} already exists, updating notes..."
+            if [ -s dist/release_notes.md ]; then
+              gh release edit "${tag}" --notes-file dist/release_notes.md
             fi
           fi
 
