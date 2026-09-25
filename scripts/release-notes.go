@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -56,7 +57,7 @@ func main() {
 			endpoint = strings.TrimRight(endpoint, "/") + "/chat/completions"
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 		defer cancel()
 
 		notes, err := generateWithAI(ctx, endpoint, apiKey, model, tag, prevTag, commits, diffStat, codeDiff)
@@ -306,26 +307,60 @@ Do not output code blocks or markdown fences around the response. Output plain m
 		return "", err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	client := &http.Client{Timeout: 90 * time.Second}
 
-	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
+	var respBody []byte
+	const maxRetries = 5
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("read ai response body: %w", err)
-	}
+		resp, err := client.Do(req)
+		if err != nil {
+			if attempt == maxRetries || ctx.Err() != nil {
+				return "", err
+			}
+			time.Sleep(time.Duration(attempt*2) * time.Second)
+			continue
+		}
 
-	if resp.StatusCode != http.StatusOK {
+		respBody, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return "", fmt.Errorf("read ai response body: %w", err)
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			break
+		}
+
+		// Transient error codes: 429 (Too Many Requests / rate limit), 500, 502, 503, 504
+		isTransient := resp.StatusCode == http.StatusTooManyRequests ||
+			resp.StatusCode == http.StatusInternalServerError ||
+			resp.StatusCode == http.StatusBadGateway ||
+			resp.StatusCode == http.StatusServiceUnavailable ||
+			resp.StatusCode == http.StatusGatewayTimeout
+
+		if isTransient && attempt < maxRetries && ctx.Err() == nil {
+			retrySec := attempt * 3 // 3s, 6s, 9s, 12s
+			if ra := resp.Header.Get("Retry-After"); ra != "" {
+				if s, err := strconv.Atoi(ra); err == nil && s > 0 && s < 60 {
+					retrySec = s
+				}
+			}
+			fmt.Fprintf(os.Stderr, "ai api %s (attempt %d/%d), retrying in %ds...\n", resp.Status, attempt, maxRetries, retrySec)
+			select {
+			case <-time.After(time.Duration(retrySec) * time.Second):
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+			continue
+		}
+
 		return "", fmt.Errorf("ai api status %s: %s", resp.Status, string(respBody))
 	}
 
