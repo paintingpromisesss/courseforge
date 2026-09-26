@@ -1,0 +1,329 @@
+// Package git wraps the system git CLI. The GitHub token is injected through
+// GIT_CONFIG_* environment variables so it never lands in process args (visible
+// to other processes), in .git/config, or in a credential store.
+package git
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+// Error carries a git failure. Stderr is the trimmed git error output.
+type Error struct {
+	Stderr   string
+	ExitCode int
+}
+
+func (e *Error) Error() string { return e.Stderr }
+
+// Commit is one line of git log output.
+type Commit struct {
+	Hash    string
+	Time    time.Time
+	Author  string
+	Subject string
+}
+
+// Service serializes git invocations. Every public method holds mu for the
+// whole command sequence, so multi-step operations (checkout = fetch + reset +
+// checkout) are atomic with respect to other calls on the same Service.
+//
+// ponytail: one global mutex serializes all repos; per-repo locks if a fleet of
+// concurrent syncs ever contends.
+type Service struct {
+	mu           sync.Mutex
+	token        string
+	timeout      time.Duration
+	cloneTimeout time.Duration
+	availOnce    sync.Once
+	avail        bool
+}
+
+func NewService() *Service {
+	return &Service{timeout: 60 * time.Second, cloneTimeout: 5 * time.Minute}
+}
+
+func (s *Service) SetToken(token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.token = token
+}
+
+func (s *Service) Token() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.token
+}
+
+// Available reports whether the git CLI is on PATH, probed once and cached.
+func (s *Service) Available() bool {
+	s.availOnce.Do(func() {
+		s.avail = exec.Command("git", "--version").Run() == nil
+	})
+	return s.avail
+}
+
+// runCmd executes git without locking; the caller must hold s.mu. dir is the
+// working directory ("" = inherit the process cwd, used before a clone target
+// exists).
+func (s *Service) runCmd(ctx context.Context, dir string, timeout time.Duration, args ...string) (string, error) {
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(cctx, "git", args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	env := os.Environ()
+	env = append(env,
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_AUTHOR_NAME=CourseForge", "GIT_AUTHOR_EMAIL=courseforge@local",
+		"GIT_COMMITTER_NAME=CourseForge", "GIT_COMMITTER_EMAIL=courseforge@local")
+	if s.token != "" {
+		env = append(env,
+			"GIT_CONFIG_COUNT=1",
+			"GIT_CONFIG_KEY_0=http.https://github.com/.extraHeader",
+			"GIT_CONFIG_VALUE_0=Authorization: Bearer "+s.token)
+	}
+	cmd.Env = env
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		var ee *exec.ExitError
+		code := -1
+		if errors.As(err, &ee) {
+			code = ee.ExitCode()
+		}
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return stdout.String(), &Error{Stderr: msg, ExitCode: code}
+	}
+	return stdout.String(), nil
+}
+
+// Clone clones url into dir. branch may be "" for the remote default.
+func (s *Service) Clone(ctx context.Context, url, dir, branch string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := os.MkdirAll(filepath.Dir(dir), 0755); err != nil {
+		return err
+	}
+	args := []string{"clone"}
+	if branch != "" {
+		args = append(args, "-b", branch)
+	}
+	args = append(args, url, dir)
+	_, err := s.runCmd(ctx, filepath.Dir(dir), s.cloneTimeout, args...)
+	return err
+}
+
+func (s *Service) Fetch(ctx context.Context, dir string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.runCmd(ctx, dir, s.timeout, "fetch", "origin")
+	return err
+}
+
+// RemoteBranches lists origin's branches without the "origin/" prefix.
+func (s *Service) RemoteBranches(ctx context.Context, dir string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out, err := s.runCmd(ctx, dir, s.timeout, "branch", "-r")
+	if err != nil {
+		return nil, err
+	}
+	var branches []string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, "->") {
+			continue
+		}
+		if i := strings.Index(line, "/"); i >= 0 {
+			line = line[i+1:]
+		}
+		branches = append(branches, line)
+	}
+	return branches, nil
+}
+
+func (s *Service) CurrentBranch(ctx context.Context, dir string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.currentBranchLocked(ctx, dir)
+}
+
+func (s *Service) currentBranchLocked(ctx context.Context, dir string) (string, error) {
+	out, err := s.runCmd(ctx, dir, s.timeout, "rev-parse", "--abbrev-ref", "HEAD")
+	return strings.TrimSpace(out), err
+}
+
+func (s *Service) HeadCommit(ctx context.Context, dir string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out, err := s.runCmd(ctx, dir, s.timeout, "rev-parse", "HEAD")
+	return strings.TrimSpace(out), err
+}
+
+// CheckoutBranch fetches and hard-aligns dir onto origin/branch. Without force
+// it refuses when the working tree is dirty (uncommitted local edits).
+func (s *Service) CheckoutBranch(ctx context.Context, dir, branch string, force bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.runCmd(ctx, dir, s.timeout, "fetch", "origin"); err != nil {
+		return err
+	}
+	if force {
+		_, _ = s.runCmd(ctx, dir, s.timeout, "clean", "-fd")
+		if _, err := s.runCmd(ctx, dir, s.timeout, "reset", "--hard"); err != nil {
+			return err
+		}
+	} else {
+		dirty, err := s.dirtyLocked(ctx, dir)
+		if err != nil {
+			return err
+		}
+		if dirty {
+			return &Error{Stderr: "working tree has uncommitted changes; commit or discard them first"}
+		}
+	}
+	_, err := s.runCmd(ctx, dir, s.timeout, "checkout", "-B", branch, "origin/"+branch)
+	return err
+}
+
+// PullFF fetches and fast-forwards the current branch. A diverged branch is an
+// error (never a merge commit, never a force).
+func (s *Service) PullFF(ctx context.Context, dir string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.runCmd(ctx, dir, s.timeout, "fetch", "origin"); err != nil {
+		return err
+	}
+	branch, err := s.currentBranchLocked(ctx, dir)
+	if err != nil {
+		return err
+	}
+	_, err = s.runCmd(ctx, dir, s.timeout, "merge", "--ff-only", "origin/"+branch)
+	return err
+}
+
+// Dirty reports whether the working tree has uncommitted changes.
+func (s *Service) Dirty(ctx context.Context, dir string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.dirtyLocked(ctx, dir)
+}
+
+func (s *Service) dirtyLocked(ctx context.Context, dir string) (bool, error) {
+	out, err := s.runCmd(ctx, dir, s.timeout, "status", "--porcelain")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
+}
+
+// Init creates a repo on branch with origin pointed at remoteURL.
+func (s *Service) Init(ctx context.Context, dir, remoteURL, branch string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	if _, err := s.runCmd(ctx, dir, s.timeout, "init", "-b", branch); err != nil {
+		return err
+	}
+	_, err := s.runCmd(ctx, dir, s.timeout, "remote", "add", "origin", remoteURL)
+	return err
+}
+
+// CommitAll stages everything and commits; a clean tree is a no-op, not an error.
+func (s *Service) CommitAll(ctx context.Context, dir, message string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.runCmd(ctx, dir, s.timeout, "add", "-A"); err != nil {
+		return err
+	}
+	status, err := s.runCmd(ctx, dir, s.timeout, "status", "--porcelain")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(status) == "" {
+		return nil // nothing to commit
+	}
+	_, err = s.runCmd(ctx, dir, s.timeout, "commit", "-m", message)
+	return err
+}
+
+// Push pushes branch to origin. Never forces.
+func (s *Service) Push(ctx context.Context, dir, branch string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.runCmd(ctx, dir, s.timeout, "push", "origin", branch)
+	return err
+}
+
+// Log returns up to limit commits, newest first.
+func (s *Service) Log(ctx context.Context, dir string, limit int) ([]Commit, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out, err := s.runCmd(ctx, dir, s.timeout, "log",
+		"-n", strconv.Itoa(limit), "--format=%H%x1f%at%x1f%an%x1f%s")
+	if err != nil {
+		return nil, err
+	}
+	var commits []Commit
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		f := strings.Split(line, "\x1f")
+		if len(f) != 4 {
+			continue
+		}
+		secs, _ := strconv.ParseInt(f[1], 10, 64)
+		commits = append(commits, Commit{
+			Hash:    f[0],
+			Time:    time.Unix(secs, 0),
+			Author:  f[2],
+			Subject: f[3],
+		})
+	}
+	return commits, nil
+}
+
+// CommitFiles lists the files touched by a commit (or ref like HEAD).
+func (s *Service) CommitFiles(ctx context.Context, dir, hash string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out, err := s.runCmd(ctx, dir, s.timeout, "show", "--name-only", "--format=", hash)
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			files = append(files, line)
+		}
+	}
+	return files, nil
+}
+
+// CheckoutPaths restores the working tree (all paths) to the state at hash,
+// used to source a rollback before re-committing.
+func (s *Service) CheckoutPaths(ctx context.Context, dir, hash string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.runCmd(ctx, dir, s.timeout, "checkout", hash, "--", ".")
+	return err
+}
