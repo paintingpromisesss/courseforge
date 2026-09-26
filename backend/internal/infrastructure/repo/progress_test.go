@@ -3,6 +3,8 @@ package repo
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -72,7 +74,60 @@ func TestSave_Atomic(t *testing.T) {
 
 	_ = s.MarkDone(context.Background(), "go-basics", "go-basics", "task-1")
 
-	if _, err := os.Stat(dir + "/go-basics/progress.json.tmp"); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "progress", "go-basics", "progress.json.tmp")); !os.IsNotExist(err) {
 		t.Fatal("tmp file should not exist after save")
+	}
+}
+
+func TestProgressStoredInDataDir(t *testing.T) {
+	dataDir := t.TempDir()
+	r := NewFileProgressRepository(dataDir)
+	if err := r.MarkDone(context.Background(), "go-basics", "go-basics", "task-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "progress", "go-basics", "progress.json")); err != nil {
+		t.Fatalf("progress file not in dataDir: %v", err)
+	}
+}
+
+func TestMigrateProgress(t *testing.T) {
+	coursesDir, dataDir := t.TempDir(), t.TempDir()
+	legacy := filepath.Join(coursesDir, "cat", "course1")
+	os.MkdirAll(legacy, 0755)
+	os.WriteFile(filepath.Join(legacy, "progress.json"), []byte(`{"course_slug":"course1","completed_tasks":{"a":true}}`), 0644)
+	if err := MigrateProgress(coursesDir, dataDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "progress", "cat", "course1", "progress.json")); err != nil {
+		t.Fatalf("not migrated: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(legacy, "progress.json")); !os.IsNotExist(err) {
+		t.Fatal("legacy file not removed")
+	}
+	// idempotent: second run must not error and must not resurrect
+	if err := MigrateProgress(coursesDir, dataDir); err != nil {
+		t.Fatal(err)
+	}
+	// never overwrite an existing new-location file
+	os.WriteFile(filepath.Join(legacy, "progress.json"), []byte(`{}`), 0644)
+	if err := MigrateProgress(coursesDir, dataDir); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(dataDir, "progress", "cat", "course1", "progress.json"))
+	if !strings.Contains(string(data), "course1") {
+		t.Fatal("migration overwrote existing progress")
+	}
+}
+
+func TestMigrateProgressSkipsGitDirs(t *testing.T) {
+	coursesDir, dataDir := t.TempDir(), t.TempDir()
+	gitDir := filepath.Join(coursesDir, "course1", ".git", "refs")
+	os.MkdirAll(gitDir, 0755)
+	os.WriteFile(filepath.Join(gitDir, "progress.json"), []byte(`{}`), 0644)
+	if err := MigrateProgress(coursesDir, dataDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "progress")); !os.IsNotExist(err) {
+		t.Fatal("nothing should be migrated from .git")
 	}
 }

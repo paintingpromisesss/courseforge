@@ -35,6 +35,10 @@ func Run(cfg *config.Config) error {
 		}
 	}
 
+	if err := repo.MigrateProgress(cfg.CoursesDir, cfg.DataDir); err != nil {
+		log.Printf("warning: progress migration: %v", err)
+	}
+
 	logger := logger.New()
 
 	courses, catalogs, err := course.LoadAll(cfg.CoursesDir)
@@ -68,7 +72,7 @@ func Run(cfg *config.Config) error {
 		_ = r.StopPostgres()
 	}()
 
-	pr := repo.NewFileProgressRepository(cfg.CoursesDir)
+	pr := repo.NewFileProgressRepository(cfg.DataDir)
 
 	ps := service.NewProgressService(pr, logger)
 

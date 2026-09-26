@@ -122,7 +122,10 @@ func RunCLI(args []string) {
 			dbCloser = db
 
 			subRepo := repo.NewSubmissionRepository(db)
-			progRepo := repo.NewFileProgressRepository(*coursesDir)
+			if err := repo.MigrateProgress(*coursesDir, *dataDir); err != nil {
+				log.Printf("warning: progress migration: %v", err)
+			}
+			progRepo := repo.NewFileProgressRepository(*dataDir)
 
 			r := runner.New()
 			runnersJSON := config.DefaultRunnersJSON(*dataDir)

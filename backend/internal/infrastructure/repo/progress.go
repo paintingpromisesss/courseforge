@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,14 +13,53 @@ import (
 )
 
 // FileProgressRepository reads and writes per-course progress.json files.
-// Files live at {coursesDir}/{courseSlug}/progress.json.
+// Files live at {dataDir}/progress/{courseDir}/progress.json — outside the
+// courses tree so branch switches and cloud sync never touch user progress.
 type FileProgressRepository struct {
-	mu         sync.Mutex
-	coursesDir string
+	mu          sync.Mutex
+	progressDir string
 }
 
-func NewFileProgressRepository(coursesDir string) *FileProgressRepository {
-	return &FileProgressRepository{coursesDir: coursesDir}
+func NewFileProgressRepository(dataDir string) *FileProgressRepository {
+	return &FileProgressRepository{progressDir: filepath.Join(dataDir, "progress")}
+}
+
+// MigrateProgress moves legacy {coursesDir}/**/progress.json files into
+// {dataDir}/progress/, preserving relative paths. Idempotent; never
+// overwrites a file that already exists at the destination.
+func MigrateProgress(coursesDir, dataDir string) error {
+	dest := filepath.Join(dataDir, "progress")
+	return filepath.WalkDir(coursesDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // unreadable course dirs are not our problem
+		}
+		if d.IsDir() && d.Name() == ".git" {
+			return fs.SkipDir
+		}
+		if d.IsDir() || d.Name() != "progress.json" {
+			return nil
+		}
+		rel, _ := filepath.Rel(coursesDir, path)
+		target := filepath.Join(dest, filepath.Dir(rel), "progress.json")
+		if _, err := os.Stat(target); err == nil {
+			return os.Remove(path) // destination wins; drop stale legacy copy
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return err
+		}
+		if err := os.Rename(path, target); err != nil {
+			// cross-device fallback
+			data, rerr := os.ReadFile(path)
+			if rerr != nil {
+				return rerr
+			}
+			if werr := os.WriteFile(target, data, 0644); werr != nil {
+				return werr
+			}
+			return os.Remove(path)
+		}
+		return nil
+	})
 }
 
 // Load returns progress for a course. Returns empty Progress if file doesn't exist yet.
@@ -113,6 +153,9 @@ func (s *FileProgressRepository) save(courseDir string, p *domain.Progress) erro
 	}
 
 	path := s.progressPath(courseDir)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
 	tmp := path + ".tmp"
 
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
@@ -122,5 +165,5 @@ func (s *FileProgressRepository) save(courseDir string, p *domain.Progress) erro
 }
 
 func (s *FileProgressRepository) progressPath(courseDir string) string {
-	return filepath.Join(s.coursesDir, courseDir, "progress.json")
+	return filepath.Join(s.progressDir, filepath.FromSlash(courseDir), "progress.json")
 }
