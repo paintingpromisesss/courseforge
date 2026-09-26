@@ -29,6 +29,7 @@ type Handler struct {
 	mcpConfigRepo *repo.MCPConfigRepository
 	gitAuth       *repo.GitAuthRepository
 	gitSvc        *git.Service
+	sources       *repo.CourseSourcesRepository
 	mcpServer       *mcp.Server
 	sseServer       *mcpserver.SSEServer
 	fallbackSession mcp.SessionManager
@@ -48,6 +49,7 @@ func New(
 	mcpConfigRepo *repo.MCPConfigRepository,
 	gitAuth *repo.GitAuthRepository,
 	gitSvc *git.Service,
+	sources *repo.CourseSourcesRepository,
 	mcpServer *mcp.Server,
 	upd *updater.Updater,
 ) *Handler {
@@ -72,6 +74,7 @@ func New(
 		mcpConfigRepo: mcpConfigRepo,
 		gitAuth:       gitAuth,
 		gitSvc:        gitSvc,
+		sources:       sources,
 		mcpServer:     mcpServer,
 		sseServer:     sseServer,
 		updater:       upd,

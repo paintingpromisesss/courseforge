@@ -17,7 +17,7 @@ func TestGitAuthHandlers(t *testing.T) {
 	tempDir := t.TempDir()
 	gitAuth := repo.NewGitAuthRepository(tempDir)
 	gitSvc := git.NewService()
-	h := New(filepath.Join(tempDir, "courses"), tempDir, nil, nil, nil, nil, nil, nil, nil, gitAuth, gitSvc, nil, nil)
+	h := New(filepath.Join(tempDir, "courses"), tempDir, nil, nil, nil, nil, nil, nil, nil, gitAuth, gitSvc, nil, nil, nil)
 
 	// 1. GET before configuration -> not configured.
 	req := httptest.NewRequest(http.MethodGet, "/git/auth", nil)

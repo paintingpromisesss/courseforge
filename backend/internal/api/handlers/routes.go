@@ -53,6 +53,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/git/auth", h.getGitAuth)
 	r.Patch("/git/auth", h.patchGitAuth)
 	r.Post("/git/auth/test", h.testGitAuth)
+	r.Post("/git/import", h.gitImport)
 
 	r.Get("/version", h.getVersion)
 	r.Post("/version/check", h.checkVersion)

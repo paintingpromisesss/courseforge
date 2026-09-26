@@ -101,6 +101,7 @@ func Run(cfg *config.Config) error {
 	} else if err != nil {
 		log.Printf("warning: load git auth: %v", err)
 	}
+	sourcesRepo := repo.NewCourseSourcesRepository(cfg.DataDir)
 
 	mcpProvider, err := mcp.NewCourseForgeProvider(cfg.CoursesDir, cfg.DataDir, pr, sr, r)
 	if err != nil {
@@ -133,7 +134,7 @@ func Run(cfg *config.Config) error {
 		_, _ = upd.Check(ctx, false)
 	}()
 
-	h := handlers.New(cfg.CoursesDir, cfg.DataDir, courses, catalogs, r, ps, ss, aiService, mcpRepo, gitAuthRepo, gitSvc, mcpServer, upd)
+	h := handlers.New(cfg.CoursesDir, cfg.DataDir, courses, catalogs, r, ps, ss, aiService, mcpRepo, gitAuthRepo, gitSvc, sourcesRepo, mcpServer, upd)
 
 	router, err := api.NewRouter(h, api.RouterOptions{FrontendDir: cfg.FrontendDir, CoursesDir: cfg.CoursesDir, DataDir: cfg.DataDir})
 	if err != nil {

@@ -3,6 +3,7 @@ package course
 import (
 	"io/fs"
 	"path"
+	"strings"
 
 	"github.com/paintingpromisesss/courseforge/internal/domain"
 )
@@ -137,6 +138,11 @@ func validateNoOrphanDirs(fsys fs.FS, dir, manifest string, declared []string, e
 	var errs []error
 	for _, e := range entries {
 		if !e.IsDir() {
+			continue
+		}
+		// dot-directories are metadata, not course content: git-imported courses
+		// carry a .git folder here, and it must not fail validation.
+		if strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
 		if !known[e.Name()] {
