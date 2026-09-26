@@ -832,14 +832,15 @@ type SyncConfig struct {
 	Triggers  SyncTriggers `json:"triggers"`
 	LastSync  string       `json:"last_sync,omitempty"` // RFC3339
 	Enabled   bool         `json:"enabled"`
+	Exclude   []string     `json:"exclude,omitempty"` // courseDir values excluded from sync (opt-out; git-imports are always excluded implicitly)
 }
 func NewSyncConfigRepository(dataDir string) *SyncConfigRepository // sync_config.json
 func (r *SyncConfigRepository) Load(ctx) (*SyncConfig, error) // (nil,nil) absent → caller uses defaults {Branch:"main"}
 func (r *SyncConfigRepository) Save(ctx, *SyncConfig) error
 ```
-DTOs (`dto/sync.go`): `SyncConfigResp` (= SyncConfig JSON), `PatchSyncConfigReq {RemoteURL, Branch *string; Triggers *SyncTriggers; Enabled *bool}`, `SyncStatusResp {Configured, Enabled, Syncing bool; LastSync, Branch, Commit string; PendingImports []string}`, `SyncHistoryItem {Commit, Author, Subject string; Time string}`, `SyncCommitFilesResp {Files []string}`, `RollbackReq {Commit string}`.
+DTOs (`dto/sync.go`): `SyncConfigResp` (= SyncConfig JSON), `PatchSyncConfigReq {RemoteURL, Branch *string; Triggers *SyncTriggers; Enabled *bool; Exclude *[]string}`, `SyncStatusResp {Configured, Enabled, Syncing bool; LastSync, Branch, Commit string; PendingImports []string}`, `SyncHistoryItem {Commit, Author, Subject string; Time string}`, `SyncCommitFilesResp {Files []string}`, `RollbackReq {Commit string}`.
 
-- [ ] **Step 1: Failing test** — round trip + absent-file defaults.
+- [ ] **Step 1: Failing test** — round trip (incl. Exclude) + absent-file defaults.
 - [ ] **Step 2: FAIL.** [ ] **Step 3: Implement** (copy ai_config.go shape). [ ] **Step 4: PASS.**
 - [ ] **Step 5: Commit** `git add backend && git commit -m "feat(sync): config storage"`
 
@@ -886,7 +887,7 @@ Push algorithm (all under `e.mu`, `busy` flag for Status):
 3. `Fetch` (tolerate failure on brand-new empty remote: if fetch fails and remote has no branches, continue).
 4. Align: if `origin/<branch>` exists → `git reset --hard origin/<branch>` + `git clean -fd` (via CheckoutBranch(dir, branch, force=true) after fetch); else stay on fresh init.
 5. Wipe mirror content except `.git` (WalkDir top-level entries).
-6. Copy: for each top-level dir in `coursesDir`: copy tree **excluding any nested `.git`** into `mirror/courses/<name>`; skip dirs listed as git-imported in sources (their content comes from their own remote — but still record them in `sources.json`). Copy `dataDir/progress/**` → `mirror/progress/**`. Write `sources.json` = `sources.All()` output.
+6. Copy: for each top-level dir in `coursesDir`: copy tree **excluding any nested `.git`** into `mirror/courses/<name>`; skip dirs listed as git-imported in sources (their content comes from their own remote — but still record them in `sources.json`); skip dirs listed in `cfg.Exclude` (opt-out — stay on disk, never committed). Copy `dataDir/progress/**` → `mirror/progress/**` (all progress, incl. excluded courses — harmless and keeps Pull simple). Write `sources.json` = `sources.All()` output.
 7. `CommitAll(mirrorDir, fmt.Sprintf("sync: %s %s", hostname, time.Now().UTC().Format(time.RFC3339)))`.
 8. `Push(mirrorDir, cfg.Branch)`; on rejection → retry steps 3-8 up to 3 times total; final failure → error "remote changed, retry later".
 9. Save cfg.LastSync = now.
@@ -894,7 +895,7 @@ Push algorithm (all under `e.mu`, `busy` flag for Status):
 Pull algorithm:
 1. ensure mirror + `Fetch`. If `origin/<branch>` missing → error "cloud vault is empty — push first".
 2. `CheckoutBranch(mirrorDir, cfg.Branch, true)`.
-3. Apply to coursesDir: for each `mirror/courses/<name>`: if local `coursesDir/<name>` exists and is a git-import (in sources) → **skip content, keep local clone**; else atomic replace (copy to `coursesDir/<name>.synctmp` then rename over). Local non-import course dirs absent from mirror → delete (cloud is source of truth).
+3. Apply to coursesDir — **Pull never deletes anything local**: for each `mirror/courses/<name>`: if local `coursesDir/<name>` exists and is a git-import (in sources) or in `cfg.Exclude` → skip; else atomic replace (copy to `coursesDir/<name>.synctmp` then rename over). Local course dirs absent from the mirror → leave untouched (excluded, or deleted on another device — the next Push restores them to the cloud, last-push-wins).
 4. Replace `dataDir/progress` from `mirror/progress` (same atomic pattern).
 5. Load `mirror/sources.json` → merge into local sources (cloud entries for missing slugs recorded; `PendingImports` = cloud sources whose courseDir doesn't exist locally).
 6. `e.OnReload()` — DI wires this to a Handler method that re-parses everything: `h.reloadCourses()` (new small method on Handler: `course.LoadAll(h.coursesDir)` under `h.mu`, replacing maps).
@@ -915,8 +916,10 @@ func TestPushOverwritesRemoteSnapshot(t *testing.T) {
 	// history has 2+ sync commits.
 }
 
-func TestPullDeletesNonImportCourseAbsentFromCloud(t *testing.T) {
-	// push (course A only); locally add course B (not pushed); Pull → B deleted.
+func TestPullKeepsLocalCourseAbsentFromCloud(t *testing.T) {
+	// push (course A only); locally add course B (not pushed); Pull → B still on
+	// disk, untouched. Also: excluded course present in cloud → Pull skips it
+	// (local content preserved, not overwritten).
 }
 
 func TestPullKeepsLocalGitImport(t *testing.T) {
@@ -997,7 +1000,7 @@ syncRestoreImports: () => post<{ restored: string[] }>('/sync/restore-imports', 
 
 - [ ] **Step 1: Failing test** — `CloudSettingsSection.test.tsx`: renders remote URL input + triggers; «Синхронизировать» calls `api.syncPush`; history list renders mocked commits; rollback button asks confirmation (in-page, no `confirm()` — follow existing dialog pattern in SettingsPanel).
 - [ ] **Step 2: FAIL.**
-- [ ] **Step 3: Implement** — sections: (1) Настройка: remote URL, branch, enable toggle, Save; (2) Триггеры: checkboxes + interval input; (3) Статус: last sync, branch, «Синхронизировать» / «Скачать» buttons, spinner while status.syncing (poll `syncStatus` every 3s while syncing); (4) История: commit list (short hash, date, subject), expand → files, «Откатиться» with confirm; (5) «Восстановить импортированные курсы» button when pendingImports non-empty.
+- [ ] **Step 3: Implement** — sections: (1) Настройка: remote URL, branch, enable toggle, Save; (2) Состав синка: список локальных курсов с чекбоксами «синхронизировать» (git-imports shown disabled with hint «из своего репозитория»), unchecking saves into `exclude` via `syncSaveConfig`; (3) Триггеры: checkboxes + interval input; (4) Статус: last sync, branch, «Синхронизировать» / «Скачать» buttons, spinner while status.syncing (poll `syncStatus` every 3s while syncing); (5) История: commit list (short hash, date, subject), expand → files, «Откатиться» with confirm; (6) «Восстановить импортированные курсы» button when pendingImports non-empty.
 - [ ] **Step 4: PASS** + lint + `npx tsc -b` clean.
 - [ ] **Step 5: Commit** `git commit -m "feat(ui): cloud sync settings, history and rollback"`
 
