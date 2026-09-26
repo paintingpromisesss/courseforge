@@ -9,6 +9,7 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/paintingpromisesss/courseforge/internal/application/service"
 	"github.com/paintingpromisesss/courseforge/internal/domain"
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/git"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
 	"github.com/paintingpromisesss/courseforge/internal/mcp"
@@ -26,6 +27,8 @@ type Handler struct {
 	submissions   *service.SubmissionService
 	ai            *service.AIService
 	mcpConfigRepo *repo.MCPConfigRepository
+	gitAuth       *repo.GitAuthRepository
+	gitSvc        *git.Service
 	mcpServer       *mcp.Server
 	sseServer       *mcpserver.SSEServer
 	fallbackSession mcp.SessionManager
@@ -43,6 +46,8 @@ func New(
 	ss *service.SubmissionService,
 	aiService *service.AIService,
 	mcpConfigRepo *repo.MCPConfigRepository,
+	gitAuth *repo.GitAuthRepository,
+	gitSvc *git.Service,
 	mcpServer *mcp.Server,
 	upd *updater.Updater,
 ) *Handler {
@@ -65,6 +70,8 @@ func New(
 		submissions:   ss,
 		ai:            aiService,
 		mcpConfigRepo: mcpConfigRepo,
+		gitAuth:       gitAuth,
+		gitSvc:        gitSvc,
 		mcpServer:     mcpServer,
 		sseServer:     sseServer,
 		updater:       upd,

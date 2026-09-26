@@ -18,6 +18,7 @@ import (
 	"github.com/paintingpromisesss/courseforge/internal/application/service"
 	"github.com/paintingpromisesss/courseforge/internal/config"
 
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/git"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/parser/course"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
@@ -93,6 +94,14 @@ func Run(cfg *config.Config) error {
 
 	mcpRepo := repo.NewMCPConfigRepository(cfg.DataDir)
 
+	gitAuthRepo := repo.NewGitAuthRepository(cfg.DataDir)
+	gitSvc := git.NewService()
+	if a, err := gitAuthRepo.Load(context.Background()); err == nil && a != nil {
+		gitSvc.SetToken(a.Token)
+	} else if err != nil {
+		log.Printf("warning: load git auth: %v", err)
+	}
+
 	mcpProvider, err := mcp.NewCourseForgeProvider(cfg.CoursesDir, cfg.DataDir, pr, sr, r)
 	if err != nil {
 		log.Printf("warning: init mcp provider: %v", err)
@@ -124,7 +133,7 @@ func Run(cfg *config.Config) error {
 		_, _ = upd.Check(ctx, false)
 	}()
 
-	h := handlers.New(cfg.CoursesDir, cfg.DataDir, courses, catalogs, r, ps, ss, aiService, mcpRepo, mcpServer, upd)
+	h := handlers.New(cfg.CoursesDir, cfg.DataDir, courses, catalogs, r, ps, ss, aiService, mcpRepo, gitAuthRepo, gitSvc, mcpServer, upd)
 
 	router, err := api.NewRouter(h, api.RouterOptions{FrontendDir: cfg.FrontendDir, CoursesDir: cfg.CoursesDir, DataDir: cfg.DataDir})
 	if err != nil {

@@ -13,7 +13,7 @@ import (
 func TestVersionHandlers(t *testing.T) {
 	tempDir := t.TempDir()
 	u := updater.New("v1.0.0", tempDir)
-	h := New(filepath.Join(tempDir, "courses"), tempDir, nil, nil, nil, nil, nil, nil, nil, nil, u)
+	h := New(filepath.Join(tempDir, "courses"), tempDir, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, u)
 
 	// 1. GET /api/version
 	req := httptest.NewRequest(http.MethodGet, "/version", nil)

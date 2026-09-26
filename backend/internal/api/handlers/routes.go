@@ -50,6 +50,10 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/mcp/sse", h.handleMCPSSE)
 	r.Post("/mcp/message", h.handleMCPMessage)
 
+	r.Get("/git/auth", h.getGitAuth)
+	r.Patch("/git/auth", h.patchGitAuth)
+	r.Post("/git/auth/test", h.testGitAuth)
+
 	r.Get("/version", h.getVersion)
 	r.Post("/version/check", h.checkVersion)
 	r.Post("/version/update", h.updateVersion)
