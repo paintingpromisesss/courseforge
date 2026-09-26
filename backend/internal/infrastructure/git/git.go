@@ -24,6 +24,30 @@ type Error struct {
 
 func (e *Error) Error() string { return e.Stderr }
 
+// validateRef rejects empty and dash-prefixed values so an untrusted branch or
+// URL can never be parsed as a git flag (argv flag smuggling).
+func validateRef(v string) error {
+	if v == "" {
+		return errors.New("empty value")
+	}
+	if strings.HasPrefix(v, "-") {
+		return errors.New("value must not start with a dash")
+	}
+	return nil
+}
+
+// validateBranch rejects empty names, dash prefixes and anything containing a
+// ".." traversal sequence or an option-injection colon.
+func validateBranch(b string) error {
+	if err := validateRef(b); err != nil {
+		return errors.New("invalid branch name")
+	}
+	if strings.Contains(b, "..") || strings.ContainsAny(b, ":^~[ \\") {
+		return errors.New("invalid branch name")
+	}
+	return nil
+}
+
 // Commit is one line of git log output.
 type Commit struct {
 	Hash    string
@@ -87,12 +111,16 @@ func (s *Service) runCmd(ctx context.Context, dir string, timeout time.Duration,
 		"GIT_TERMINAL_PROMPT=0",
 		"GIT_AUTHOR_NAME=CourseForge", "GIT_AUTHOR_EMAIL=courseforge@local",
 		"GIT_COMMITTER_NAME=CourseForge", "GIT_COMMITTER_EMAIL=courseforge@local")
+	count := 1
+	env = append(env,
+		"GIT_CONFIG_KEY_0=protocol.ext.allow", "GIT_CONFIG_VALUE_0=never")
 	if s.token != "" {
+		count = 2
 		env = append(env,
-			"GIT_CONFIG_COUNT=1",
-			"GIT_CONFIG_KEY_0=http.https://github.com/.extraHeader",
-			"GIT_CONFIG_VALUE_0=Authorization: Bearer "+s.token)
+			"GIT_CONFIG_KEY_1=http.https://github.com/.extraHeader",
+			"GIT_CONFIG_VALUE_1=Authorization: Bearer "+s.token)
 	}
+	env = append(env, "GIT_CONFIG_COUNT="+strconv.Itoa(count))
 	cmd.Env = env
 
 	var stdout, stderr bytes.Buffer
@@ -112,8 +140,29 @@ func (s *Service) runCmd(ctx context.Context, dir string, timeout time.Duration,
 	return stdout.String(), nil
 }
 
+// validateURL rejects dash-prefixed URLs and the ext:: transport, which runs
+// arbitrary commands. Protocol pinning to https://github.com happens in the
+// handler layer; this stays transport-agnostic so local test remotes work.
+func validateURL(u string) error {
+	if err := validateRef(u); err != nil {
+		return errors.New("invalid repository url")
+	}
+	if strings.HasPrefix(strings.ToLower(u), "ext::") {
+		return errors.New("invalid repository url")
+	}
+	return nil
+}
+
 // Clone clones url into dir. branch may be "" for the remote default.
 func (s *Service) Clone(ctx context.Context, url, dir, branch string) error {
+	if err := validateURL(url); err != nil {
+		return err
+	}
+	if branch != "" {
+		if err := validateBranch(branch); err != nil {
+			return err
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := os.MkdirAll(filepath.Dir(dir), 0755); err != nil {
@@ -123,7 +172,7 @@ func (s *Service) Clone(ctx context.Context, url, dir, branch string) error {
 	if branch != "" {
 		args = append(args, "-b", branch)
 	}
-	args = append(args, url, dir)
+	args = append(args, "--", url, dir)
 	_, err := s.runCmd(ctx, filepath.Dir(dir), s.cloneTimeout, args...)
 	return err
 }
@@ -178,6 +227,9 @@ func (s *Service) HeadCommit(ctx context.Context, dir string) (string, error) {
 // CheckoutBranch fetches and hard-aligns dir onto origin/branch. Without force
 // it refuses when the working tree is dirty (uncommitted local edits).
 func (s *Service) CheckoutBranch(ctx context.Context, dir, branch string, force bool) error {
+	if err := validateBranch(branch); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, err := s.runCmd(ctx, dir, s.timeout, "fetch", "origin"); err != nil {
@@ -234,6 +286,12 @@ func (s *Service) dirtyLocked(ctx context.Context, dir string) (bool, error) {
 
 // Init creates a repo on branch with origin pointed at remoteURL.
 func (s *Service) Init(ctx context.Context, dir, remoteURL, branch string) error {
+	if err := validateURL(remoteURL); err != nil {
+		return err
+	}
+	if err := validateBranch(branch); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -242,7 +300,7 @@ func (s *Service) Init(ctx context.Context, dir, remoteURL, branch string) error
 	if _, err := s.runCmd(ctx, dir, s.timeout, "init", "-b", branch); err != nil {
 		return err
 	}
-	_, err := s.runCmd(ctx, dir, s.timeout, "remote", "add", "origin", remoteURL)
+	_, err := s.runCmd(ctx, dir, s.timeout, "remote", "add", "origin", "--", remoteURL)
 	return err
 }
 
@@ -266,6 +324,9 @@ func (s *Service) CommitAll(ctx context.Context, dir, message string) error {
 
 // Push pushes branch to origin. Never forces.
 func (s *Service) Push(ctx context.Context, dir, branch string) error {
+	if err := validateBranch(branch); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, err := s.runCmd(ctx, dir, s.timeout, "push", "origin", branch)
@@ -303,6 +364,9 @@ func (s *Service) Log(ctx context.Context, dir string, limit int) ([]Commit, err
 
 // CommitFiles lists the files touched by a commit (or ref like HEAD).
 func (s *Service) CommitFiles(ctx context.Context, dir, hash string) ([]string, error) {
+	if err := validateRef(hash); err != nil {
+		return nil, errors.New("invalid commit ref")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out, err := s.runCmd(ctx, dir, s.timeout, "show", "--name-only", "--format=", hash)
@@ -322,6 +386,9 @@ func (s *Service) CommitFiles(ctx context.Context, dir, hash string) ([]string, 
 // CheckoutPaths restores the working tree (all paths) to the state at hash,
 // used to source a rollback before re-committing.
 func (s *Service) CheckoutPaths(ctx context.Context, dir, hash string) error {
+	if err := validateRef(hash); err != nil {
+		return errors.New("invalid commit ref")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, err := s.runCmd(ctx, dir, s.timeout, "checkout", hash, "--", ".")

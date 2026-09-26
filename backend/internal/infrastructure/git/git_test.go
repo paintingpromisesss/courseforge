@@ -214,3 +214,35 @@ func TestCheckoutPathsRollback(t *testing.T) {
 		t.Fatalf("rollback content = %q", data)
 	}
 }
+
+func TestValidateRejectsInjection(t *testing.T) {
+	gitAvailable(t)
+	s := NewService()
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "x")
+
+	// Dash-prefixed URL must be rejected before git ever sees it as a flag.
+	if err := s.Clone(ctx, "--upload-pack=touch pwned", dir, ""); err == nil {
+		t.Fatal("Clone accepted a dash-prefixed url")
+	}
+	// ext:: transport runs arbitrary commands; must be rejected.
+	if err := s.Clone(ctx, "ext::sh -c 'touch pwned'", dir, ""); err == nil {
+		t.Fatal("Clone accepted an ext:: url")
+	}
+	// Dash-prefixed and traversal branch names must be rejected.
+	if err := s.Clone(ctx, "https://github.com/o/r", dir, "--depth=1"); err == nil {
+		t.Fatal("Clone accepted a dash-prefixed branch")
+	}
+	if err := s.CheckoutBranch(ctx, dir, "origin/../x", true); err == nil {
+		t.Fatal("CheckoutBranch accepted a traversal branch")
+	}
+	if err := s.Push(ctx, dir, "-f"); err == nil {
+		t.Fatal("Push accepted a dash-prefixed branch")
+	}
+	if _, err := s.CommitFiles(ctx, dir, "--output=/tmp/x"); err == nil {
+		t.Fatal("CommitFiles accepted a dash-prefixed ref")
+	}
+	if err := s.Init(ctx, dir, "ext::sh -c 'touch pwned'", "main"); err == nil {
+		t.Fatal("Init accepted an ext:: remote")
+	}
+}
