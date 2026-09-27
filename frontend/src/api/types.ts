@@ -207,6 +207,19 @@ export interface GitImportResp {
   commit: string;
 }
 
+export interface GitImportBatchItem {
+  url: string;
+  ok: boolean;
+  slug?: string;
+  branch?: string;
+  commit?: string;
+  error?: string;
+}
+
+export interface GitImportBatchResp {
+  results: GitImportBatchItem[];
+}
+
 export interface CourseSourceDTO {
   repo: string;
   branch: string;

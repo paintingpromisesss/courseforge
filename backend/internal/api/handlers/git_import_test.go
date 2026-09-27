@@ -237,3 +237,116 @@ func TestGitImportAuthFailureClassification(t *testing.T) {
 		}
 	}
 }
+
+func TestGitImportBatch(t *testing.T) {
+	gitAvailable(t)
+
+	repoA := makeCourseRepo(t) // valid course, slug go-interview
+
+	// repo with a broken manifest: slug missing → import fails, clone succeeds
+	repoB := t.TempDir()
+	os.WriteFile(filepath.Join(repoB, "course.yaml"), []byte("title: no slug\n"), 0644)
+	gitRun(t, repoB, "init", "-b", "main")
+	gitRun(t, repoB, "add", "-A")
+	gitRun(t, repoB, "commit", "-m", "init")
+
+	// repo without any manifest → structure error
+	repoC := t.TempDir()
+	os.WriteFile(filepath.Join(repoC, "README.md"), []byte("x"), 0644)
+	gitRun(t, repoC, "init", "-b", "main")
+	gitRun(t, repoC, "add", "-A")
+	gitRun(t, repoC, "commit", "-m", "init")
+
+	h := newGitTestHandler(t)
+	body := `{"urls":[` +
+		jsonStr(repoA) + `,` +
+		jsonStr(repoB) + `,` +
+		jsonStr(repoC) + `,` +
+		jsonStr("https://gitlab.com/x/y") + `]}`
+	w := postGitImportBatch(t, h, body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("batch status = %d: %s", w.Code, w.Body)
+	}
+	var resp dto.GitImportBatchResp
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Results) != 4 {
+		t.Fatalf("results = %+v", resp.Results)
+	}
+
+	byURL := map[string]dto.GitImportBatchItem{}
+	for _, it := range resp.Results {
+		byURL[it.URL] = it
+	}
+
+	// valid repo imported
+	okA := byURL[repoA]
+	if !okA.OK || okA.Slug != "go-interview" || okA.Error != "" {
+		t.Fatalf("repoA result = %+v", okA)
+	}
+	// no slug → import-level error, not clone error
+	badB := byURL[repoB]
+	if badB.OK || badB.Slug != "" || badB.Error == "" {
+		t.Fatalf("repoB result = %+v", badB)
+	}
+	// no manifest → structure error
+	badC := byURL[repoC]
+	if badC.OK || !strings.Contains(badC.Error, "manifest") && !strings.Contains(badC.Error, "course.yaml") {
+		t.Fatalf("repoC result = %+v", badC)
+	}
+	// invalid URL → validation error
+	badD := byURL["https://gitlab.com/x/y"]
+	if badD.OK || badD.Error == "" {
+		t.Fatalf("repoD result = %+v", badD)
+	}
+
+	// only the valid course is on disk and registered
+	if h.getCourseBySlug("go-interview") == nil {
+		t.Fatal("valid course not imported")
+	}
+	sources, _ := h.sources.All(context.Background())
+	if sources["go-interview"].Repo != repoA {
+		t.Fatalf("source not recorded: %+v", sources)
+	}
+}
+
+func TestGitImportBatchEmptyList(t *testing.T) {
+	h := newGitTestHandler(t)
+	w := postGitImportBatch(t, h, `{"urls":[]}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("empty batch status = %d", w.Code)
+	}
+}
+
+func TestGitImportBatchSkipsDuplicatesInList(t *testing.T) {
+	gitAvailable(t)
+	repo := makeCourseRepo(t)
+	h := newGitTestHandler(t)
+	body := `{"urls":[` + jsonStr(repo) + `,` + jsonStr(repo) + `]}`
+	w := postGitImportBatch(t, h, body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("batch status = %d: %s", w.Code, w.Body)
+	}
+	var resp dto.GitImportBatchResp
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	imported, dups := 0, 0
+	for _, it := range resp.Results {
+		if it.OK {
+			imported++
+		} else {
+			dups++
+		}
+	}
+	if imported != 1 || dups != 1 {
+		t.Fatalf("imported=%d dups=%d: %+v", imported, dups, resp.Results)
+	}
+}
+
+func postGitImportBatch(t *testing.T, h *Handler, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/git/import/batch", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	h.gitImportBatch(w, req)
+	return w
+}

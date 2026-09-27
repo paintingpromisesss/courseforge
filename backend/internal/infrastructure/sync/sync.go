@@ -601,6 +601,9 @@ func copyTree(src, dst string) error {
 
 // replaceDir swaps dst for a copy of src: copy to <dst>.synctmp, drop the old
 // dir, rename. The rename window is tiny and the tmp copy is already verified.
+// On Windows an external scanner can hold the old dir right after RemoveAll,
+// making the rename fail with "in use" — retry briefly, then fall back to
+// copying the tmp tree over dst directly.
 func replaceDir(src, dst string) error {
 	tmp := dst + ".synctmp"
 	if err := os.RemoveAll(tmp); err != nil {
@@ -612,8 +615,16 @@ func replaceDir(src, dst string) error {
 	if err := os.RemoveAll(dst); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, dst); err != nil {
+	for i := 0; i < 10; i++ {
+		if err := os.Rename(tmp, dst); err == nil {
+			return nil
+		} else {
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	// rename window lost: copy content over, best effort
+	if err := copyTree(tmp, dst); err != nil {
 		return err
 	}
-	return nil
+	return os.RemoveAll(tmp)
 }

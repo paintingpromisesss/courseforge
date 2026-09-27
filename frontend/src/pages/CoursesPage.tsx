@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { api } from '../api/client';
+import type { GitImportBatchItem } from '../api/types';
 import { CardDoneMark, CardProgressStrip, CourseDoneBadge } from '../components/ui/ProgressBar';
 import { isAuthError } from '../lib/gitHelpers';
 import { useSettings } from '../context/SettingsContext';
@@ -105,6 +106,7 @@ export function CoursesPage() {
   const [purge, setPurge] = useState(false);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [batchResults, setBatchResults] = useState<GitImportBatchItem[] | null>(null);
   const [lastVisit] = useState(readLastVisit);
 
   const { data: catalogs, isLoading: catsLoading } = useQuery({
@@ -126,12 +128,16 @@ export function CoursesPage() {
     },
   });
 
-  const importMut = useMutation({
-    mutationFn: (body: { url: string; branch?: string }) => api.gitImport(body),
-    onSuccess: () => {
-      setImporting(false);
-      qc.invalidateQueries({ queryKey: ['courses'] });
-      qc.invalidateQueries({ queryKey: ['catalogs'] });
+  const importBatchMut = useMutation({
+    mutationFn: (urls: string[]) => api.gitImportBatch(urls),
+    onSuccess: (resp) => {
+      setBatchResults(resp.results);
+      const anyOk = resp.results.some((r) => r.ok);
+      if (anyOk) {
+        qc.invalidateQueries({ queryKey: ['courses'] });
+        qc.invalidateQueries({ queryKey: ['catalogs'] });
+      }
+      // dialog stays open: the per-URL report replaces the input
     },
   });
 
@@ -388,10 +394,15 @@ export function CoursesPage() {
         )}
         {importing && (
           <ImportFromGitHubDialog
-            pending={importMut.isPending}
-            error={importMut.error as Error | null}
-            onClose={() => { setImporting(false); importMut.reset(); }}
-            onSubmit={(url, branch) => importMut.mutate({ url, branch: branch || undefined })}
+            pending={importBatchMut.isPending}
+            error={importBatchMut.error as Error | null}
+            results={batchResults}
+            onClose={() => {
+              setImporting(false);
+              importBatchMut.reset();
+              setBatchResults(null);
+            }}
+            onSubmit={(urls) => importBatchMut.mutate(urls)}
             onOpenSettings={() => { setImporting(false); openSettings('github'); }}
           />
         )}
@@ -545,17 +556,87 @@ function ConfirmDeleteDialog({ catalogCount, courseCount, purge, onTogglePurge, 
   );
 }
 
-function ImportFromGitHubDialog({ pending, error, onClose, onSubmit, onOpenSettings }: {
+function ImportFromGitHubDialog({ pending, error, results, onClose, onSubmit, onOpenSettings }: {
   pending: boolean;
   error: Error | null;
+  results: GitImportBatchItem[] | null;
   onClose: () => void;
-  onSubmit: (url: string, branch: string) => void;
+  onSubmit: (urls: string[]) => void;
   onOpenSettings: () => void;
 }) {
-  const [url, setUrl] = useState('');
-  const [branch, setBranch] = useState('');
-  const canSubmit = url.trim().length > 0 && !pending;
-  const authHint = error && isAuthError(error.message);
+  const [urls, setUrls] = useState('');
+  const parsed = urls
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const canSubmit = parsed.length > 0 && !pending;
+  const anyAuthHint = (results ?? []).some((r) => !r.ok && isAuthError(r.error ?? ''));
+
+  const lastRepo = (item: GitImportBatchItem): string => {
+    const m = item.url.match(/github\.com\/([^/]+\/[^/]+)/i);
+    return m ? m[1] : item.url;
+  };
+
+  if (results && results.length > 0) {
+    const okCount = results.filter((r) => r.ok).length;
+    return (
+      <motion.div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      >
+        <motion.div
+          className="w-full max-w-md rounded-xl bg-bg-2 border border-bdr p-6 shadow-xl max-h-[80vh] overflow-y-auto"
+          initial={{ opacity: 0, scale: 0.96, y: 8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.96, y: 8 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h2 className="text-lg font-semibold text-tx-1 mb-1">Импорт из GitHub</h2>
+          <p className="text-xs text-tx-3 mb-4">
+            Импортировано: {okCount} из {results.length}
+          </p>
+          {anyAuthHint && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="mb-3 text-brand hover:underline text-xs font-medium cursor-pointer"
+            >
+              Часть репозиториев приватные — добавьте токен в Настройки → GitHub
+            </button>
+          )}
+          <div className="space-y-1.5">
+            {results.map((r) => (
+              <div
+                key={r.url}
+                className={
+                  'rounded-lg border p-2.5 text-xs ' +
+                  (r.ok
+                    ? 'border-ok/30 bg-ok/10 text-ok'
+                    : 'border-err/30 bg-err/10 text-err')
+                }
+              >
+                <div className="font-mono truncate" title={r.url}>{lastRepo(r)}</div>
+                <div className="text-[11px] opacity-80">
+                  {r.ok ? `импортирован: ${r.slug}` : r.error}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end mt-4">
+            <button
+              onClick={onClose}
+              className="px-4 h-9 rounded-lg bg-brand text-white text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer"
+            >
+              Готово
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -572,26 +653,25 @@ function ImportFromGitHubDialog({ pending, error, onClose, onSubmit, onOpenSetti
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold text-tx-1 mb-4">Импорт из GitHub</h2>
-        <input
+        <h2 className="text-lg font-semibold text-tx-1 mb-1">Импорт из GitHub</h2>
+        <p className="text-xs text-tx-3 mb-4">
+          По одной ссылке на строку. Клонируется основная ветка — переключить ветку можно после импорта на странице курса.
+        </p>
+        <textarea
           autoFocus
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && canSubmit && onSubmit(url.trim(), branch.trim())}
-          placeholder="https://github.com/user/repo"
-          className="w-full mb-3 px-3 py-2 rounded-lg bg-bg-1 border border-bdr text-tx-1 text-sm placeholder:text-tx-3 focus:border-brand focus:outline-none font-mono"
+          value={urls}
+          onChange={(e) => setUrls(e.target.value)}
+          rows={Math.min(8, Math.max(3, parsed.length + 1))}
+          placeholder={'https://github.com/user/repo1\nhttps://github.com/user/repo2'}
+          className="w-full mb-1 px-3 py-2 rounded-lg bg-bg-1 border border-bdr text-tx-1 text-sm placeholder:text-tx-3 focus:border-brand focus:outline-none font-mono resize-y"
         />
-        <input
-          value={branch}
-          onChange={(e) => setBranch(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && canSubmit && onSubmit(url.trim(), branch.trim())}
-          placeholder="Ветка (необязательно, по умолчанию — основная)"
-          className="w-full mb-1 px-3 py-2 rounded-lg bg-bg-1 border border-bdr text-tx-1 text-sm placeholder:text-tx-3 focus:border-brand focus:outline-none font-mono"
-        />
+        <p className="text-[11px] text-tx-3 mb-2">
+          {parsed.length > 0 ? `Ссылок: ${parsed.length}` : ''}
+        </p>
         {error && (
           <div className="mt-3 text-err text-xs">
             <p>{error.message}</p>
-            {authHint && (
+            {error && isAuthError(error.message) && (
               <button
                 type="button"
                 onClick={onOpenSettings}
@@ -610,11 +690,11 @@ function ImportFromGitHubDialog({ pending, error, onClose, onSubmit, onOpenSetti
             Отмена
           </button>
           <button
-            onClick={() => onSubmit(url.trim(), branch.trim())}
+            onClick={() => onSubmit(parsed)}
             disabled={!canSubmit}
             className="px-4 h-9 rounded-lg bg-brand text-white text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity"
           >
-            {pending ? 'Импорт...' : 'Импортировать'}
+            {pending ? `Импорт... (${parsed.length})` : 'Импортировать'}
           </button>
         </div>
       </motion.div>

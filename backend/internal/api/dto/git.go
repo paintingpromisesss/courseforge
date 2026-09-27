@@ -33,6 +33,29 @@ type GitImportResp struct {
 	Commit string `json:"commit"`
 }
 
+// GitImportBatchReq is a list of repository URLs to import in one call.
+// Branch is intentionally not per-URL: the default branch is cloned and the
+// user switches branches in the course UI afterwards.
+type GitImportBatchReq struct {
+	URLs []string `json:"urls"`
+}
+
+// GitImportBatchItem is the per-URL outcome of a batch import.
+type GitImportBatchItem struct {
+	URL    string `json:"url"`
+	OK     bool   `json:"ok"`
+	Slug   string `json:"slug,omitempty"`
+	Branch string `json:"branch,omitempty"`
+	Commit string `json:"commit,omitempty"`
+	Error  string `json:"error,omitempty"`
+}
+
+// GitImportBatchResp reports every URL's outcome; one bad URL never stops
+// the rest of the batch.
+type GitImportBatchResp struct {
+	Results []GitImportBatchItem `json:"results"`
+}
+
 // CourseSourceDTO describes where an imported course came from.
 type CourseSourceDTO struct {
 	Repo       string `json:"repo"`
