@@ -5,11 +5,12 @@ interface Props {
   title: string;
   message: string;
   confirmLabel?: string;
+  cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export function ConfirmDialog({ open, title, message, confirmLabel = 'Подтвердить', onConfirm, onCancel }: Props) {
+export function ConfirmDialog({ open, title, message, confirmLabel = 'Подтвердить', cancelLabel = 'Отмена', onConfirm, onCancel }: Props) {
   return (
     <AnimatePresence>
       {open && (
@@ -34,7 +35,7 @@ export function ConfirmDialog({ open, title, message, confirmLabel = 'Подтв
                 onClick={onCancel}
                 className="px-4 py-2 rounded text-sm text-tx-2 hover:text-tx-1 hover:bg-bg-4 transition-colors"
               >
-                Отмена
+                {cancelLabel}
               </button>
               <button
                 onClick={onConfirm}

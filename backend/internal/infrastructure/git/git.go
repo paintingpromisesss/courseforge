@@ -348,6 +348,40 @@ func (s *Service) SetLocalConfig(ctx context.Context, dir, key, value string) er
 	return err
 }
 
+// Stash pushes working-tree changes onto the stash stack. A clean tree is a
+// no-op, not an error. Named so a conflicting pop can be traced back.
+func (s *Service) Stash(ctx context.Context, dir, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	dirty, err := s.dirtyLocked(ctx, dir)
+	if err != nil {
+		return err
+	}
+	if !dirty {
+		return nil
+	}
+	_, err = s.runCmd(ctx, dir, s.timeout, "stash", "push", "-m", name)
+	return err
+}
+
+// StashPop applies and drops the newest stash entry. On a merge conflict the
+// apply fails AND git keeps the entry — data is never lost; the caller resets
+// the tree and reports that the changes are recoverable from the stash.
+func (s *Service) StashPop(ctx context.Context, dir string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.runCmd(ctx, dir, s.timeout, "stash", "pop")
+	return err
+}
+
+// StashList returns `git stash list` output ("" when empty).
+func (s *Service) StashList(ctx context.Context, dir string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out, err := s.runCmd(ctx, dir, s.timeout, "stash", "list")
+	return strings.TrimSpace(out), err
+}
+
 // Push pushes branch to origin. Never forces.
 func (s *Service) Push(ctx context.Context, dir, branch string) error {
 	if err := validateBranch(branch); err != nil {

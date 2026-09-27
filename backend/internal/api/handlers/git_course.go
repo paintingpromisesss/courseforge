@@ -3,9 +3,11 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/paintingpromisesss/courseforge/internal/api/dto"
@@ -168,7 +170,11 @@ func (h *Handler) postGitCheckout(w http.ResponseWriter, r *http.Request) {
 	h.finishGitOp(r, w, dirSlug, dir, src, branch)
 }
 
-// @Summary Pull the latest commits of the current branch (fast-forward only)
+// @Summary Pull the latest commits of the current branch
+// @Description mode=merge (default for dirty trees when requested): local edits are
+// @Description stashed, the branch fast-forwards, edits are reapplied; a conflicting
+// @Description reapply leaves the edits in the stash and returns 409. mode=force (or
+// @Description force=true): discard local edits. Without mode and dirty: 409.
 // @Tags git
 // @Accept json
 // @Produce json
@@ -199,7 +205,8 @@ func (h *Handler) postGitPull(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "failed to read HEAD: "+err.Error())
 		return
 	}
-	if !req.Force {
+	mergeMode := req.Mode == "merge"
+	if !req.Force && !mergeMode {
 		dirty, err := h.gitSvc.Dirty(r.Context(), dir)
 		if err != nil {
 			h.writeError(w, http.StatusInternalServerError, "failed to read status: "+err.Error())
@@ -209,16 +216,44 @@ func (h *Handler) postGitPull(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusConflict, "working tree has uncommitted changes; commit or discard them first")
 			return
 		}
-	} else {
+	} else if req.Force {
 		if err := h.gitSvc.ResetHard(r.Context(), dir, "HEAD"); err != nil {
 			h.writeError(w, http.StatusInternalServerError, "failed to discard local changes: "+err.Error())
 			return
 		}
 	}
+
+	stashName := fmt.Sprintf("cf-pull-%s", time.Now().UTC().Format("20060102-150405"))
+	stashed := false
+	if mergeMode {
+		if err := h.gitSvc.Stash(r.Context(), dir, stashName); err != nil {
+			h.writeError(w, http.StatusInternalServerError, "failed to stash local changes: "+err.Error())
+			return
+		}
+		// Stash on a clean tree is a no-op — a pop would then fail on an
+		// empty stack; remember whether we actually stashed something.
+		if l, _ := h.gitSvc.StashList(r.Context(), dir); strings.Contains(l, stashName) {
+			stashed = true
+		}
+	}
+
 	if err := h.gitSvc.PullFF(r.Context(), dir); err != nil {
 		h.writeGitError(w, err)
 		return
 	}
+
+	if stashed {
+		if err := h.gitSvc.StashPop(r.Context(), dir); err != nil {
+			// Conflict: git kept the stash entry — local edits are recoverable.
+			// Align the course on the freshly pulled upstream state.
+			_ = h.gitSvc.ResetHard(r.Context(), dir, "HEAD")
+			_ = h.revalidateGitContent(dirSlug)
+			h.writeError(w, http.StatusConflict,
+				"local changes conflict with the update: kept in git stash \""+stashName+"\", the course is on the latest version")
+			return
+		}
+	}
+
 	if err := h.revalidateGitContent(dirSlug); err != nil {
 		_ = h.gitSvc.ResetHard(r.Context(), dir, prevCommit)
 		_ = h.revalidateGitContent(dirSlug)

@@ -151,6 +151,92 @@ func TestTokenPassedViaEnvOnly(t *testing.T) {
 	}
 }
 
+func TestStashStashPopRoundTrip(t *testing.T) {
+	gitAvailable(t)
+	remote := makeRemote(t)
+	s := NewService()
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "clone")
+	if err := s.Clone(ctx, remote, dir, ""); err != nil {
+		t.Fatal(err)
+	}
+	// remote is a local path clone: disable autocrlf so content round-trips
+	if err := s.SetLocalConfig(ctx, dir, "core.autocrlf", "false"); err != nil {
+		t.Fatal(err)
+	}
+
+	// local edit → stash → tree clean again
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("local edit"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	dirty, _ := s.Dirty(ctx, dir)
+	if !dirty {
+		t.Fatal("edit not visible as dirty")
+	}
+	if err := s.Stash(ctx, dir, "cf-test"); err != nil {
+		t.Fatal(err)
+	}
+	dirty, _ = s.Dirty(ctx, dir)
+	if dirty {
+		t.Fatal("stash left the tree dirty")
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "a.txt"))
+	if string(data) != "one" {
+		t.Fatalf("stash did not restore base content: %q", data)
+	}
+
+	// pop → local edit back
+	if err := s.StashPop(ctx, dir); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(filepath.Join(dir, "a.txt"))
+	if string(data) != "local edit" {
+		t.Fatalf("stash pop did not restore the edit: %q", data)
+	}
+}
+
+func TestStashPopConflictKeepsStash(t *testing.T) {
+	gitAvailable(t)
+	remote := makeRemote(t)
+	s := NewService()
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "clone")
+	if err := s.Clone(ctx, remote, dir, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetLocalConfig(ctx, dir, "core.autocrlf", "false"); err != nil {
+		t.Fatal(err)
+	}
+
+	// stash a local edit to a.txt
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("mine"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Stash(ctx, dir, "cf-test"); err != nil {
+		t.Fatal(err)
+	}
+	// upstream changes the same line
+	if err := os.WriteFile(filepath.Join(remote, "a.txt"), []byte("theirs"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CommitAll(ctx, remote, "upstream change"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PullFF(ctx, dir); err != nil {
+		t.Fatal(err)
+	}
+
+	// conflicting pop must be an error, and the stash entry must survive
+	err := s.StashPop(ctx, dir)
+	if err == nil {
+		t.Fatal("conflicting stash pop must fail")
+	}
+	out, _ := s.StashList(ctx, dir)
+	if !strings.Contains(out, "stash@{0}") {
+		t.Fatalf("stash entry lost after conflict: %q", out)
+	}
+}
+
 func TestAvailable(t *testing.T) {
 	gitAvailable(t)
 	if !NewService().Available() {

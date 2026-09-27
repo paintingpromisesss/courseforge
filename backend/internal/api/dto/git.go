@@ -78,8 +78,11 @@ type GitStatusResp struct {
 	Dirty  bool   `json:"dirty"`
 }
 
-// GitCheckoutReq switches an imported course to another branch.
+// GitCheckoutReq switches an imported course to another branch; for pull it
+// also carries the update mode ("" = refuse on dirty, "merge" = stash+ff+pop,
+// force = discard local edits).
 type GitCheckoutReq struct {
 	Branch string `json:"branch"`
 	Force  bool   `json:"force"`
+	Mode   string `json:"mode,omitempty"`
 }

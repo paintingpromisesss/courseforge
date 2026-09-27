@@ -217,6 +217,75 @@ func TestGitPull(t *testing.T) {
 	}
 }
 
+func TestGitPullMerge(t *testing.T) {
+	h, repoDir := setupImportedCourse(t)
+	courseDir := filepath.Join(h.coursesDir, "go-interview")
+	theory := filepath.Join(courseDir, "week-1", "slices", "01-intro", "theory.md")
+	plain := filepath.Join(courseDir, "week-1", "track.yaml")
+
+	// local edits in two files; upstream will change one of them
+	if err := os.WriteFile(theory, []byte("my intro"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(plain, []byte("slug: week-1\ntitle: My Week\ntopics:\n  - slices\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// upstream updates the course (theory.md untouched by them → merges fine)
+	addBranch(t, repoDir, "main", courseYAML("Go Merged", "go-interview"))
+
+	w := doGitReq(t, h, http.MethodPost, "/courses/go-interview/git/pull", `{"mode":"merge"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("merge pull status = %d: %s", w.Code, w.Body)
+	}
+	// upstream title applied
+	if c := h.getCourseBySlug("go-interview"); c.Title != "Go Merged" {
+		t.Fatalf("title after merge pull = %q", c.Title)
+	}
+	// local edits preserved
+	data, _ := os.ReadFile(theory)
+	if string(data) != "my intro" {
+		t.Fatalf("theory.md lost after merge pull: %q", data)
+	}
+	data, _ = os.ReadFile(plain)
+	if !strings.Contains(string(data), "My Week") {
+		t.Fatalf("track.yaml lost after merge pull: %q", data)
+	}
+}
+
+func TestGitPullMergeConflictKeepsStash(t *testing.T) {
+	h, repoDir := setupImportedCourse(t)
+	courseDir := filepath.Join(h.coursesDir, "go-interview")
+	yamlPath := filepath.Join(courseDir, "course.yaml")
+
+	// local edit to the same line upstream will change
+	if err := os.WriteFile(yamlPath, []byte(courseYAML("My Local Title", "go-interview")), 0644); err != nil {
+		t.Fatal(err)
+	}
+	addBranch(t, repoDir, "main", courseYAML("Go Upstream", "go-interview"))
+
+	w := doGitReq(t, h, http.MethodPost, "/courses/go-interview/git/pull", `{"mode":"merge"}`)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("conflicting merge pull status = %d: %s", w.Code, w.Body)
+	}
+	// course rolled to upstream content and still parses
+	data, _ := os.ReadFile(yamlPath)
+	if !strings.Contains(string(data), "Go Upstream") {
+		t.Fatalf("course.yaml not on upstream after conflict: %q", data)
+	}
+	if h.getCourseBySlug("go-interview") == nil {
+		t.Fatal("course lost after conflicting merge pull")
+	}
+	// local edits recoverable from the stash
+	stash, err := h.gitSvc.StashList(context.Background(), courseDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stash, "cf-pull") {
+		t.Fatalf("stash entry missing: %q", stash)
+	}
+}
+
 func TestGitEndpointsRejectNonGitCourse(t *testing.T) {
 	h := newGitTestHandler(t)
 

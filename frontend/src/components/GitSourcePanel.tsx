@@ -11,6 +11,7 @@ export function GitSourcePanel({ courseSlug }: { courseSlug: string }) {
   const qc = useQueryClient();
   const [target, setTarget] = useState('');
   const [confirmForce, setConfirmForce] = useState(false);
+  const [confirmPullMode, setConfirmPullMode] = useState<'merge' | 'discard' | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const { data: status } = useQuery({
@@ -40,7 +41,7 @@ export function GitSourcePanel({ courseSlug }: { courseSlug: string }) {
   });
 
   const pullMut = useMutation({
-    mutationFn: () => api.gitPull(courseSlug),
+    mutationFn: (mode: 'merge' | 'force') => api.gitPull(courseSlug, mode),
     onSuccess: () => { setErr(null); refresh(); },
     onError: (e) => setErr(e instanceof Error ? e.message : String(e)),
   });
@@ -55,6 +56,11 @@ export function GitSourcePanel({ courseSlug }: { courseSlug: string }) {
     if (!target || target === current) return;
     if (status.dirty) setConfirmForce(true);
     else checkoutMut.mutate(false);
+  };
+
+  const onPull = () => {
+    if (status.dirty) setConfirmPullMode('merge');
+    else pullMut.mutate('merge');
   };
 
   return (
@@ -92,9 +98,9 @@ export function GitSourcePanel({ courseSlug }: { courseSlug: string }) {
 
       <button
         type="button"
-        onClick={() => pullMut.mutate()}
+        onClick={onPull}
         disabled={busy}
-        title="Загрузить последние изменения (fast-forward)"
+        title="Загрузить последние изменения"
         className="px-2.5 py-1 rounded-md border border-bdr bg-bg-3 text-tx-2 hover:text-tx-1 hover:bg-bg-4 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
       >
         {pullMut.isPending ? '...' : 'Обновить'}
@@ -115,6 +121,77 @@ export function GitSourcePanel({ courseSlug }: { courseSlug: string }) {
         onConfirm={() => checkoutMut.mutate(true)}
         onCancel={() => setConfirmForce(false)}
       />
+
+      <PullModeDialog
+        open={confirmPullMode !== null}
+        pending={pullMut.isPending}
+        onClose={() => setConfirmPullMode(null)}
+        onMode={(m) => { setConfirmPullMode(null); pullMut.mutate(m); }}
+      />
+    </div>
+  );
+}
+
+// PullModeDialog: three-way choice when the working tree is dirty — merge
+// (stash + ff + reapply), discard (hard reset), or cancel. Deliberately its
+// own dialog: ConfirmDialog maps cancel→an action, which would be dangerous
+// here (a backdrop click would trigger the destructive option).
+function PullModeDialog({ open, pending, onClose, onMode }: {
+  open: boolean;
+  pending: boolean;
+  onClose: () => void;
+  onMode: (mode: 'merge' | 'force') => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-bg-3 border border-bdr rounded-xl p-6 w-full max-w-sm mx-4 shadow-xl space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-tx-1 font-semibold text-base">Обновить курс?</h3>
+        <p className="text-tx-2 text-sm">
+          Есть локальные изменения файлов курса. Обновление можно подтянуть двумя способами:
+        </p>
+        <div className="space-y-2">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => onMode('merge')}
+            className="w-full text-left px-4 py-3 rounded-lg bg-brand/10 border border-brand/30 hover:bg-brand/20 transition-colors cursor-pointer disabled:opacity-40"
+          >
+            <div className="text-sm font-medium text-tx-1">Объединить</div>
+            <div className="text-[11px] text-tx-3 mt-0.5">
+              Изменения будут спрятаны, обновление применено, изменения вернутся поверх.
+              При конфликте они сохранятся в git-stash — ничего не потеряется.
+            </div>
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => onMode('force')}
+            className="w-full text-left px-4 py-3 rounded-lg bg-err/10 border border-err/30 hover:bg-err/20 transition-colors cursor-pointer disabled:opacity-40"
+          >
+            <div className="text-sm font-medium text-err">Затереть и обновить</div>
+            <div className="text-[11px] text-tx-3 mt-0.5">
+              Локальные изменения будут отброшены полностью, курс станет точно как в репозитории.
+            </div>
+          </button>
+        </div>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            className="px-4 py-2 rounded-lg text-sm text-tx-2 hover:text-tx-1 transition-colors cursor-pointer"
+          >
+            Отмена
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

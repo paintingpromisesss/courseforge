@@ -216,7 +216,7 @@ export const api = {
   gitImportBatch: (urls: string[]) => post<GitImportBatchResp>('/git/import/batch', { urls }),
   gitBranches: (slug: string) => get<GitBranchesResp>(`/courses/${slug}/git/branches`),
   gitCheckout: (slug: string, branch: string, force = false) => post<GitImportResp>(`/courses/${slug}/git/checkout`, { branch, force }),
-  gitPull: (slug: string) => post<GitImportResp>(`/courses/${slug}/git/pull`, {}),
+  gitPull: (slug: string, mode?: 'merge' | 'force') => post<GitImportResp>(`/courses/${slug}/git/pull`, mode ? { mode } : {}),
   gitStatus: (slug: string) => get<GitStatusResp>(`/courses/${slug}/git/status`),
 
   syncConfig: () => get<SyncConfigResp>('/sync/config'),
