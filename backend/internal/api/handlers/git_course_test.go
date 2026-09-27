@@ -286,6 +286,31 @@ func TestGitPullMergeConflictKeepsStash(t *testing.T) {
 	}
 }
 
+func TestGitPullModeForceDiscards(t *testing.T) {
+	h, repoDir := setupImportedCourse(t)
+	courseDir := filepath.Join(h.coursesDir, "go-interview")
+	theory := filepath.Join(courseDir, "week-1", "slices", "01-intro", "theory.md")
+
+	// local edit + upstream update
+	if err := os.WriteFile(theory, []byte("local edit"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	addBranch(t, repoDir, "main", courseYAML("Go Force", "go-interview"))
+
+	// mode:force (the UI's «Затереть») must discard the edit, not 409
+	w := doGitReq(t, h, http.MethodPost, "/courses/go-interview/git/pull", `{"mode":"force"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("mode=force pull status = %d: %s", w.Code, w.Body)
+	}
+	data, _ := os.ReadFile(theory)
+	if got := strings.TrimSpace(string(data)); got != "# Intro" {
+		t.Fatalf("theory.md after mode=force = %q", data)
+	}
+	if c := h.getCourseBySlug("go-interview"); c.Title != "Go Force" {
+		t.Fatalf("title after mode=force = %q", c.Title)
+	}
+}
+
 func TestGitEndpointsRejectNonGitCourse(t *testing.T) {
 	h := newGitTestHandler(t)
 

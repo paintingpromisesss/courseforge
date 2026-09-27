@@ -207,7 +207,8 @@ func (h *Handler) postGitPull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mergeMode := req.Mode == "merge"
-	if !req.Force && !mergeMode {
+	forceMode := req.Force || req.Mode == "force"
+	if !forceMode && !mergeMode {
 		dirty, err := h.gitSvc.Dirty(r.Context(), dir)
 		if err != nil {
 			h.writeError(w, http.StatusInternalServerError, "failed to read status: "+err.Error())
@@ -217,7 +218,7 @@ func (h *Handler) postGitPull(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusConflict, "working tree has uncommitted changes; commit or discard them first")
 			return
 		}
-	} else if req.Force {
+	} else if forceMode {
 		if err := h.gitSvc.ResetHard(r.Context(), dir, "HEAD"); err != nil {
 			h.writeError(w, http.StatusInternalServerError, "failed to discard local changes: "+err.Error())
 			return
