@@ -189,6 +189,43 @@ export interface VersionResponse {
   status: UpdateStatus;
 }
 
+export interface GitAuthStatus {
+  configured: boolean;
+  username: string;
+  token_masked: string;
+}
+
+export interface GitAuthTestResp {
+  ok: boolean;
+  login?: string;
+  error?: string;
+}
+
+export interface GitImportResp {
+  slug: string;
+  branch: string;
+  commit: string;
+}
+
+export interface CourseSourceDTO {
+  repo: string;
+  branch: string;
+  commit: string;
+  imported_at: string;
+}
+
+export interface GitBranchesResp {
+  branches: string[];
+  current: string;
+  source: CourseSourceDTO | null;
+}
+
+export interface GitStatusResp {
+  branch: string;
+  commit: string;
+  dirty: boolean;
+}
+
 
 
 

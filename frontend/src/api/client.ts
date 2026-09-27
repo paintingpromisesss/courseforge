@@ -1,4 +1,4 @@
-import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission, AIConfig, AIMessage, AIModelItem, MCPConfig, MCPStatusResponse, MCPActiveTask, VersionResponse, VersionCheckResult, UpdateStatus } from './types';
+import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission, AIConfig, AIMessage, AIModelItem, MCPConfig, MCPStatusResponse, MCPActiveTask, VersionResponse, VersionCheckResult, UpdateStatus, GitAuthStatus, GitAuthTestResp, GitImportResp, GitBranchesResp, GitStatusResp } from './types';
 
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api';
@@ -208,6 +208,15 @@ export const api = {
   mcpSetActiveTask: (body: { course_slug: string; task_slug: string; language?: string }) =>
     put('/mcp/active-task', body),
   mcpClearActiveTask: () => del('/mcp/active-task'),
+
+  gitAuth: () => get<GitAuthStatus>('/git/auth'),
+  gitSaveAuth: (body: { token?: string; username?: string }) => patch<GitAuthStatus>('/git/auth', body),
+  gitTestAuth: () => post<GitAuthTestResp>('/git/auth/test', {}),
+  gitImport: (body: { url: string; branch?: string }) => post<GitImportResp>('/git/import', body),
+  gitBranches: (slug: string) => get<GitBranchesResp>(`/courses/${slug}/git/branches`),
+  gitCheckout: (slug: string, branch: string, force = false) => post<GitImportResp>(`/courses/${slug}/git/checkout`, { branch, force }),
+  gitPull: (slug: string) => post<GitImportResp>(`/courses/${slug}/git/pull`, {}),
+  gitStatus: (slug: string) => get<GitStatusResp>(`/courses/${slug}/git/status`),
 
   getVersion: () => get<VersionResponse>('/version'),
   checkUpdate: () => post<VersionCheckResult>('/version/check', {}),

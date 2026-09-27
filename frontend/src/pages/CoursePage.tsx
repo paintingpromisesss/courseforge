@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { api } from '../api/client';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { GitSourcePanel } from '../components/GitSourcePanel';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { DifficultyBadge } from '../components/ui/DifficultyBadge';
 import type { TrackItem, CourseDetail } from '../api/types';
@@ -881,7 +882,9 @@ export function CoursePage() {
   };
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
+      <GitSourcePanel courseSlug={courseSlug!} />
+      <div className="flex flex-1 min-h-0 overflow-hidden">
       <motion.div
         className="shrink-0 h-full"
         initial={{ x: -28, opacity: 0 }}
@@ -925,6 +928,7 @@ export function CoursePage() {
           </motion.div>
         </AnimatePresence>
       </main>
+      </div>
     </div>
   );
 }
