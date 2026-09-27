@@ -64,6 +64,36 @@ type GitAttachReq struct {
 	Slug string `json:"slug"`
 }
 
+// GitCommitItem is one entry of the course repo history.
+type GitCommitItem struct {
+	Hash    string `json:"hash"`
+	Subject string `json:"subject"`
+	Author  string `json:"author"`
+	Time    string `json:"time"` // RFC3339
+}
+
+// GitLogResp is the commit history of the current branch (newest first).
+type GitLogResp struct {
+	Commits []GitCommitItem `json:"commits"`
+}
+
+// GitCommitFilesResp lists files touched by one commit.
+type GitCommitFilesResp struct {
+	Files []string `json:"files"`
+}
+
+// GitDiffFile is one changed file in the working tree.
+type GitDiffFile struct {
+	Path   string   `json:"path"`   // repo-relative, forward slashes
+	Status string   `json:"status"` // M / D / A / R
+	Hunks  []string `json:"hunks"`  // unified-diff hunks starting with @@
+}
+
+// GitDiffResp is the working-tree diff against HEAD.
+type GitDiffResp struct {
+	Files []GitDiffFile `json:"files"`
+}
+
 // CourseSourceDTO describes where an imported course came from.
 type CourseSourceDTO struct {
 	Repo       string `json:"repo"`

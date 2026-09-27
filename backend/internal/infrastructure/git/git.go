@@ -382,6 +382,80 @@ func (s *Service) StashList(ctx context.Context, dir string) (string, error) {
 	return strings.TrimSpace(out), err
 }
 
+// WorkingTreeDiff returns `git diff` (unstaged + staged, tracked files) of
+// the working tree against HEAD, plus `--porcelain` status entries including
+// untracked files. Patches are raw unified diff text; the UI renders them.
+func (s *Service) WorkingTreeDiff(ctx context.Context, dir string) ([]DiffFile, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	status, err := s.runCmd(ctx, dir, s.timeout, "status", "--porcelain", "-uall")
+	if err != nil {
+		return nil, err
+	}
+	var files []DiffFile
+	for _, line := range strings.Split(status, "\n") {
+		if len(line) < 4 {
+			continue
+		}
+		code := strings.TrimSpace(line[:2])
+		path := strings.Trim(strings.TrimSpace(line[3:]), `"`)
+		st := "M"
+		switch {
+		case strings.Contains(code, "D"):
+			st = "D"
+		case code == "??":
+			st = "A" // untracked = new file for the user
+		case strings.Contains(code, "A"):
+			st = "A"
+		case strings.Contains(code, "R"):
+			st = "R"
+		}
+		df := DiffFile{Path: path, Status: st}
+		// patch only for tracked modifications; untracked have no diff hunks
+		if st == "M" || st == "D" {
+			out, err := s.runCmd(ctx, dir, s.timeout, "diff", "--", path)
+			if err == nil {
+				df.Hunks = splitHunks(out)
+			}
+		}
+		files = append(files, df)
+	}
+	return files, nil
+}
+
+// DiffFile is one changed file with its unified-diff hunks.
+type DiffFile struct {
+	Path   string
+	Status string // M / D / A / R
+	Hunks  []string
+}
+
+// splitHunks splits a unified diff into per-hunk strings, dropping the
+// file-header lines (---/+++) so each hunk starts with @@.
+func splitHunks(diff string) []string {
+	var hunks []string
+	var cur []string
+	flush := func() {
+		if len(cur) > 0 {
+			hunks = append(hunks, strings.Join(cur, "\n"))
+			cur = nil
+		}
+	}
+	for _, line := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(line, "@@"):
+			flush()
+			cur = append(cur, line)
+		case strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++"):
+			continue // header noise
+		case len(cur) > 0:
+			cur = append(cur, line)
+		}
+	}
+	flush()
+	return hunks
+}
+
 // Push pushes branch to origin. Never forces.
 func (s *Service) Push(ctx context.Context, dir, branch string) error {
 	if err := validateBranch(branch); err != nil {

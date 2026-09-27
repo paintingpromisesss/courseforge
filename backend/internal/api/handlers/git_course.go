@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -264,6 +266,116 @@ func (h *Handler) postGitPull(w http.ResponseWriter, r *http.Request) {
 	}
 	branch, _ := h.gitSvc.CurrentBranch(r.Context(), dir)
 	h.finishGitOp(r, w, dirSlug, dir, src, branch)
+}
+
+// @Summary Commit history of the course repository
+// @Tags git
+// @Produce json
+// @Param courseSlug path string true "Course or catalog slug"
+// @Param limit query int false "Max commits (default 30)"
+// @Success 200 {object} dto.GitLogResp
+// @Failure 404 {object} map[string]string
+// @Failure 503 {object} map[string]string
+// @Router /courses/{courseSlug}/git/log [get]
+func (h *Handler) getGitLog(w http.ResponseWriter, r *http.Request) {
+	if h.gitUnavailable(w) {
+		return
+	}
+	_, dir, _, ok := h.gitCourseTarget(r)
+	if !ok {
+		h.writeError(w, http.StatusNotFound, "course is not managed by git")
+		return
+	}
+	limit := 30
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 500 {
+			limit = v
+		}
+	}
+	commits, err := h.gitSvc.Log(r.Context(), dir, limit)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "failed to read history: "+err.Error())
+		return
+	}
+	items := make([]dto.GitCommitItem, 0, len(commits))
+	for _, c := range commits {
+		items = append(items, dto.GitCommitItem{
+			Hash:    c.Hash,
+			Subject: c.Subject,
+			Author:  c.Author,
+			Time:    c.Time.UTC().Format(time.RFC3339),
+		})
+	}
+	h.writeJSON(w, http.StatusOK, dto.GitLogResp{Commits: items})
+}
+
+// @Summary Files touched by one commit
+// @Tags git
+// @Produce json
+// @Param courseSlug path string true "Course or catalog slug"
+// @Param commit path string true "Commit hash (hex)"
+// @Success 200 {object} dto.GitCommitFilesResp
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Router /courses/{courseSlug}/git/log/{commit} [get]
+func (h *Handler) getGitCommitFiles(w http.ResponseWriter, r *http.Request) {
+	if h.gitUnavailable(w) {
+		return
+	}
+	_, dir, _, ok := h.gitCourseTarget(r)
+	if !ok {
+		h.writeError(w, http.StatusNotFound, "course is not managed by git")
+		return
+	}
+	commit := chi.URLParam(r, "commit")
+	if len(commit) < 4 || len(commit) > 64 {
+		h.writeError(w, http.StatusBadRequest, "invalid commit hash")
+		return
+	}
+	if _, err := hex.DecodeString(commit); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid commit hash")
+		return
+	}
+	files, err := h.gitSvc.CommitFiles(r.Context(), dir, commit)
+	if err != nil {
+		h.writeError(w, http.StatusNotFound, "commit not found")
+		return
+	}
+	if files == nil {
+		files = []string{}
+	}
+	h.writeJSON(w, http.StatusOK, dto.GitCommitFilesResp{Files: files})
+}
+
+// @Summary Working-tree diff of the course against HEAD
+// @Description Local edits relative to the repository version: per-file status
+// @Description (M/D/A/R) and unified-diff hunks. Empty files list = clean tree.
+// @Tags git
+// @Produce json
+// @Param courseSlug path string true "Course or catalog slug"
+// @Success 200 {object} dto.GitDiffResp
+// @Failure 404 {object} map[string]string
+// @Failure 503 {object} map[string]string
+// @Router /courses/{courseSlug}/git/diff [get]
+func (h *Handler) getGitDiff(w http.ResponseWriter, r *http.Request) {
+	if h.gitUnavailable(w) {
+		return
+	}
+	_, dir, _, ok := h.gitCourseTarget(r)
+	if !ok {
+		h.writeError(w, http.StatusNotFound, "course is not managed by git")
+		return
+	}
+	files, err := h.gitSvc.WorkingTreeDiff(r.Context(), dir)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "failed to read diff: "+err.Error())
+		return
+	}
+	out := make([]dto.GitDiffFile, 0, len(files))
+	for _, f := range files {
+		out = append(out, dto.GitDiffFile{Path: f.Path, Status: f.Status, Hunks: f.Hunks})
+	}
+	h.writeJSON(w, http.StatusOK, dto.GitDiffResp{Files: out})
 }
 
 // @Summary Bind an existing local course to a GitHub repository

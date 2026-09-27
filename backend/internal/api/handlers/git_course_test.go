@@ -23,6 +23,9 @@ func doGitReq(t *testing.T, h *Handler, method, path, body string) *httptest.Res
 	r.Post("/courses/{courseSlug}/git/checkout", h.postGitCheckout)
 	r.Post("/courses/{courseSlug}/git/pull", h.postGitPull)
 	r.Get("/courses/{courseSlug}/git/status", h.getGitStatus)
+	r.Get("/courses/{courseSlug}/git/log", h.getGitLog)
+	r.Get("/courses/{courseSlug}/git/log/{commit}", h.getGitCommitFiles)
+	r.Get("/courses/{courseSlug}/git/diff", h.getGitDiff)
 
 	var rd *strings.Reader
 	if body == "" {
@@ -308,6 +311,93 @@ func TestGitPullModeForceDiscards(t *testing.T) {
 	}
 	if c := h.getCourseBySlug("go-interview"); c.Title != "Go Force" {
 		t.Fatalf("title after mode=force = %q", c.Title)
+	}
+}
+
+func TestGitLogAndDiff(t *testing.T) {
+	h, repoDir := setupImportedCourse(t)
+	courseDir := filepath.Join(h.coursesDir, "go-interview")
+	theory := filepath.Join(courseDir, "week-1", "slices", "01-intro", "theory.md")
+
+	// two upstream commits + one local edit
+	addBranch(t, repoDir, "main", courseYAML("Go v2", "go-interview"))
+	addBranch(t, repoDir, "main", courseYAML("Go v3", "go-interview"))
+	// bring the upstream commits into the local clone
+	if w := doGitReq(t, h, http.MethodPost, "/courses/go-interview/git/pull", `{"mode":"force"}`); w.Code != http.StatusOK {
+		t.Fatalf("pull before log = %d: %s", w.Code, w.Body)
+	}
+	if err := os.WriteFile(theory, []byte("my local intro"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// log
+	w := doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/log?limit=5", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("log status = %d: %s", w.Code, w.Body)
+	}
+	var log dto.GitLogResp
+	if err := json.Unmarshal(w.Body.Bytes(), &log); err != nil {
+		t.Fatal(err)
+	}
+	// at least the imported commit; subjects non-empty, newest first
+	if len(log.Commits) < 1 || log.Commits[0].Subject == "" {
+		t.Fatalf("log = %+v", log.Commits)
+	}
+	found := false
+	for _, c := range log.Commits {
+		if strings.Contains(c.Subject, "main") || c.Subject == "init" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("log does not contain upstream commit: %+v", log.Commits)
+	}
+
+	// commit files
+	hash := log.Commits[0].Hash
+	w = doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/log/"+hash, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("commit files status = %d: %s", w.Code, w.Body)
+	}
+	var files dto.GitCommitFilesResp
+	if err := json.Unmarshal(w.Body.Bytes(), &files); err != nil {
+		t.Fatal(err)
+	}
+	if len(files.Files) == 0 {
+		t.Fatalf("no files in commit %s", hash)
+	}
+
+	// diff of the working tree
+	w = doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/diff", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("diff status = %d: %s", w.Code, w.Body)
+	}
+	var diff dto.GitDiffResp
+	if err := json.Unmarshal(w.Body.Bytes(), &diff); err != nil {
+		t.Fatal(err)
+	}
+	if len(diff.Files) != 1 {
+		t.Fatalf("diff files = %+v", diff.Files)
+	}
+	f := diff.Files[0]
+	if f.Path != "week-1/slices/01-intro/theory.md" || f.Status != "M" {
+		t.Fatalf("diff file = %+v", f)
+	}
+	if len(f.Hunks) == 0 || !strings.Contains(f.Hunks[0], "my local intro") {
+		t.Fatalf("diff hunks = %+v", f.Hunks)
+	}
+}
+
+func TestGitDiffCleanTree(t *testing.T) {
+	h, _ := setupImportedCourse(t)
+	w := doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/diff", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("diff status = %d: %s", w.Code, w.Body)
+	}
+	var diff dto.GitDiffResp
+	json.Unmarshal(w.Body.Bytes(), &diff)
+	if len(diff.Files) != 0 {
+		t.Fatalf("clean tree diff = %+v", diff.Files)
 	}
 }
 

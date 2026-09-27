@@ -54,6 +54,9 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Post("/courses/{courseSlug}/git/checkout", h.postGitCheckout)
 	r.Post("/courses/{courseSlug}/git/pull", h.postGitPull)
 	r.Get("/courses/{courseSlug}/git/status", h.getGitStatus)
+	r.Get("/courses/{courseSlug}/git/log", h.getGitLog)
+	r.Get("/courses/{courseSlug}/git/log/{commit}", h.getGitCommitFiles)
+	r.Get("/courses/{courseSlug}/git/diff", h.getGitDiff)
 
 	r.Get("/git/auth", h.getGitAuth)
 	r.Patch("/git/auth", h.patchGitAuth)
