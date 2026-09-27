@@ -334,7 +334,7 @@ func (h *Handler) postSyncRollback(w http.ResponseWriter, r *http.Request) {
 // @Description For every pending import (recorded in cloud sources but missing locally) clones the source repo into courses dir and re-registers it.
 // @Tags sync
 // @Produce json
-// @Success 200 {object} object {restored=[]string}
+// @Success 200 {object} dto.SyncRestoreImportsResp
 // @Router /sync/restore-imports [post]
 func (h *Handler) postSyncRestoreImports(w http.ResponseWriter, r *http.Request) {
 	if !h.engineOrWriteErr(w) {
@@ -376,7 +376,7 @@ func (h *Handler) postSyncRestoreImports(w http.ResponseWriter, r *http.Request)
 	if restored == nil {
 		restored = []string{}
 	}
-	h.writeJSON(w, http.StatusOK, map[string][]string{"restored": restored})
+	h.writeJSON(w, http.StatusOK, dto.SyncRestoreImportsResp{Restored: restored})
 }
 
 func isHexCommit(s string) bool {

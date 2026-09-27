@@ -54,3 +54,8 @@ type SyncCommitFilesResp struct {
 type RollbackReq struct {
 	Commit string `json:"commit"`
 }
+
+// SyncRestoreImportsResp lists course dirs re-cloned from their own remotes.
+type SyncRestoreImportsResp struct {
+	Restored []string `json:"restored"`
+}

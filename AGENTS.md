@@ -98,12 +98,31 @@ data/                          # runtime state (gitignored: SQLite, runners.json
 
 | What | Where |
 |---|---|
-| Course progress | `progress.json` alongside course files |
+| Course progress | `data-dir/progress/<courseDir>/progress.json` (migrated from course dirs on startup) |
 | Submissions | SQLite (`--data-dir/courseforge_submissions.db` or `courseforge.db`) |
 | Runner config | `data/runners.json` |
 | Postgres cluster | `data/postgres/` (auto-created on first run) |
 | Active MCP session | `mcp_session.json` inside `--data-dir` |
 | MCP server settings | `mcp_server_config.json` inside `--data-dir` |
+| GitHub PAT | `data-dir/git_auth.json` (never returned raw — masked in API) |
+| Git-import sources | `data-dir/course_sources.json` (courseDir → repo/branch/commit) |
+| Sync config | `data-dir/sync_config.json` |
+| Sync mirror repo | `data-dir/sync/repo/` (local mirror of the cloud vault) |
+
+## GitHub import & cloud sync
+
+API groups: `/api/git/*` (PAT auth, import, per-course branch/checkout/pull/status) and
+ `/api/sync/*` (config, push/pull, status, history, rollback, restore-imports). See
+ `backend/internal/api/handlers/git_*.go` and `sync.go`.
+
+- Git wrapper: `internal/infrastructure/git` — token injected via `GIT_CONFIG_*` env only
+  (never in argv or `.git/config`).
+- Cloud sync is snapshot-based: mirror repo at `data-dir/sync/repo`, push = wipe + copy
+  local state + commit + push (retry ×3 on race, never force-push), pull = copy back and
+  never deletes local courses. Git-imported courses are excluded from the vault (they have
+  their own remotes) but recorded in the vault's `sources.json`; `POST /api/sync/restore-imports`
+  re-clones them.
+- Triggers: on-progress (debounced 30 s), interval (minutes), startup pull — wired in `di.go`.
 
 ## MCP integration
 
