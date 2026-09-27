@@ -1,4 +1,4 @@
-import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission, AIConfig, AIMessage, AIModelItem, MCPConfig, MCPStatusResponse, MCPActiveTask, VersionResponse, VersionCheckResult, UpdateStatus, GitAuthStatus, GitAuthTestResp, GitImportResp, GitBranchesResp, GitStatusResp } from './types';
+import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission, AIConfig, AIMessage, AIModelItem, MCPConfig, MCPStatusResponse, MCPActiveTask, VersionResponse, VersionCheckResult, UpdateStatus, GitAuthStatus, GitAuthTestResp, GitImportResp, GitBranchesResp, GitStatusResp, SyncConfigResp, PatchSyncConfigReq, SyncStatusResp, SyncHistoryItem, SyncCommitFilesResp, SyncRestoreImportsResp } from './types';
 
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api';
@@ -217,6 +217,16 @@ export const api = {
   gitCheckout: (slug: string, branch: string, force = false) => post<GitImportResp>(`/courses/${slug}/git/checkout`, { branch, force }),
   gitPull: (slug: string) => post<GitImportResp>(`/courses/${slug}/git/pull`, {}),
   gitStatus: (slug: string) => get<GitStatusResp>(`/courses/${slug}/git/status`),
+
+  syncConfig: () => get<SyncConfigResp>('/sync/config'),
+  syncSaveConfig: (body: PatchSyncConfigReq) => patch<SyncConfigResp>('/sync/config', body),
+  syncPush: () => post<SyncStatusResp>('/sync/push', {}),
+  syncPull: () => post<SyncStatusResp>('/sync/pull', {}),
+  syncStatus: () => get<SyncStatusResp>('/sync/status'),
+  syncHistory: (limit = 50) => get<SyncHistoryItem[]>(`/sync/history?limit=${limit}`),
+  syncCommitFiles: (commit: string) => get<SyncCommitFilesResp>(`/sync/history/${commit}`),
+  syncRollback: (commit: string) => post<SyncStatusResp>('/sync/rollback', { commit }),
+  syncRestoreImports: () => post<SyncRestoreImportsResp>('/sync/restore-imports', {}),
 
   getVersion: () => get<VersionResponse>('/version'),
   checkUpdate: () => post<VersionCheckResult>('/version/check', {}),

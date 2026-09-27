@@ -226,6 +226,54 @@ export interface GitStatusResp {
   dirty: boolean;
 }
 
+export interface SyncTriggers {
+  on_progress: boolean;
+  interval_min: number;
+  on_startup_pull: boolean;
+}
+
+export interface SyncConfigResp {
+  remote_url: string;
+  branch: string;
+  triggers: SyncTriggers;
+  last_sync?: string;
+  enabled: boolean;
+  exclude?: string[];
+}
+
+export interface PatchSyncConfigReq {
+  remote_url?: string;
+  branch?: string;
+  triggers?: SyncTriggers;
+  enabled?: boolean;
+  exclude?: string[];
+}
+
+export interface SyncStatusResp {
+  configured: boolean;
+  enabled: boolean;
+  syncing: boolean;
+  last_sync: string;
+  branch: string;
+  commit: string;
+  pending_imports: string[];
+}
+
+export interface SyncHistoryItem {
+  commit: string;
+  author: string;
+  subject: string;
+  time: string;
+}
+
+export interface SyncCommitFilesResp {
+  files: string[];
+}
+
+export interface SyncRestoreImportsResp {
+  restored: string[];
+}
+
 
 
 

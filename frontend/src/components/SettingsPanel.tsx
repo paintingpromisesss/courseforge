@@ -11,12 +11,13 @@ import { splitArgs, joinArgs } from '../lib/shlex';
 const AISettingsSection = lazy(() => import('./AISettingsSection').then((m) => ({ default: m.AISettingsSection })));
 const MCPSettingsSection = lazy(() => import('./MCPSettingsSection').then((m) => ({ default: m.MCPSettingsSection })));
 const GitHubSettingsSection = lazy(() => import('./GitHubSettingsSection').then((m) => ({ default: m.GitHubSettingsSection })));
+const CloudSettingsSection = lazy(() => import('./CloudSettingsSection').then((m) => ({ default: m.CloudSettingsSection })));
 const AboutSection = lazy(() => import('./AboutSection').then((m) => ({ default: m.AboutSection })));
 
 const preloadSettingsTab = (tabId: SettingsTab) => {
   if (tabId === 'ai') import('./AISettingsSection');
   else if (tabId === 'mcp') import('./MCPSettingsSection');
-  else if (tabId === 'github') import('./GitHubSettingsSection');
+  else if (tabId === 'github') { import('./GitHubSettingsSection'); import('./CloudSettingsSection'); }
   else if (tabId === 'about') import('./AboutSection');
 };
 
@@ -1230,7 +1231,12 @@ export function SettingsPanel({ open, onClose }: { open: boolean; onClose: () =>
                   {activeTab === 'runners' && <RunnersSection />}
                   {activeTab === 'ai' && <AISettingsSection />}
                   {activeTab === 'mcp' && <MCPSettingsSection />}
-                  {activeTab === 'github' && <GitHubSettingsSection />}
+                  {activeTab === 'github' && (
+                    <div className="space-y-8">
+                      <GitHubSettingsSection />
+                      <CloudSettingsSection />
+                    </div>
+                  )}
                   {activeTab === 'about' && <AboutSection />}
                 </Suspense>
               </div>
