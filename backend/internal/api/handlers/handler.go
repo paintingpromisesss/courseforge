@@ -10,8 +10,10 @@ import (
 	"github.com/paintingpromisesss/courseforge/internal/application/service"
 	"github.com/paintingpromisesss/courseforge/internal/domain"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/git"
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/parser/course"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
+	csync "github.com/paintingpromisesss/courseforge/internal/infrastructure/sync"
 	"github.com/paintingpromisesss/courseforge/internal/mcp"
 	"github.com/paintingpromisesss/courseforge/internal/updater"
 )
@@ -34,6 +36,29 @@ type Handler struct {
 	sseServer       *mcpserver.SSEServer
 	fallbackSession mcp.SessionManager
 	updater         *updater.Updater
+	syncEngine      *csync.Engine
+}
+
+// SetSyncEngine injects the cloud-sync engine after construction (DI builds
+// it after the Handler because engine.OnReload points back at the Handler).
+func (h *Handler) SetSyncEngine(e *csync.Engine) {
+	e.OnReload = h.reloadCourses
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.syncEngine = e
+}
+
+// reloadCourses re-parses everything from disk, replacing the in-memory maps.
+// Called after a cloud-sync pull changed course files.
+func (h *Handler) reloadCourses() {
+	courses, catalogs, err := course.LoadAll(h.coursesDir)
+	if err != nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.courses = courses
+	h.catalogs = catalogs
 }
 
 

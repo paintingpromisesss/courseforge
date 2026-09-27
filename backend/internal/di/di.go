@@ -22,6 +22,7 @@ import (
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/parser/course"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
+	csync "github.com/paintingpromisesss/courseforge/internal/infrastructure/sync"
 	"github.com/paintingpromisesss/courseforge/internal/mcp"
 	"github.com/paintingpromisesss/courseforge/internal/tray"
 	"github.com/paintingpromisesss/courseforge/internal/updater"
@@ -102,6 +103,8 @@ func Run(cfg *config.Config) error {
 		log.Printf("warning: load git auth: %v", err)
 	}
 	sourcesRepo := repo.NewCourseSourcesRepository(cfg.DataDir)
+	syncCfgRepo := repo.NewSyncConfigRepository(cfg.DataDir)
+	syncEngine := csync.NewEngine(gitSvc, syncCfgRepo, sourcesRepo, cfg.CoursesDir, cfg.DataDir)
 
 	mcpProvider, err := mcp.NewCourseForgeProvider(cfg.CoursesDir, cfg.DataDir, pr, sr, r)
 	if err != nil {
@@ -135,6 +138,7 @@ func Run(cfg *config.Config) error {
 	}()
 
 	h := handlers.New(cfg.CoursesDir, cfg.DataDir, courses, catalogs, r, ps, ss, aiService, mcpRepo, gitAuthRepo, gitSvc, sourcesRepo, mcpServer, upd)
+	h.SetSyncEngine(syncEngine)
 
 	router, err := api.NewRouter(h, api.RouterOptions{FrontendDir: cfg.FrontendDir, CoursesDir: cfg.CoursesDir, DataDir: cfg.DataDir})
 	if err != nil {
