@@ -26,14 +26,23 @@ func gitAvailable(t *testing.T) {
 
 func gitRun(t *testing.T, dir string, args ...string) {
 	t.Helper()
+	gitRunCapture(t, dir, args...)
+}
+
+// gitRunCapture runs git and returns its combined output, failing the test
+// on a non-zero exit.
+func gitRunCapture(t *testing.T, dir string, args ...string) string {
+	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
 		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t",
 		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, err := cmd.CombinedOutput()
+	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
+	return string(out)
 }
 
 // newGitTestHandler builds a Handler with only the dependencies git import needs.

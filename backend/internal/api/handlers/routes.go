@@ -60,6 +60,16 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Post("/git/auth/test", h.testGitAuth)
 	r.Post("/git/import", h.gitImport)
 
+	r.Get("/sync/config", h.getSyncConfig)
+	r.Patch("/sync/config", h.patchSyncConfig)
+	r.Post("/sync/push", h.postSyncPush)
+	r.Post("/sync/pull", h.postSyncPull)
+	r.Get("/sync/status", h.getSyncStatus)
+	r.Get("/sync/history", h.getSyncHistory)
+	r.Get("/sync/history/{commit}", h.getSyncCommitFiles)
+	r.Post("/sync/rollback", h.postSyncRollback)
+	r.Post("/sync/restore-imports", h.postSyncRestoreImports)
+
 	r.Get("/version", h.getVersion)
 	r.Post("/version/check", h.checkVersion)
 	r.Post("/version/update", h.updateVersion)

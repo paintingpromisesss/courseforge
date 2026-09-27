@@ -337,6 +337,17 @@ func (s *Service) CommitAll(ctx context.Context, dir, message string) error {
 	return err
 }
 
+// SetLocalConfig writes a repo-local config value (e.g. core.autocrlf).
+func (s *Service) SetLocalConfig(ctx context.Context, dir, key, value string) error {
+	if err := validateRef(key); err != nil {
+		return errors.New("invalid config key")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.runCmd(ctx, dir, s.timeout, "config", key, value)
+	return err
+}
+
 // Push pushes branch to origin. Never forces.
 func (s *Service) Push(ctx context.Context, dir, branch string) error {
 	if err := validateBranch(branch); err != nil {

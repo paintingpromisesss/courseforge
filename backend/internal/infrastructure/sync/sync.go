@@ -83,6 +83,42 @@ func (e *Engine) loadConfig(ctx context.Context) (*repo.SyncConfig, error) {
 	return cfg, nil
 }
 
+// LoadConfig is the exported read used by handlers (nil = not configured).
+func (e *Engine) LoadConfig(ctx context.Context) (*repo.SyncConfig, error) {
+	return e.cfgRepo.Load(ctx)
+}
+
+// SaveConfig is the exported write used by handlers.
+func (e *Engine) SaveConfig(ctx context.Context, cfg *repo.SyncConfig) error {
+	return e.cfgRepo.Save(ctx, cfg)
+}
+
+// ResetMirror wipes the mirror repo (config change: new remote or branch).
+func (e *Engine) ResetMirror() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return os.RemoveAll(e.mirrorDir)
+}
+
+// Busy reports whether a push/pull/rollback is in flight.
+func (e *Engine) Busy() bool { return e.busy.Load() }
+
+// History returns up to limit sync commits (nil when no mirror yet).
+func (e *Engine) History(ctx context.Context, limit int) ([]git.Commit, error) {
+	if _, err := os.Stat(filepath.Join(e.mirrorDir, ".git")); err != nil {
+		return nil, nil
+	}
+	return e.git.Log(ctx, e.mirrorDir, limit)
+}
+
+// CommitFiles lists files touched by a mirror commit.
+func (e *Engine) CommitFiles(ctx context.Context, hash string) ([]string, error) {
+	if _, err := os.Stat(filepath.Join(e.mirrorDir, ".git")); err != nil {
+		return nil, nil
+	}
+	return e.git.CommitFiles(ctx, e.mirrorDir, hash)
+}
+
 // ensureMirror creates {dataDir}/sync/repo on first use.
 func (e *Engine) ensureMirror(ctx context.Context, cfg *repo.SyncConfig) error {
 	if _, err := os.Stat(filepath.Join(e.mirrorDir, ".git")); err == nil {
@@ -91,7 +127,12 @@ func (e *Engine) ensureMirror(ctx context.Context, cfg *repo.SyncConfig) error {
 	if err := os.MkdirAll(e.mirrorDir, 0755); err != nil {
 		return err
 	}
-	return e.git.Init(ctx, e.mirrorDir, cfg.RemoteURL, cfg.Branch)
+	if err := e.git.Init(ctx, e.mirrorDir, cfg.RemoteURL, cfg.Branch); err != nil {
+		return err
+	}
+	// Snapshot content must round-trip byte-exact: a global core.autocrlf
+	// (typical on Windows) would rewrite every file on checkout.
+	return e.git.SetLocalConfig(ctx, e.mirrorDir, "core.autocrlf", "false")
 }
 
 // Push snapshots local state into the mirror and pushes it. On rejection it
@@ -210,6 +251,19 @@ func (e *Engine) Pull(ctx context.Context) error {
 	if err := e.git.CheckoutBranch(ctx, e.mirrorDir, cfg.Branch, true); err != nil {
 		return fmt.Errorf("align mirror to origin: %w", err)
 	}
+	if err := e.applyMirror(ctx, cfg); err != nil {
+		return err
+	}
+	if e.OnReload != nil {
+		e.OnReload()
+	}
+	cfg.LastSync = time.Now().UTC().Format(time.RFC3339)
+	return e.cfgRepo.Save(ctx, cfg)
+}
+
+// applyMirror copies the current mirror working tree back into coursesDir and
+// progressDir, then merges cloud sources. Pull and Rollback share it.
+func (e *Engine) applyMirror(ctx context.Context, cfg *repo.SyncConfig) error {
 
 	sources, err := e.sources.All(ctx)
 	if err != nil {
@@ -247,11 +301,7 @@ func (e *Engine) Pull(ctx context.Context) error {
 	if err := e.mergeSources(ctx); err != nil {
 		return err
 	}
-	if e.OnReload != nil {
-		e.OnReload()
-	}
-	cfg.LastSync = time.Now().UTC().Format(time.RFC3339)
-	return e.cfgRepo.Save(ctx, cfg)
+	return nil
 }
 
 // mergeSources records cloud source entries that are missing locally.
@@ -307,6 +357,61 @@ func (e *Engine) Status(ctx context.Context) (*Status, error) {
 		}
 	}
 	return st, nil
+}
+
+// Rollback restores the local state to the given mirror commit: the commit's
+// tree is checked out in the mirror, copied back like Pull, committed and
+// pushed — history keeps the intermediate commits.
+func (e *Engine) Rollback(ctx context.Context, commit string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.busy.Store(true)
+	defer e.busy.Store(false)
+
+	cfg, err := e.loadConfig(ctx)
+	if err != nil {
+		return err
+	}
+	if err := e.ensureMirror(ctx, cfg); err != nil {
+		return fmt.Errorf("init sync mirror: %w", err)
+	}
+	_ = e.git.Fetch(ctx, e.mirrorDir)
+	if err := e.git.CheckoutPaths(ctx, e.mirrorDir, commit); err != nil {
+		return fmt.Errorf("unknown sync commit: %w", err)
+	}
+	if err := e.applyMirror(ctx, cfg); err != nil {
+		return err
+	}
+	if err := e.git.CommitAll(ctx, e.mirrorDir, fmt.Sprintf("rollback to %s", shortCommit(commit))); err != nil {
+		return fmt.Errorf("commit rollback: %w", err)
+	}
+	hostname, _ := os.Hostname()
+	var lastErr error
+	for attempt := 0; attempt < pushAttempts; attempt++ {
+		if err := e.git.Push(ctx, e.mirrorDir, cfg.Branch); err != nil {
+			lastErr = err
+			if berr := e.git.CheckoutBranch(ctx, e.mirrorDir, cfg.Branch, true); berr == nil {
+				// realigned after a race; replay the rollback content on top
+				if cerr := e.git.CheckoutPaths(ctx, e.mirrorDir, commit); cerr != nil {
+					return fmt.Errorf("replay rollback: %w", cerr)
+				}
+				if cerr := e.git.CommitAll(ctx, e.mirrorDir, fmt.Sprintf("rollback to %s (%s)", shortCommit(commit), hostname)); cerr != nil {
+					return fmt.Errorf("commit rollback replay: %w", cerr)
+				}
+			}
+			continue
+		}
+		cfg.LastSync = time.Now().UTC().Format(time.RFC3339)
+		return e.cfgRepo.Save(ctx, cfg)
+	}
+	return fmt.Errorf("remote changed, retry later: %w", lastErr)
+}
+
+func shortCommit(hash string) string {
+	if len(hash) > 7 {
+		return hash[:7]
+	}
+	return hash
 }
 
 // isImported reports whether a top-level courses dir is git-imported. Source
