@@ -140,6 +140,23 @@ func Run(cfg *config.Config) error {
 	h := handlers.New(cfg.CoursesDir, cfg.DataDir, courses, catalogs, r, ps, ss, aiService, mcpRepo, gitAuthRepo, gitSvc, sourcesRepo, mcpServer, upd)
 	h.SetSyncEngine(syncEngine)
 
+	// Sync triggers: on-progress debounce, interval ticker, startup pull.
+	ps.SetOnChange(syncEngine.NotifyProgress)
+	syncCtx, syncCancel := context.WithCancel(context.Background())
+	defer syncCancel()
+	if syncCfg, err := syncCfgRepo.Load(context.Background()); err == nil && syncCfg != nil {
+		syncEngine.SetTriggers(syncCfg)
+		syncEngine.Start(syncCtx)
+		if syncCfg.Enabled && syncCfg.Triggers.OnStartupPull {
+			go func() {
+				if err := syncEngine.Pull(context.Background()); err != nil {
+					log.Printf("sync: startup pull: %v", err)
+				}
+			}()
+		}
+	}
+	defer syncEngine.Stop()
+
 	router, err := api.NewRouter(h, api.RouterOptions{FrontendDir: cfg.FrontendDir, CoursesDir: cfg.CoursesDir, DataDir: cfg.DataDir})
 	if err != nil {
 		return err

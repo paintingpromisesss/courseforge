@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	stdlog "log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +23,44 @@ import (
 )
 
 const pushAttempts = 3
+
+// debouncer coalesces rapid notifications into one delayed call.
+type debouncer struct {
+	mu   stdsync.Mutex
+	d    time.Duration
+	fn   func()
+	timer *time.Timer
+}
+
+func newDebouncer(d time.Duration, fn func()) *debouncer {
+	return &debouncer{d: d, fn: fn}
+}
+
+// notify (re)arms the timer; fn runs once after d of silence.
+func (d *debouncer) notify() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.timer != nil {
+		d.timer.Reset(d.d)
+		return
+	}
+	d.timer = time.AfterFunc(d.d, func() {
+		d.mu.Lock()
+		d.timer = nil
+		d.mu.Unlock()
+		d.fn()
+	})
+}
+
+// stop cancels a pending call (shutdown).
+func (d *debouncer) stop() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.timer != nil {
+		d.timer.Stop()
+		d.timer = nil
+	}
+}
 
 // Engine serializes all sync operations. busy is exposed through Status so
 // the UI can poll while a push/pull runs.
@@ -37,6 +76,9 @@ type Engine struct {
 	// OnReload is called after Pull changed on-disk courses; DI wires it to
 	// the handler-side course re-parse.
 	OnReload func()
+	// progressDeb debounces on-progress pushes (SetTriggers/Start arm it).
+	progressDeb *debouncer
+	ticker      *time.Ticker
 }
 
 // Status is the sync state for API responses.
@@ -102,6 +144,79 @@ func (e *Engine) ResetMirror() error {
 
 // Busy reports whether a push/pull/rollback is in flight.
 func (e *Engine) Busy() bool { return e.busy.Load() }
+
+// SetTriggers configures automatic push behavior. Called by DI at startup and
+// whenever the config is patched.
+func (e *Engine) SetTriggers(cfg *repo.SyncConfig) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if cfg == nil || !cfg.Enabled || !cfg.Triggers.OnProgress {
+		if e.progressDeb != nil {
+			e.progressDeb.stop()
+			e.progressDeb = nil
+		}
+		return
+	}
+	if e.progressDeb == nil {
+		e.progressDeb = newDebouncer(30*time.Second, func() {
+			if err := e.Push(context.Background()); err != nil {
+				stdlog.Printf("sync: on-progress push: %v", err)
+			}
+		})
+	}
+}
+
+// NotifyProgress fires the debounced on-progress push trigger.
+func (e *Engine) NotifyProgress() {
+	e.mu.Lock()
+	d := e.progressDeb
+	e.mu.Unlock()
+	if d != nil {
+		d.notify()
+	}
+}
+
+// Start runs the interval ticker until ctx is cancelled. IntervalMin <= 0
+// disables periodic pushes (Stop also works standalone).
+func (e *Engine) Start(ctx context.Context) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.ticker != nil {
+		return
+	}
+	cfg, err := e.cfgRepo.Load(ctx)
+	if err != nil || cfg == nil || !cfg.Enabled || cfg.Triggers.IntervalMin <= 0 {
+		return
+	}
+	interval := time.Duration(cfg.Triggers.IntervalMin) * time.Minute
+	e.ticker = time.NewTicker(interval)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-e.ticker.C:
+				if err := e.Push(context.Background()); err != nil {
+					stdlog.Printf("sync: interval push: %v", err)
+				}
+			}
+		}
+	}()
+}
+
+// Stop cancels the interval ticker and any pending debounced push.
+func (e *Engine) Stop() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.ticker != nil {
+		e.ticker.Stop()
+		e.ticker = nil
+	}
+	if e.progressDeb != nil {
+		e.progressDeb.stop()
+		e.progressDeb = nil
+	}
+}
 
 // History returns up to limit sync commits (nil when no mirror yet).
 func (e *Engine) History(ctx context.Context, limit int) ([]git.Commit, error) {

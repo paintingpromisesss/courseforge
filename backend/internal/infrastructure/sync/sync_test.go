@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 	"testing"
 
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/git"
@@ -414,5 +415,30 @@ func TestPullRecordsPendingImports(t *testing.T) {
 	srcs, _ := envB.sources.All(ctx)
 	if srcs["imp"].Repo != "https://github.com/x/imp" {
 		t.Fatalf("sources not merged: %+v", srcs)
+	}
+}
+
+func TestDebouncer(t *testing.T) {
+	calls := 0
+	done := make(chan struct{})
+	d := newDebouncer(30*time.Millisecond, func() {
+		calls++
+		close(done)
+	})
+	defer d.stop()
+
+	d.notify()
+	d.notify()
+	d.notify()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("debounced fn never fired")
+	}
+	// let any stray duplicate window pass
+	time.Sleep(80 * time.Millisecond)
+	if calls != 1 {
+		t.Fatalf("fn called %d times, want 1", calls)
 	}
 }

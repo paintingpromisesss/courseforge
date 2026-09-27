@@ -137,6 +137,7 @@ func (h *Handler) patchSyncConfig(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "failed to save sync config")
 		return
 	}
+	h.syncEngine.SetTriggers(cfg)
 	h.writeJSON(w, http.StatusOK, syncConfigResp(cfg))
 }
 
