@@ -91,6 +91,19 @@ export function GitHubSettingsSection() {
           <p className="text-[11px] text-tx-3">
             Создайте токен на GitHub → Settings → Developer settings → Personal access tokens. Достаточно публичного доступа (public_repo); для приватных репозиториев нужен scope <code className="font-mono">repo</code>.
           </p>
+          {auth?.credential_helper && auth.credential_helper.length > 0 && (
+            <div className="rounded-lg border border-warn/30 bg-warn/10 p-2.5 text-[11px] text-warn space-y-1">
+              <div className="font-medium">
+                Обнаружен системный git credential helper — приватные репозитории могут клонироваться без токена выше.
+              </div>
+              <div className="font-mono text-[10px] opacity-90">
+                {auth.credential_helper.map((ch) => <div key={ch}>{ch}</div>)}
+              </div>
+              <div className="opacity-80">
+                Доступ берётся из хранилища вашей ОС (например, Windows Credential Manager). КурсForge его не контролирует.
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-1.5">

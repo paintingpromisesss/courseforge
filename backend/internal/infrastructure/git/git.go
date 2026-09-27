@@ -382,6 +382,59 @@ func (s *Service) StashList(ctx context.Context, dir string) (string, error) {
 	return strings.TrimSpace(out), err
 }
 
+// CredentialHelper reports the configured credential.helper values for dir
+// (system + global + repo-local, in git's resolution order). Empty = git will
+// prompt or fail on private repos with no token configured. The values are
+// shown in Settings so users understand where their access comes from — git
+// silently uses OS credential stores, which is surprising otherwise.
+func (s *Service) CredentialHelper(ctx context.Context, dir string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		dir = "" // no repo context: read the user-level config only
+	}
+	out, err := s.runCmd(ctx, dir, s.timeout, "config", "--show-origin", "--get-all", "credential.helper")
+	if err != nil {
+		var ge *Error
+		if errors.As(err, &ge) && ge.ExitCode == 1 {
+			return nil, nil // unset — nothing configured
+		}
+		return nil, err
+	}
+	var helpers []string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// --show-origin prefixes "file:C:/path\tvalue" — keep a readable
+		// "scope: value" form
+		if i := strings.Index(line, "\t"); i >= 0 {
+			scope := line[:i]
+			value := line[i+1:]
+			scope = strings.TrimPrefix(scope, "file:")
+			helpers = append(helpers, simplifyConfigScope(scope)+": "+value)
+		} else {
+			helpers = append(helpers, line)
+		}
+	}
+	return helpers, nil
+}
+
+// simplifyConfigScope shortens a config-file origin to system/global/local.
+func simplifyConfigScope(path string) string {
+	lower := strings.ToLower(filepath.ToSlash(path))
+	switch {
+	case strings.Contains(lower, "/etc/gitconfig") || strings.Contains(lower, "programdata"):
+		return "system"
+	case strings.Contains(lower, ".gitconfig") || strings.Contains(lower, ".config/git"):
+		return "global"
+	case strings.Contains(lower, ".git/config") || strings.HasSuffix(lower, "config"):
+		return "local"
+	}
+	return path
+}
+
 // WorkingTreeDiff returns `git diff` (unstaged + staged, tracked files) of
 // the working tree against HEAD, plus `--porcelain` status entries including
 // untracked files. Patches are raw unified diff text; the UI renders them.

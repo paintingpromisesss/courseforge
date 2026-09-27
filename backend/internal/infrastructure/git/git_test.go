@@ -237,6 +237,31 @@ func TestStashPopConflictKeepsStash(t *testing.T) {
 	}
 }
 
+func TestCredentialHelper(t *testing.T) {
+	gitAvailable(t)
+	s := NewService()
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	// repo-local helper overrides the empty global config
+	out, err := s.CredentialHelper(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("helper on default machine config: %q", out)
+
+	// a local repo with an explicit helper value must be reported verbatim
+	gitRun(t, dir, "init", "-b", "main")
+	gitRun(t, dir, "config", "credential.helper", "store")
+	out, err = s.CredentialHelper(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(out, ","), "store") {
+		t.Fatalf("local helper not detected: %q", out)
+	}
+}
+
 func TestAvailable(t *testing.T) {
 	gitAvailable(t)
 	if !NewService().Available() {

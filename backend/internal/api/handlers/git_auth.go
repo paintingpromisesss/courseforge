@@ -11,15 +11,20 @@ import (
 )
 
 func (h *Handler) gitAuthStatus(ctx context.Context) dto.GitAuthStatus {
+	status := dto.GitAuthStatus{}
+	// git-level credential helpers (OS keychain, store) — shown so users
+	// understand how private repos clone without a token in Settings
+	if helpers, err := h.gitSvc.CredentialHelper(ctx, ""); err == nil && len(helpers) > 0 {
+		status.CredentialHelper = helpers
+	}
 	a, err := h.gitAuth.Load(ctx)
 	if err != nil || a == nil || a.Token == "" {
-		return dto.GitAuthStatus{}
+		return status
 	}
-	return dto.GitAuthStatus{
-		Configured:  true,
-		Username:    a.Username,
-		TokenMasked: repo.MaskToken(a.Token),
-	}
+	status.Configured = true
+	status.Username = a.Username
+	status.TokenMasked = repo.MaskToken(a.Token)
+	return status
 }
 
 // @Summary Get GitHub auth status

@@ -2,9 +2,10 @@ package dto
 
 // GitAuthStatus reports GitHub auth state without exposing the raw token.
 type GitAuthStatus struct {
-	Configured  bool   `json:"configured"`
-	Username    string `json:"username"`
-	TokenMasked string `json:"token_masked"`
+	Configured       bool     `json:"configured"`
+	Username         string   `json:"username"`
+	TokenMasked      string   `json:"token_masked"`
+	CredentialHelper []string `json:"credential_helper,omitempty"` // git-level helpers, e.g. "system: manager"
 }
 
 // PatchGitAuthReq sets (or with an empty token, clears) the GitHub PAT.

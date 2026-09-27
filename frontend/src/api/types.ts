@@ -193,6 +193,7 @@ export interface GitAuthStatus {
   configured: boolean;
   username: string;
   token_masked: string;
+  credential_helper?: string[];
 }
 
 export interface GitAuthTestResp {
