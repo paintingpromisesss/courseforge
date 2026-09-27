@@ -1,13 +1,65 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
 import { api } from '../api/client';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { shortCommit } from '../lib/gitHelpers';
 
-// Compact row shown on a course page when the course was imported from a git
-// repo. Lets the user switch branches or pull the latest commits. Renders nothing
-// when the course has no git source (404 from the status endpoint).
-export function GitSourcePanel({ courseSlug }: { courseSlug: string }) {
+// GitTreeToggle: the small git icon in the contents-tree header. Self-checks
+// whether the course is git-managed (status endpoint 404 = not) and renders
+// nothing when it isn't. dirtyHint lights the icon up when there are local
+// changes, so the git state is discoverable without opening the panel.
+export function GitTreeToggle({ courseSlug, active, onToggle }: {
+  courseSlug: string;
+  active: boolean;
+  onToggle: () => void;
+}) {
+  const { data: status } = useQuery({
+    queryKey: ['gitStatus', courseSlug],
+    queryFn: () => api.gitStatus(courseSlug),
+    retry: false,
+  });
+  if (!status) return null;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={status.dirty ? 'Git: есть локальные изменения' : 'Git: ветки и обновления курса'}
+      className={clsx(
+        'w-7 h-7 flex items-center justify-center rounded-md transition-all active:scale-95 cursor-pointer',
+        active
+          ? 'bg-brand/15 text-brand'
+          : status.dirty
+            ? 'text-warn hover:text-tx-1 hover:bg-bg-3'
+            : 'text-tx-3 hover:text-tx-1 hover:bg-bg-3',
+      )}
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="shrink-0"
+      >
+        <line x1="6" y1="3" x2="6" y2="15" />
+        <circle cx="18" cy="6" r="3" />
+        <circle cx="6" cy="18" r="3" />
+        <path d="M18 9a9 9 0 0 1-9 9" />
+      </svg>
+      {status.dirty && !active && <span className="absolute w-1.5 h-1.5 rounded-full bg-warn translate-x-3 -translate-y-3" />}
+    </button>
+  );
+}
+
+// GitTreeControls: on-demand branch/pull block rendered inside the course
+// contents tree (above tasks) when the user toggles the git icon in the tree
+// header. Props: courseSlug plus hasGit so the parent can hint availability
+// (the button itself needs the query result anyway, so it stays self-fetching).
+export function GitTreeControls({ courseSlug, onClose }: { courseSlug: string; onClose: () => void }) {
   const qc = useQueryClient();
   const [target, setTarget] = useState('');
   const [confirmForce, setConfirmForce] = useState(false);
@@ -64,54 +116,68 @@ export function GitSourcePanel({ courseSlug }: { courseSlug: string }) {
   };
 
   return (
-    <div className="shrink-0 px-3 py-2 border-b border-bdr bg-bg-2/60 flex flex-wrap items-center gap-2 text-xs">
-      <span className="flex items-center gap-1.5 text-tx-3 font-medium" title={branches?.source?.repo}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="6" y1="3" x2="6" y2="15" />
-          <circle cx="18" cy="6" r="3" />
-          <circle cx="6" cy="18" r="3" />
-          <path d="M18 9a9 9 0 0 1-9 9" />
-        </svg>
-        <span>git</span>
-      </span>
+    <div className="mx-2 mt-2 mb-1 rounded-lg border border-bdr bg-bg-2 p-2.5 space-y-2 text-xs shrink-0">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-tx-3 font-medium" title={branches?.source?.repo}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="6" y1="3" x2="6" y2="15" />
+            <circle cx="18" cy="6" r="3" />
+            <circle cx="6" cy="18" r="3" />
+            <path d="M18 9a9 9 0 0 1-9 9" />
+          </svg>
+          <span>git</span>
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          title="Скрыть git"
+          className="w-6 h-6 flex items-center justify-center rounded-md text-tx-3 hover:text-tx-1 hover:bg-bg-3 transition-colors cursor-pointer"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
 
-      <select
-        value={target || current}
-        onChange={(e) => setTarget(e.target.value)}
-        disabled={busy}
-        className="px-2 py-1 rounded-md bg-bg-3 border border-bdr text-tx-1 text-xs focus:border-brand focus:outline-none font-mono cursor-pointer disabled:opacity-50"
-      >
-        {branchList.length === 0 && <option value={current}>{current}</option>}
-        {branchList.map((b) => (
-          <option key={b} value={b}>{b}</option>
-        ))}
-      </select>
-
-      <button
-        type="button"
-        onClick={onSwitch}
-        disabled={busy || !target || target === current}
-        className="px-2.5 py-1 rounded-md bg-brand text-white text-xs font-medium hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
-      >
-        {checkoutMut.isPending ? '...' : 'Переключить'}
-      </button>
+      <div className="flex gap-1.5">
+        <select
+          value={target || current}
+          onChange={(e) => setTarget(e.target.value)}
+          disabled={busy}
+          className="flex-1 min-w-0 px-2 py-1 rounded-md bg-bg-3 border border-bdr text-tx-1 text-xs focus:border-brand focus:outline-none font-mono cursor-pointer disabled:opacity-50"
+        >
+          {branchList.length === 0 && <option value={current}>{current}</option>}
+          {branchList.map((b) => (
+            <option key={b} value={b}>{b}</option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={onSwitch}
+          disabled={busy || !target || target === current}
+          className="px-2.5 py-1 rounded-md bg-brand text-white text-xs font-medium hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shrink-0"
+        >
+          {checkoutMut.isPending ? '...' : 'Переключить'}
+        </button>
+      </div>
 
       <button
         type="button"
         onClick={onPull}
         disabled={busy}
         title="Загрузить последние изменения"
-        className="px-2.5 py-1 rounded-md border border-bdr bg-bg-3 text-tx-2 hover:text-tx-1 hover:bg-bg-4 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+        className="w-full px-2.5 py-1 rounded-md border border-bdr bg-bg-3 text-tx-2 hover:text-tx-1 hover:bg-bg-4 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
       >
         {pullMut.isPending ? '...' : 'Обновить'}
       </button>
 
-      <span className="text-tx-3 font-mono ml-auto" title={`Коммит ${status.commit}`}>
+      <div className="text-tx-3 font-mono" title={`Коммит ${status.commit}`}>
         {current}{status.commit ? ` @ ${shortCommit(status.commit)}` : ''}
         {status.dirty && <span className="text-warn ml-1.5" title="Есть несохранённые локальные изменения">●</span>}
-      </span>
+      </div>
 
-      {err && <span className="basis-full text-err text-[11px]">{err}</span>}
+      {err && <div className="text-err text-[11px]">{err}</div>}
 
       <ConfirmDialog
         open={confirmForce}

@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { api } from '../api/client';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { GitSourcePanel } from '../components/GitSourcePanel';
+import { GitTreeToggle, GitTreeControls } from '../components/GitSourcePanel';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { DifficultyBadge } from '../components/ui/DifficultyBadge';
 import type { TrackItem, CourseDetail } from '../api/types';
@@ -293,6 +293,7 @@ function computeAutoFitWidth(
 
 interface SidebarProps {
   title: string;
+  courseSlug: string;
   tracks: TrackItem[];
   done: Record<string, boolean>;
   activeTaskSlug?: string;
@@ -302,7 +303,7 @@ interface SidebarProps {
   onResetProgress: () => void;
 }
 
-function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheory, onResetProgress }: SidebarProps) {
+function Sidebar({ courseSlug, tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheory, onResetProgress }: SidebarProps) {
   // Extract all unique tags across tasks in this course
   const { allTags, tagCounts } = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -329,6 +330,7 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
   }, [tracks]);
 
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [gitOpen, setGitOpen] = useState(false);
 
   const isSingleTrackCourse = tracks.length === 1;
   const fullTree = useMemo(() => buildTree(tracks, done), [tracks, done]);
@@ -579,39 +581,51 @@ function Sidebar({ tracks, done, activeTaskSlug, activeUnitSlug, onTask, onTheor
             <span>Содержание</span>
           </div>
 
-          {!isSingleGroup && trackIds.length > 1 && (
-            <button
-              type="button"
-              onClick={toggleAll}
-              title={allExpanded ? 'Свернуть все' : 'Развернуть все'}
-              className="w-7 h-7 flex items-center justify-center rounded-md text-tx-3 hover:text-tx-1 hover:bg-bg-3 active:scale-95 transition-all"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="shrink-0"
+          <div className="flex items-center gap-1">
+            <GitTreeToggle
+              courseSlug={courseSlug}
+              active={gitOpen}
+              onToggle={() => setGitOpen((v) => !v)}
+            />
+            {!isSingleGroup && trackIds.length > 1 && (
+              <button
+                type="button"
+                onClick={toggleAll}
+                title={allExpanded ? 'Свернуть все' : 'Развернуть все'}
+                className="w-7 h-7 flex items-center justify-center rounded-md text-tx-3 hover:text-tx-1 hover:bg-bg-3 active:scale-95 transition-all"
               >
-                {allExpanded ? (
-                  <>
-                    <polyline points="4 2 8 6 12 2" />
-                    <polyline points="4 14 8 10 12 14" />
-                  </>
-                ) : (
-                  <>
-                    <polyline points="4 6 8 2 12 6" />
-                    <polyline points="4 10 8 14 12 10" />
-                  </>
-                )}
-              </svg>
-            </button>
-          )}
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="shrink-0"
+                >
+                  {allExpanded ? (
+                    <>
+                      <polyline points="4 2 8 6 12 2" />
+                      <polyline points="4 14 8 10 12 14" />
+                    </>
+                  ) : (
+                    <>
+                      <polyline points="4 6 8 2 12 6" />
+                      <polyline points="4 10 8 14 12 10" />
+                    </>
+                  )}
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Git controls (on demand, above the tree) */}
+        {gitOpen && (
+          <GitTreeControls courseSlug={courseSlug} onClose={() => setGitOpen(false)} />
+        )}
 
         {/* Dynamic Tag Filter (rendered ONLY when course has tagged tasks) */}
         {allTags.length > 0 && (
@@ -883,7 +897,6 @@ export function CoursePage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <GitSourcePanel courseSlug={courseSlug!} />
       <div className="flex flex-1 min-h-0 overflow-hidden">
       <motion.div
         className="shrink-0 h-full"
@@ -893,6 +906,7 @@ export function CoursePage() {
       >
         <Sidebar
           title={course.title}
+          courseSlug={courseSlug!}
           tracks={course.tracks}
           done={done}
           activeTaskSlug={taskSlug}
