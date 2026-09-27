@@ -214,6 +214,7 @@ export const api = {
   gitTestAuth: () => post<GitAuthTestResp>('/git/auth/test', {}),
   gitImport: (body: { url: string; branch?: string }) => post<GitImportResp>('/git/import', body),
   gitImportBatch: (urls: string[]) => post<GitImportBatchResp>('/git/import/batch', { urls }),
+  gitAttach: (url: string, slug: string) => post<GitImportResp>('/git/attach', { url, slug }),
   gitBranches: (slug: string) => get<GitBranchesResp>(`/courses/${slug}/git/branches`),
   gitCheckout: (slug: string, branch: string, force = false) => post<GitImportResp>(`/courses/${slug}/git/checkout`, { branch, force }),
   gitPull: (slug: string, mode?: 'merge' | 'force') => post<GitImportResp>(`/courses/${slug}/git/pull`, mode ? { mode } : {}),

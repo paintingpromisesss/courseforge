@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -262,6 +263,103 @@ func (h *Handler) postGitPull(w http.ResponseWriter, r *http.Request) {
 	}
 	branch, _ := h.gitSvc.CurrentBranch(r.Context(), dir)
 	h.finishGitOp(r, w, dirSlug, dir, src, branch)
+}
+
+// @Summary Bind an existing local course to a GitHub repository
+// @Description Clones the repository and moves its .git into the existing course
+// @Description directory; course files are never modified. The repo's manifest
+// @Description slug must match the local course slug. After attach the course
+// @Description works exactly like an imported one: status/branches/pull/checkout.
+// @Tags git
+// @Accept json
+// @Produce json
+// @Param body body dto.GitAttachReq true "Repository URL and local course slug"
+// @Success 200 {object} dto.GitImportResp
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 503 {object} map[string]string
+// @Router /git/attach [post]
+func (h *Handler) gitAttach(w http.ResponseWriter, r *http.Request) {
+	if h.gitUnavailable(w) {
+		return
+	}
+	var req dto.GitAttachReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil ||
+		strings.TrimSpace(req.URL) == "" || strings.TrimSpace(req.Slug) == "" {
+		h.writeError(w, http.StatusBadRequest, "url and slug are required")
+		return
+	}
+	srcURL, ok := validateRepoURL(strings.TrimSpace(req.URL))
+	if !ok {
+		h.writeError(w, http.StatusBadRequest, "expected a https://github.com/owner/repo URL")
+		return
+	}
+	slug := strings.TrimSpace(req.Slug)
+
+	// the course must exist locally and not already be bound to a remote
+	destDir := filepath.Join(h.coursesDir, slug)
+	if _, err := os.Stat(destDir); err != nil {
+		h.writeError(w, http.StatusNotFound, "course not found")
+		return
+	}
+	if _, err := os.Stat(filepath.Join(destDir, ".git")); err == nil {
+		h.writeError(w, http.StatusConflict, "course is already managed by git")
+		return
+	}
+	sources, err := h.sources.All(r.Context())
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "failed to load course sources")
+		return
+	}
+	if _, bound := sources[slug]; bound {
+		h.writeError(w, http.StatusConflict, "course is already bound to a repository")
+		return
+	}
+
+	tmpDir, err := os.MkdirTemp("", "cf-git-attach-*")
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "failed to create temp dir")
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+	cloneDir := filepath.Join(tmpDir, "repo")
+	if err := h.gitSvc.Clone(r.Context(), srcURL, cloneDir, ""); err != nil {
+		if classifyCloneError(err) == http.StatusUnauthorized {
+			h.writeError(w, http.StatusUnauthorized, "repository is private or unavailable — add a GitHub token in Settings")
+		} else {
+			h.writeError(w, http.StatusBadRequest, "clone failed: "+err.Error())
+		}
+		return
+	}
+
+	// the remote must describe the same course
+	if slug2 := manifestSlug(cloneDir); slug2 != slug {
+		h.writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("repository course slug %q does not match local slug %q", slug2, slug))
+		return
+	}
+
+	// move only .git into the course; course files stay exactly as they are
+	if err := moveDir(filepath.Join(cloneDir, ".git"), filepath.Join(destDir, ".git")); err != nil {
+		h.writeError(w, http.StatusInternalServerError, "failed to bind repository")
+		return
+	}
+
+	branch, _ := h.gitSvc.CurrentBranch(r.Context(), destDir)
+	commit, _ := h.gitSvc.HeadCommit(r.Context(), destDir)
+	if err := h.sources.Set(r.Context(), slug, repo.CourseSource{
+		Repo:       srcURL,
+		Branch:     branch,
+		Commit:     commit,
+		ImportedAt: time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		_ = os.RemoveAll(filepath.Join(destDir, ".git"))
+		h.writeError(w, http.StatusInternalServerError, "failed to record course source")
+		return
+	}
+	h.writeJSON(w, http.StatusOK, dto.GitImportResp{Slug: slug, Branch: branch, Commit: commit})
 }
 
 // revalidateGitContent re-parses the course/catalog at dirSlug after its files

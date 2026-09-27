@@ -60,6 +60,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Post("/git/auth/test", h.testGitAuth)
 	r.Post("/git/import", h.gitImport)
 	r.Post("/git/import/batch", h.gitImportBatch)
+	r.Post("/git/attach", h.gitAttach)
 
 	r.Get("/sync/config", h.getSyncConfig)
 	r.Patch("/sync/config", h.patchSyncConfig)

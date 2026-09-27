@@ -56,6 +56,14 @@ type GitImportBatchResp struct {
 	Results []GitImportBatchItem `json:"results"`
 }
 
+// GitAttachReq binds an existing local course to a remote repository.
+// The repo is cloned, its .git moves into the course directory — course
+// files are never touched.
+type GitAttachReq struct {
+	URL  string `json:"url"`
+	Slug string `json:"slug"`
+}
+
 // CourseSourceDTO describes where an imported course came from.
 type CourseSourceDTO struct {
 	Repo       string `json:"repo"`

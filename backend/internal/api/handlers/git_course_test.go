@@ -308,3 +308,108 @@ func TestGitEndpointsRejectNonGitCourse(t *testing.T) {
 		t.Fatalf("no-source checkout status = %d, want 404", w.Code)
 	}
 }
+
+// doAttachReq routes an attach request; body carries all inputs.
+func doAttachReq(t *testing.T, h *Handler, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/git/attach", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	h.gitAttach(w, req)
+	return w
+}
+
+// setupPlainCourse creates a local course directory without .git and registers it.
+func setupPlainCourse(t *testing.T, h *Handler) string {
+	t.Helper()
+	courseDir := filepath.Join(h.coursesDir, "go-interview")
+	writeCourseRepoFiles(t, courseDir)
+	if _, err := h.loadAndRegisterCourse("go-interview"); err != nil {
+		t.Fatal(err)
+	}
+	return courseDir
+}
+
+func TestGitAttach(t *testing.T) {
+	gitAvailable(t)
+	repoDir := makeCourseRepo(t)
+	h := newGitTestHandler(t)
+	courseDir := setupPlainCourse(t, h)
+
+	// a local edit proves attach never touches course files
+	localYAML := courseYAML("My Local Version", "go-interview")
+	if err := os.WriteFile(filepath.Join(courseDir, "course.yaml"), []byte(localYAML), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	w := doAttachReq(t, h, `{"url":`+jsonStr(repoDir)+`,"slug":"go-interview"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("attach status = %d: %s", w.Code, w.Body)
+	}
+	var resp dto.GitImportResp
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Slug != "go-interview" || resp.Branch != "main" || resp.Commit == "" {
+		t.Fatalf("attach resp = %+v", resp)
+	}
+
+	// .git now exists in the course dir; course files untouched
+	if _, err := os.Stat(filepath.Join(courseDir, ".git")); err != nil {
+		t.Fatalf(".git not moved into course: %v", err)
+	}
+	data, _ := os.ReadFile(filepath.Join(courseDir, "course.yaml"))
+	if string(data) != localYAML {
+		t.Fatalf("attach modified course files: %q", data)
+	}
+	// source recorded
+	sources, _ := h.sources.All(context.Background())
+	if sources["go-interview"].Repo != repoDir {
+		t.Fatalf("source not recorded: %+v", sources)
+	}
+	// the local version differs from the remote → dirty
+	dirty, err := h.gitSvc.Dirty(context.Background(), courseDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dirty {
+		t.Fatal("local version should be dirty relative to remote after attach")
+	}
+	// branches endpoint now serves this course
+	w = doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/branches", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("branches after attach = %d: %s", w.Code, w.Body)
+	}
+}
+
+func TestGitAttachSlugMismatch(t *testing.T) {
+	gitAvailable(t)
+	repoDir := makeCourseRepo(t) // slug go-interview
+	h := newGitTestHandler(t)
+	setupPlainCourse(t, h)
+
+	// a local course with a different slug → the repo's manifest slug doesn't match
+	otherDir := filepath.Join(h.coursesDir, "other")
+	os.MkdirAll(otherDir, 0755)
+	os.WriteFile(filepath.Join(otherDir, "course.yaml"), []byte("slug: other\n"), 0644)
+	h.mu.Lock()
+	h.courses["other"] = &domain.Course{Slug: "other", Dir: "other", Title: "Other"}
+	h.mu.Unlock()
+
+	w := doAttachReq(t, h, `{"url":`+jsonStr(repoDir)+`,"slug":"other"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("mismatch status = %d: %s", w.Code, w.Body)
+	}
+	// nothing happened to the target dir
+	if _, err := os.Stat(filepath.Join(otherDir, ".git")); err == nil {
+		t.Fatal(".git leaked into mismatched course")
+	}
+}
+
+func TestGitAttachAlreadyImported(t *testing.T) {
+	gitAvailable(t)
+	h, repoDir := setupImportedCourse(t)
+	w := doAttachReq(t, h, `{"url":`+jsonStr(repoDir)+`,"slug":"go-interview"}`)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("already-imported attach status = %d: %s", w.Code, w.Body)
+	}
+}

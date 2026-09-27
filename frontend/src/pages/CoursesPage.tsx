@@ -64,6 +64,12 @@ function PlusIcon() {
 const catKey = (slug: string) => `cat:${slug}`;
 const crsKey = (slug: string) => `crs:${slug}`;
 
+// "course slug \"go-interview\" already exists" → "go-interview"
+function slugFromError(msg: string): string | null {
+  const m = msg.match(/slug "([^"]+)" already exists/);
+  return m ? m[1] : null;
+}
+
 interface LastVisit { slug: string; title: string; label?: string; path: string; }
 
 function readLastVisit(): LastVisit | null {
@@ -138,6 +144,21 @@ export function CoursesPage() {
         qc.invalidateQueries({ queryKey: ['catalogs'] });
       }
       // dialog stays open: the per-URL report replaces the input
+    },
+  });
+
+  const attachMut = useMutation({
+    mutationFn: ({ url, slug }: { url: string; slug: string }) => api.gitAttach(url, slug),
+    onSuccess: (resp) => {
+      // reflect the binding in the per-URL report
+      if (batchResults) {
+        setBatchResults(batchResults.map((r) =>
+          slugFromError(r.error ?? '') === resp.slug
+            ? { ...r, ok: true, slug: resp.slug, branch: resp.branch, commit: resp.commit, error: undefined }
+            : r,
+        ));
+      }
+      qc.invalidateQueries({ queryKey: ['courses'] });
     },
   });
 
@@ -397,6 +418,9 @@ export function CoursesPage() {
             pending={importBatchMut.isPending}
             error={importBatchMut.error as Error | null}
             results={batchResults}
+            attaching={attachMut.isPending}
+            attachError={attachMut.error as Error | null}
+            onAttach={(url, slug) => attachMut.mutate({ url, slug })}
             onClose={() => {
               setImporting(false);
               importBatchMut.reset();
@@ -556,10 +580,13 @@ function ConfirmDeleteDialog({ catalogCount, courseCount, purge, onTogglePurge, 
   );
 }
 
-function ImportFromGitHubDialog({ pending, error, results, onClose, onSubmit, onOpenSettings }: {
+function ImportFromGitHubDialog({ pending, error, results, attaching, attachError, onAttach, onClose, onSubmit, onOpenSettings }: {
   pending: boolean;
   error: Error | null;
   results: GitImportBatchItem[] | null;
+  attaching: boolean;
+  attachError: Error | null;
+  onAttach: (url: string, slug: string) => void;
   onClose: () => void;
   onSubmit: (urls: string[]) => void;
   onOpenSettings: () => void;
@@ -622,9 +649,25 @@ function ImportFromGitHubDialog({ pending, error, results, onClose, onSubmit, on
                 <div className="text-[11px] opacity-80">
                   {r.ok ? `импортирован: ${r.slug}` : r.error}
                 </div>
+                {!r.ok && r.error && slugFromError(r.error) && (
+                  <button
+                    type="button"
+                    disabled={attaching}
+                    onClick={() => {
+                      const slug = slugFromError(r.error ?? '');
+                      if (slug) onAttach(r.url, slug);
+                    }}
+                    className="mt-1.5 text-[11px] font-medium text-brand hover:underline cursor-pointer disabled:opacity-50"
+                  >
+                    {attaching ? 'Привязка...' : 'Привязать локальный курс к этому репозиторию'}
+                  </button>
+                )}
               </div>
             ))}
           </div>
+          {attachError && (
+            <div className="mt-3 text-err text-xs">{attachError.message}</div>
+          )}
           <div className="flex justify-end mt-4">
             <button
               onClick={onClose}
