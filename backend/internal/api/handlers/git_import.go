@@ -144,8 +144,11 @@ func (h *Handler) gitImport(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "manifest has no slug")
 		return
 	}
+	// moveDir, not os.Rename: on Windows a freshly cloned root can be held by
+	// an external scanner/watcher (rename → "Access is denied"); moveDir falls
+	// back to a recursive copy that works regardless.
 	namedDir := filepath.Join(tmpDir, slug)
-	if err := os.Rename(cloneDir, namedDir); err != nil {
+	if err := moveDir(cloneDir, namedDir); err != nil {
 		h.writeError(w, http.StatusInternalServerError, "failed to prepare import")
 		return
 	}
