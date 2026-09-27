@@ -269,6 +269,21 @@ func (s *Service) PullFF(ctx context.Context, dir string) error {
 	return err
 }
 
+// ResetHard points the current branch at ref and discards all working-tree
+// changes (reset --hard ref + clean -fd).
+func (s *Service) ResetHard(ctx context.Context, dir, ref string) error {
+	if err := validateRef(ref); err != nil {
+		return errors.New("invalid commit ref")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.runCmd(ctx, dir, s.timeout, "reset", "--hard", ref); err != nil {
+		return err
+	}
+	_, err := s.runCmd(ctx, dir, s.timeout, "clean", "-fd")
+	return err
+}
+
 // Dirty reports whether the working tree has uncommitted changes.
 func (s *Service) Dirty(ctx context.Context, dir string) (bool, error) {
 	s.mu.Lock()
