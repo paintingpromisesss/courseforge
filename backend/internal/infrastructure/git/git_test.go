@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"encoding/base64"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -147,6 +148,49 @@ func TestTokenPassedViaEnvOnly(t *testing.T) {
 	}
 	cfg, _ := os.ReadFile(filepath.Join(dir, ".git", "config"))
 	if strings.Contains(string(cfg), "secret") {
+		t.Fatal("token leaked into .git/config")
+	}
+}
+
+// TestBasicAuthScheme pins the auth scheme: git-over-HTTPS on GitHub takes the
+// PAT as an HTTP Basic password. "Bearer" is REST-API-only and makes git fall
+// back to a credential helper (which pops GCM in a desktop session).
+func TestBasicAuthScheme(t *testing.T) {
+	got := basicAuth("ghp_secret123")
+	want := base64.StdEncoding.EncodeToString([]byte("x:ghp_secret123"))
+	if got != want {
+		t.Fatalf("basicAuth = %q, want %q", got, want)
+	}
+	raw, err := base64.StdEncoding.DecodeString(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != "x:ghp_secret123" {
+		t.Fatalf("decoded = %q", raw)
+	}
+}
+
+// TestPrivateCloneWithToken is an opt-in end-to-end check: set CF_TEST_TOKEN
+// to a PAT and CF_TEST_PRIVATE_REPO to a private https://github.com/... URL.
+func TestPrivateCloneWithToken(t *testing.T) {
+	gitAvailable(t)
+	token := os.Getenv("CF_TEST_TOKEN")
+	repoURL := os.Getenv("CF_TEST_PRIVATE_REPO")
+	if token == "" || repoURL == "" {
+		t.Skip("set CF_TEST_TOKEN and CF_TEST_PRIVATE_REPO to run")
+	}
+	s := NewService()
+	s.SetToken(token)
+	dir := filepath.Join(t.TempDir(), "private")
+	if err := s.Clone(context.Background(), repoURL, dir, ""); err != nil {
+		t.Fatalf("private clone with token failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		t.Fatalf(".git missing after clone: %v", err)
+	}
+	// the token must never end up in the repo config
+	cfg, _ := os.ReadFile(filepath.Join(dir, ".git", "config"))
+	if strings.Contains(string(cfg), token) {
 		t.Fatal("token leaked into .git/config")
 	}
 }

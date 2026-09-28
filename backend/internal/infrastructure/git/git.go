@@ -6,6 +6,7 @@ package git
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"os"
 	"os/exec"
@@ -95,6 +96,13 @@ func (s *Service) Available() bool {
 	return s.avail
 }
 
+// basicAuth builds the HTTP Basic credential git expects on GitHub: the token
+// is the password, the username is ignored by GitHub (PATs authenticate as the
+// token owner). Bearer is REST-API-only and is rejected by git-over-HTTPS.
+func basicAuth(token string) string {
+	return base64.StdEncoding.EncodeToString([]byte("x:" + token))
+}
+
 // runCmd executes git without locking; the caller must hold s.mu. dir is the
 // working directory ("" = inherit the process cwd, used before a clone target
 // exists).
@@ -109,6 +117,9 @@ func (s *Service) runCmd(ctx context.Context, dir string, timeout time.Duration,
 	env := os.Environ()
 	env = append(env,
 		"GIT_TERMINAL_PROMPT=0",
+		// GCM and other GUI credential helpers ignore GIT_TERMINAL_PROMPT and
+		// would pop an interactive window from a background service.
+		"GCM_INTERACTIVE=never",
 		"GIT_AUTHOR_NAME=CourseForge", "GIT_AUTHOR_EMAIL=courseforge@local",
 		"GIT_COMMITTER_NAME=CourseForge", "GIT_COMMITTER_EMAIL=courseforge@local")
 	count := 1
@@ -118,7 +129,7 @@ func (s *Service) runCmd(ctx context.Context, dir string, timeout time.Duration,
 		count = 2
 		env = append(env,
 			"GIT_CONFIG_KEY_1=http.https://github.com/.extraHeader",
-			"GIT_CONFIG_VALUE_1=Authorization: Bearer "+s.token)
+			"GIT_CONFIG_VALUE_1=Authorization: Basic "+basicAuth(s.token))
 	}
 	env = append(env, "GIT_CONFIG_COUNT="+strconv.Itoa(count))
 	cmd.Env = env
