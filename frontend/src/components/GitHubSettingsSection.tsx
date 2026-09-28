@@ -39,8 +39,7 @@ export function GitHubSettingsSection() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h3 className="text-sm font-semibold text-tx-1">GitHub</h3>
-        <p className="text-xs text-tx-3 mt-0.5">
+        <p className="text-xs text-tx-3">
           Токен доступа (PAT) нужен для импорта курсов из приватных репозиториев. Для публичных — не обязателен.
         </p>
       </div>
@@ -94,13 +93,13 @@ export function GitHubSettingsSection() {
           {auth?.credential_helper && auth.credential_helper.length > 0 && (
             <div className="rounded-lg border border-warn/30 bg-warn/10 p-2.5 text-[11px] text-warn space-y-1">
               <div className="font-medium">
-                Обнаружен системный git credential helper — приватные репозитории могут клонироваться без токена выше.
+                Git credential helper активен — приватные репозитории клонируются через него
               </div>
               <div className="font-mono text-[10px] opacity-90">
                 {auth.credential_helper.map((ch) => <div key={ch}>{ch}</div>)}
               </div>
-              <div className="opacity-80">
-                Доступ берётся из хранилища вашей ОС (например, Windows Credential Manager). КурсForge его не контролирует.
+              <div className="opacity-75">
+                Доступ хранится в системе (Credential Manager / Keychain), CourseForge им не управляет. Токен выше — приоритетнее.
               </div>
             </div>
           )}

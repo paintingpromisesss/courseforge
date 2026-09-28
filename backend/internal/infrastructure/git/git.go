@@ -435,6 +435,7 @@ func simplifyConfigScope(path string) string {
 	return path
 }
 
+
 // WorkingTreeDiff returns `git diff` (unstaged + staged, tracked files) of
 // the working tree against HEAD, plus `--porcelain` status entries including
 // untracked files. Patches are raw unified diff text; the UI renders them.

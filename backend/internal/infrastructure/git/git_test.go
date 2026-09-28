@@ -262,6 +262,7 @@ func TestCredentialHelper(t *testing.T) {
 	}
 }
 
+
 func TestAvailable(t *testing.T) {
 	gitAvailable(t)
 	if !NewService().Available() {
