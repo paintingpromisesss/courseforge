@@ -53,17 +53,14 @@ New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 
 Push-Location $BackendDir
 try {
-  # swag runs as a tool on THIS machine (via `go run`) — it must build for the
-  # host arch, not whatever $GoArch cross-compiles the final binary for.
-  Invoke-CheckedNative go @('run', 'github.com/swaggo/swag/cmd/swag', 'init', '-g', 'main.go', '-d', './cmd/server,./internal/api/handlers,./internal/api/dto', '-o', './docs', '--exclude', './courses')
-
   $Version = (git -C $RepoRoot describe --tags --always --dirty 2>$null)
   # Built with -H=windowsgui: no console window is ever allocated when double-clicked
   # from Explorer. When run from a terminal (CLI/MCP), attachConsoleIfAvailable()
   # attaches to the parent console at startup so stdout/stderr work properly.
-  $LdFlags = "-X main.version=$Version -H=windowsgui"
+  # -s -w strips symbol table + DWARF. Swagger is dev-only (`make run`), not shipped.
+  $LdFlags = "-s -w -X main.version=$Version -H=windowsgui"
   if ($GoArch) { $env:GOARCH = $GoArch }
-  Invoke-CheckedNative go @('build', '-tags', 'swagger', '-ldflags', $LdFlags, '-o', $BinaryPath, './cmd/courseforge')
+  Invoke-CheckedNative go @('build', '-trimpath', '-ldflags', $LdFlags, '-o', $BinaryPath, './cmd/courseforge')
 } finally {
   Pop-Location
 }
