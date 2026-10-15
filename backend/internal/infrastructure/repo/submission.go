@@ -19,12 +19,23 @@ func NewDB(path string) (*sql.DB, error) {
 	if path == "" {
 		return nil, fmt.Errorf("database path is empty")
 	}
-	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode=WAL&_pragma=foreign_keys=on")
+	// busy_timeout: wait for the write lock instead of failing with SQLITE_BUSY
+	// (the MCP process writes to the same file). Must come first: pragmas run in
+	// order on every new conn, and journal_mode=WAL itself can hit BUSY.
+	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode=WAL&_pragma=foreign_keys=on")
 	if err != nil {
 		return nil, err
 	}
+	// Default is 2 idle conns: every extra concurrent query reopened the file.
+	db.SetMaxIdleConns(8)
 
 	if err := RunMigrations(path); err != nil {
+		db.Close()
+		return nil, err
+	}
+	// Convert to WAL once up front (persistent in the file): concurrent first-time
+	// conversions from several conns fail with SQLITE_BUSY despite busy_timeout.
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		db.Close()
 		return nil, err
 	}

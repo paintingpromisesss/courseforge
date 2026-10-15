@@ -43,7 +43,7 @@ cd backend && make swagger
 ## Build quirks
 
 - Single Go binary serves REST API (chi) + static SPA (`frontend/dist/`), AND the MCP server (`courseforge mcp ...`). There is NO separate `courseforge-mcp` binary.
-- `swagger` build tag: enables `/swagger/index.html`. `scripts/build.sh` and `make run` use it; bare `go build` does not.
+- `swagger` build tag: enables `/swagger/index.html`. Dev-only: `make run` uses it; release builds (`scripts/build.*`) don't, and are built with `-trimpath -ldflags "-s -w"`.
 - Windows binary is built as a GUI-subsystem exe (`-H=windowsgui`) so no console window flashes on double-click. When invoked from a terminal or CLI/MCP, it calls `attachConsoleIfAvailable()` in `cmd/courseforge/console_windows.go` to attach to the parent console and wire stdout/stderr properly.
 - Shared `GOCACHE` at `.cache/go-build/` across repo (set by build scripts and Makefile).
 - Frontend build = `tsc -b && vite build` (type-check then bundle).
