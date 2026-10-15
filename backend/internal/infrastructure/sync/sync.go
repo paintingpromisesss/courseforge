@@ -5,6 +5,7 @@
 package sync
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/paintingpromisesss/courseforge/internal/domain"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/git"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 )
@@ -62,6 +64,12 @@ func (d *debouncer) stop() {
 	}
 }
 
+// submissionStore handles persistence of submissions across courses.
+type submissionStore interface {
+	ExportAll(ctx context.Context) (map[string][]domain.Submission, error)
+	ImportSubmissions(ctx context.Context, subs []domain.Submission) error
+}
+
 // Engine serializes all sync operations. busy is exposed through Status so
 // the UI can poll while a push/pull runs.
 type Engine struct {
@@ -69,6 +77,7 @@ type Engine struct {
 	git        *git.Service
 	cfgRepo    *repo.SyncConfigRepository
 	sources    *repo.CourseSourcesRepository
+	subs       submissionStore
 	coursesDir string
 	dataDir    string
 	mirrorDir  string // {dataDir}/sync/repo
@@ -79,6 +88,13 @@ type Engine struct {
 	// progressDeb debounces on-progress pushes (SetTriggers/Start arm it).
 	progressDeb *debouncer
 	ticker      *time.Ticker
+}
+
+// SetSubmissions wires the submission store for cloud-vault sync.
+func (e *Engine) SetSubmissions(s submissionStore) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.subs = s
 }
 
 // Status is the sync state for API responses.
@@ -335,6 +351,39 @@ func (e *Engine) snapshot(ctx context.Context, cfg *repo.SyncConfig) error {
 		}
 	}
 
+	if e.subs != nil {
+		subsByCourse, err := e.subs.ExportAll(ctx)
+		if err != nil {
+			return fmt.Errorf("export submissions: %w", err)
+		}
+		if len(subsByCourse) > 0 {
+			subsDir := filepath.Join(e.mirrorDir, "submissions")
+			if err := os.MkdirAll(subsDir, 0755); err != nil {
+				return err
+			}
+			for courseSlug, courseSubs := range subsByCourse {
+				if excluded[courseSlug] || isImported(sources, courseSlug) {
+					continue
+				}
+				if len(courseSubs) == 0 {
+					continue
+				}
+				var buf bytes.Buffer
+				for _, sub := range courseSubs {
+					data, err := json.Marshal(sub)
+					if err != nil {
+						return fmt.Errorf("marshal submission: %w", err)
+					}
+					buf.Write(data)
+					buf.WriteByte('\n')
+				}
+				if err := os.WriteFile(filepath.Join(subsDir, courseSlug+".jsonl"), buf.Bytes(), 0644); err != nil {
+					return fmt.Errorf("write submissions for %s: %w", courseSlug, err)
+				}
+			}
+		}
+	}
+
 	data, err := json.MarshalIndent(sources, "", "  ")
 	if err != nil {
 		return err
@@ -410,6 +459,40 @@ func (e *Engine) applyMirror(ctx context.Context, cfg *repo.SyncConfig) error {
 	if _, err := os.Stat(filepath.Join(e.mirrorDir, "progress")); err == nil {
 		if err := replaceDir(filepath.Join(e.mirrorDir, "progress"), filepath.Join(e.dataDir, "progress")); err != nil {
 			return fmt.Errorf("restore progress: %w", err)
+		}
+	}
+
+	if e.subs != nil {
+		subsDir := filepath.Join(e.mirrorDir, "submissions")
+		subEntries, err := os.ReadDir(subsDir)
+		if err == nil {
+			for _, en := range subEntries {
+				if en.IsDir() || !strings.HasSuffix(en.Name(), ".jsonl") {
+					continue
+				}
+				data, err := os.ReadFile(filepath.Join(subsDir, en.Name()))
+				if err != nil {
+					return fmt.Errorf("read %s: %w", en.Name(), err)
+				}
+				var subs []domain.Submission
+				lines := strings.Split(string(data), "\n")
+				for _, line := range lines {
+					line = strings.TrimSpace(line)
+					if line == "" {
+						continue
+					}
+					var sub domain.Submission
+					if err := json.Unmarshal([]byte(line), &sub); err != nil {
+						return fmt.Errorf("parse submission in %s: %w", en.Name(), err)
+					}
+					subs = append(subs, sub)
+				}
+				if len(subs) > 0 {
+					if err := e.subs.ImportSubmissions(ctx, subs); err != nil {
+						return fmt.Errorf("import submissions for %s: %w", en.Name(), err)
+					}
+				}
+			}
 		}
 	}
 

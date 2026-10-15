@@ -105,6 +105,7 @@ func Run(cfg *config.Config) error {
 	sourcesRepo := repo.NewCourseSourcesRepository(cfg.DataDir)
 	syncCfgRepo := repo.NewSyncConfigRepository(cfg.DataDir)
 	syncEngine := csync.NewEngine(gitSvc, syncCfgRepo, sourcesRepo, cfg.CoursesDir, cfg.DataDir)
+	syncEngine.SetSubmissions(sr)
 
 	mcpProvider, err := mcp.NewCourseForgeProvider(cfg.CoursesDir, cfg.DataDir, pr, sr, r)
 	if err != nil {

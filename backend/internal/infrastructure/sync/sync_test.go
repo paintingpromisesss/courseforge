@@ -7,9 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/paintingpromisesss/courseforge/internal/domain"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/git"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 )
@@ -440,5 +442,84 @@ func TestDebouncer(t *testing.T) {
 	time.Sleep(80 * time.Millisecond)
 	if calls != 1 {
 		t.Fatalf("fn called %d times, want 1", calls)
+	}
+}
+
+type mockSubStore struct {
+	mu   sync.Mutex
+	subs map[string][]domain.Submission
+}
+
+func newMockSubStore() *mockSubStore {
+	return &mockSubStore{subs: make(map[string][]domain.Submission)}
+}
+
+func (m *mockSubStore) ExportAll(ctx context.Context) (map[string][]domain.Submission, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	res := make(map[string][]domain.Submission, len(m.subs))
+	for k, v := range m.subs {
+		res[k] = append([]domain.Submission(nil), v...)
+	}
+	return res, nil
+}
+
+func (m *mockSubStore) ImportSubmissions(ctx context.Context, subs []domain.Submission) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, s := range subs {
+		m.subs[s.CourseSlug] = append(m.subs[s.CourseSlug], s)
+	}
+	return nil
+}
+
+func TestPushPull_Submissions(t *testing.T) {
+	gitAvailable(t)
+	cloud := makeCloud(t)
+	ctx := context.Background()
+
+	envA := newTestEnv(t, cloud)
+	writeCourse(t, envA.coursesDir, "c1", "slug: c1\n")
+	storeA := newMockSubStore()
+	storeA.subs["c1"] = []domain.Submission{
+		{CourseSlug: "c1", TaskSlug: "task-1", Language: "go", Code: "package main\nfunc Solve() {}"},
+	}
+	envA.engine.SetSubmissions(storeA)
+
+	if err := envA.engine.Push(ctx); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+
+	files := cloudFiles(t, cloud)
+	found := false
+	for _, f := range files {
+		if f == "submissions/c1.jsonl" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected submissions/c1.jsonl in cloud files, got: %v", files)
+	}
+
+	content := cloudFile(t, cloud, "submissions/c1.jsonl")
+	if !strings.Contains(content, "package main") {
+		t.Fatalf("unexpected content in submissions/c1.jsonl: %s", content)
+	}
+
+	// Pull into envB
+	envB := newTestEnv(t, cloud)
+	storeB := newMockSubStore()
+	envB.engine.SetSubmissions(storeB)
+
+	if err := envB.engine.Pull(ctx); err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+
+	if len(storeB.subs["c1"]) != 1 {
+		t.Fatalf("expected 1 submission imported into envB, got %d", len(storeB.subs["c1"]))
+	}
+	if storeB.subs["c1"][0].Code != "package main\nfunc Solve() {}" {
+		t.Errorf("unexpected code imported: %s", storeB.subs["c1"][0].Code)
 	}
 }
