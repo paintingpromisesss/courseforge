@@ -9,8 +9,11 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/paintingpromisesss/courseforge/internal/application/service"
 	"github.com/paintingpromisesss/courseforge/internal/domain"
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/git"
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/parser/course"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
+	csync "github.com/paintingpromisesss/courseforge/internal/infrastructure/sync"
 	"github.com/paintingpromisesss/courseforge/internal/mcp"
 	"github.com/paintingpromisesss/courseforge/internal/updater"
 )
@@ -26,10 +29,36 @@ type Handler struct {
 	submissions   *service.SubmissionService
 	ai            *service.AIService
 	mcpConfigRepo *repo.MCPConfigRepository
+	gitAuth       *repo.GitAuthRepository
+	gitSvc        *git.Service
+	sources       *repo.CourseSourcesRepository
 	mcpServer       *mcp.Server
 	sseServer       *mcpserver.SSEServer
 	fallbackSession mcp.SessionManager
 	updater         *updater.Updater
+	syncEngine      *csync.Engine
+}
+
+// SetSyncEngine injects the cloud-sync engine after construction (DI builds
+// it after the Handler because engine.OnReload points back at the Handler).
+func (h *Handler) SetSyncEngine(e *csync.Engine) {
+	e.OnReload = h.reloadCourses
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.syncEngine = e
+}
+
+// reloadCourses re-parses everything from disk, replacing the in-memory maps.
+// Called after a cloud-sync pull changed course files.
+func (h *Handler) reloadCourses() {
+	courses, catalogs, err := course.LoadAll(h.coursesDir)
+	if err != nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.courses = courses
+	h.catalogs = catalogs
 }
 
 
@@ -43,6 +72,9 @@ func New(
 	ss *service.SubmissionService,
 	aiService *service.AIService,
 	mcpConfigRepo *repo.MCPConfigRepository,
+	gitAuth *repo.GitAuthRepository,
+	gitSvc *git.Service,
+	sources *repo.CourseSourcesRepository,
 	mcpServer *mcp.Server,
 	upd *updater.Updater,
 ) *Handler {
@@ -65,6 +97,9 @@ func New(
 		submissions:   ss,
 		ai:            aiService,
 		mcpConfigRepo: mcpConfigRepo,
+		gitAuth:       gitAuth,
+		gitSvc:        gitSvc,
+		sources:       sources,
 		mcpServer:     mcpServer,
 		sseServer:     sseServer,
 		updater:       upd,

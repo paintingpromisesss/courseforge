@@ -193,7 +193,10 @@ func (s *Server) initDependenciesLocked(coursesDir, dataDir string) error {
 	}
 
 	subRepo := repo.NewSubmissionRepository(db)
-	progRepo := repo.NewFileProgressRepository(coursesDir)
+	if err := repo.MigrateProgress(coursesDir, dataDir); err != nil {
+		s.logger.Printf("warning: progress migration: %v", err)
+	}
+	progRepo := repo.NewFileProgressRepository(dataDir)
 
 	r := runner.New()
 	runnersJSON := s.cfg.RunnersJSON

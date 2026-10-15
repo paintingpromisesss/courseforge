@@ -4,7 +4,10 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { api } from '../api/client';
+import type { GitImportBatchItem } from '../api/types';
 import { CardDoneMark, CardProgressStrip, CourseDoneBadge } from '../components/ui/ProgressBar';
+import { isAuthError } from '../lib/gitHelpers';
+import { useSettings } from '../context/SettingsContext';
 
 // "24 теории · 41 задача", zero parts omitted
 function courseMeta(course: { theory_count: number; task_count: number }): string {
@@ -61,6 +64,12 @@ function PlusIcon() {
 const catKey = (slug: string) => `cat:${slug}`;
 const crsKey = (slug: string) => `crs:${slug}`;
 
+// "course slug \"go-interview\" already exists" → "go-interview"
+function slugFromError(msg: string): string | null {
+  const m = msg.match(/slug "([^"]+)" already exists/);
+  return m ? m[1] : null;
+}
+
 interface LastVisit { slug: string; title: string; label?: string; path: string; }
 
 function readLastVisit(): LastVisit | null {
@@ -96,11 +105,14 @@ function SelectMark({ on }: { on: boolean }) {
 
 export function CoursesPage() {
   const qc = useQueryClient();
+  const { openSettings } = useSettings();
   const [editMode, setEditMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [purge, setPurge] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [batchResults, setBatchResults] = useState<GitImportBatchItem[] | null>(null);
   const [lastVisit] = useState(readLastVisit);
 
   const { data: catalogs, isLoading: catsLoading } = useQuery({
@@ -119,6 +131,34 @@ export function CoursesPage() {
     onSuccess: () => {
       setCreating(false);
       qc.invalidateQueries({ queryKey: ['catalogs'] });
+    },
+  });
+
+  const importBatchMut = useMutation({
+    mutationFn: (urls: string[]) => api.gitImportBatch(urls),
+    onSuccess: (resp) => {
+      setBatchResults(resp.results);
+      const anyOk = resp.results.some((r) => r.ok);
+      if (anyOk) {
+        qc.invalidateQueries({ queryKey: ['courses'] });
+        qc.invalidateQueries({ queryKey: ['catalogs'] });
+      }
+      // dialog stays open: the per-URL report replaces the input
+    },
+  });
+
+  const attachMut = useMutation({
+    mutationFn: ({ url, slug }: { url: string; slug: string }) => api.gitAttach(url, slug),
+    onSuccess: (resp) => {
+      // reflect the binding in the per-URL report
+      if (batchResults) {
+        setBatchResults(batchResults.map((r) =>
+          slugFromError(r.error ?? '') === resp.slug
+            ? { ...r, ok: true, slug: resp.slug, branch: resp.branch, commit: resp.commit, error: undefined }
+            : r,
+        ));
+      }
+      qc.invalidateQueries({ queryKey: ['courses'] });
     },
   });
 
@@ -180,47 +220,57 @@ export function CoursesPage() {
             )}
           </div>
 
-          {hasAny && (
-            <div className="flex items-center gap-2 shrink-0">
-              {editMode ? (
-                <>
-                  {delMut.isError && (
-                    <span className="px-2.5 py-1 rounded-lg bg-err/10 border border-err/30 text-err text-xs">
-                      {(delMut.error as Error).message}
-                    </span>
-                  )}
-                  <button
-                    onClick={() => { setPurge(false); setConfirmOpen(true); }}
-                    disabled={selected.size === 0}
-                    className={clsx(
-                      'px-3.5 h-9 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all',
-                      selected.size === 0
-                        ? 'bg-bg-2 border border-bdr text-tx-3 cursor-not-allowed opacity-60'
-                        : 'bg-err text-white hover:opacity-90 shadow-sm',
-                    )}
-                  >
-                    <TrashIcon />
-                    {`Удалить${selected.size ? ` (${selected.size})` : ''}`}
-                  </button>
-                  <button
-                    onClick={exitMode}
-                    className="px-3.5 h-9 rounded-lg border border-brand bg-brand text-white text-xs font-medium hover:bg-brand-hover transition-colors cursor-pointer"
-                  >
-                    Готово
-                  </button>
-                </>
-              ) : (
+          <div className="flex items-center gap-2 shrink-0">
+            {hasAny && editMode ? (
+              <>
+                {delMut.isError && (
+                  <span className="px-2.5 py-1 rounded-lg bg-err/10 border border-err/30 text-err text-xs">
+                    {(delMut.error as Error).message}
+                  </span>
+                )}
                 <button
-                  onClick={() => setEditMode(true)}
-                  className="px-3 h-9 rounded-lg border border-bdr bg-bg-2 hover:bg-bg-3 text-tx-3 hover:text-tx-1 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-                  title="Управление и удаление курсов"
+                  onClick={() => { setPurge(false); setConfirmOpen(true); }}
+                  disabled={selected.size === 0}
+                  className={clsx(
+                    'px-3.5 h-9 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all',
+                    selected.size === 0
+                      ? 'bg-bg-2 border border-bdr text-tx-3 cursor-not-allowed opacity-60'
+                      : 'bg-err text-white hover:opacity-90 shadow-sm',
+                  )}
                 >
-                  <PencilIcon />
-                  <span>Управление</span>
+                  <TrashIcon />
+                  {`Удалить${selected.size ? ` (${selected.size})` : ''}`}
                 </button>
-              )}
-            </div>
-          )}
+                <button
+                  onClick={exitMode}
+                  className="px-3.5 h-9 rounded-lg border border-brand bg-brand text-white text-xs font-medium hover:bg-brand-hover transition-colors cursor-pointer"
+                >
+                  Готово
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setImporting(true)}
+                  className="px-3 h-9 rounded-lg border border-bdr bg-bg-2 hover:bg-bg-3 text-tx-3 hover:text-tx-1 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Импортировать курс или каталог из репозитория GitHub"
+                >
+                  <GitHubMark />
+                  <span>Импорт из GitHub</span>
+                </button>
+                {hasAny && (
+                  <button
+                    onClick={() => setEditMode(true)}
+                    className="px-3 h-9 rounded-lg border border-bdr bg-bg-2 hover:bg-bg-3 text-tx-3 hover:text-tx-1 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Управление и удаление курсов"
+                  >
+                    <PencilIcon />
+                    <span>Управление</span>
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         {lastVisit && !editMode && (courses ?? []).some((c) => c.slug === lastVisit.slug) && (
@@ -361,6 +411,23 @@ export function CoursesPage() {
             error={createMut.error as Error | null}
             onClose={() => { setCreating(false); createMut.reset(); }}
             onSubmit={(title, description) => createMut.mutate({ title, description })}
+          />
+        )}
+        {importing && (
+          <ImportFromGitHubDialog
+            pending={importBatchMut.isPending}
+            error={importBatchMut.error as Error | null}
+            results={batchResults}
+            attaching={attachMut.isPending}
+            attachError={attachMut.error as Error | null}
+            onAttach={(url, slug) => attachMut.mutate({ url, slug })}
+            onClose={() => {
+              setImporting(false);
+              importBatchMut.reset();
+              setBatchResults(null);
+            }}
+            onSubmit={(urls) => importBatchMut.mutate(urls)}
+            onOpenSettings={() => { setImporting(false); openSettings('github'); }}
           />
         )}
         {confirmOpen && (
@@ -510,6 +577,179 @@ function ConfirmDeleteDialog({ catalogCount, courseCount, purge, onTogglePurge, 
         </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+function ImportFromGitHubDialog({ pending, error, results, attaching, attachError, onAttach, onClose, onSubmit, onOpenSettings }: {
+  pending: boolean;
+  error: Error | null;
+  results: GitImportBatchItem[] | null;
+  attaching: boolean;
+  attachError: Error | null;
+  onAttach: (url: string, slug: string) => void;
+  onClose: () => void;
+  onSubmit: (urls: string[]) => void;
+  onOpenSettings: () => void;
+}) {
+  const [urls, setUrls] = useState('');
+  const parsed = urls
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const canSubmit = parsed.length > 0 && !pending;
+  const anyAuthHint = (results ?? []).some((r) => !r.ok && isAuthError(r.error ?? ''));
+
+  const lastRepo = (item: GitImportBatchItem): string => {
+    const m = item.url.match(/github\.com\/([^/]+\/[^/]+)/i);
+    return m ? m[1] : item.url;
+  };
+
+  if (results && results.length > 0) {
+    const okCount = results.filter((r) => r.ok).length;
+    return (
+      <motion.div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      >
+        <motion.div
+          className="w-full max-w-md rounded-xl bg-bg-2 border border-bdr p-6 shadow-xl max-h-[80vh] overflow-y-auto"
+          initial={{ opacity: 0, scale: 0.96, y: 8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.96, y: 8 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h2 className="text-lg font-semibold text-tx-1 mb-1">Импорт из GitHub</h2>
+          <p className="text-xs text-tx-3 mb-4">
+            Импортировано: {okCount} из {results.length}
+          </p>
+          {anyAuthHint && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="mb-3 text-brand hover:underline text-xs font-medium cursor-pointer"
+            >
+              Часть репозиториев приватные — добавьте токен в Настройки → GitHub
+            </button>
+          )}
+          <div className="space-y-1.5">
+            {results.map((r) => (
+              <div
+                key={r.url}
+                className={
+                  'rounded-lg border p-2.5 text-xs ' +
+                  (r.ok
+                    ? 'border-ok/30 bg-ok/10 text-ok'
+                    : 'border-err/30 bg-err/10 text-err')
+                }
+              >
+                <div className="font-mono truncate" title={r.url}>{lastRepo(r)}</div>
+                <div className="text-[11px] opacity-80">
+                  {r.ok ? `импортирован: ${r.slug}` : r.error}
+                </div>
+                {!r.ok && r.error && slugFromError(r.error) && (
+                  <button
+                    type="button"
+                    disabled={attaching}
+                    onClick={() => {
+                      const slug = slugFromError(r.error ?? '');
+                      if (slug) onAttach(r.url, slug);
+                    }}
+                    className="mt-1.5 text-[11px] font-medium text-brand hover:underline cursor-pointer disabled:opacity-50"
+                  >
+                    {attaching ? 'Привязка...' : 'Привязать локальный курс к этому репозиторию'}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          {attachError && (
+            <div className="mt-3 text-err text-xs">{attachError.message}</div>
+          )}
+          <div className="flex justify-end mt-4">
+            <button
+              onClick={onClose}
+              className="px-4 h-9 rounded-lg bg-brand text-white text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer"
+            >
+              Готово
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <motion.div
+        className="w-full max-w-md rounded-xl bg-bg-2 border border-bdr p-6 shadow-xl"
+        initial={{ opacity: 0, scale: 0.96, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 8 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold text-tx-1 mb-1">Импорт из GitHub</h2>
+        <p className="text-xs text-tx-3 mb-4">
+          По одной ссылке на строку. Клонируется основная ветка — переключить ветку можно после импорта на странице курса.
+        </p>
+        <textarea
+          autoFocus
+          value={urls}
+          onChange={(e) => setUrls(e.target.value)}
+          rows={Math.min(8, Math.max(3, parsed.length + 1))}
+          placeholder={'https://github.com/user/repo1\nhttps://github.com/user/repo2'}
+          className="w-full mb-1 px-3 py-2 rounded-lg bg-bg-1 border border-bdr text-tx-1 text-sm placeholder:text-tx-3 focus:border-brand focus:outline-none font-mono resize-y"
+        />
+        <p className="text-[11px] text-tx-3 mb-2">
+          {parsed.length > 0 ? `Ссылок: ${parsed.length}` : ''}
+        </p>
+        {error && (
+          <div className="mt-3 text-err text-xs">
+            <p>{error.message}</p>
+            {error && isAuthError(error.message) && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="mt-1.5 text-brand hover:underline font-medium cursor-pointer"
+              >
+                Репозиторий приватный — добавьте токен в Настройки → GitHub
+              </button>
+            )}
+          </div>
+        )}
+        <div className="flex justify-end gap-2 mt-4">
+          <button
+            onClick={onClose}
+            className="px-4 h-9 rounded-lg text-tx-2 text-sm hover:text-tx-1 transition-colors"
+          >
+            Отмена
+          </button>
+          <button
+            onClick={() => onSubmit(parsed)}
+            disabled={!canSubmit}
+            className="px-4 h-9 rounded-lg bg-brand text-white text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity"
+          >
+            {pending ? `Импорт... (${parsed.length})` : 'Импортировать'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function GitHubMark() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="shrink-0">
+      <path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.9 10.9 0 0 1 2.87-.39c.97 0 1.95.13 2.87.39 2.18-1.49 3.14-1.18 3.14-1.18.62 1.59.23 2.76.11 3.05.74.81 1.18 1.83 1.18 3.09 0 4.41-2.69 5.38-5.26 5.66.41.36.78 1.06.78 2.14 0 1.54-.01 2.79-.01 3.17 0 .31.21.67.8.55A10.52 10.52 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z" />
+    </svg>
   );
 }
 

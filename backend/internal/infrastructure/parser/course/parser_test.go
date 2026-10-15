@@ -197,6 +197,22 @@ func TestParseErrors(t *testing.T) {
 	}
 }
 
+// Git-imported courses carry .git (and possibly editor metadata folders);
+// dot-directories at any level must not trip the orphan-folder check.
+func TestParseIgnoresDotDirs(t *testing.T) {
+	m := validCourse()
+	m["go-interview/.git/config"] = &fstest.MapFile{Data: []byte("[core]\n")}
+	m["go-interview/week-1/.obsidian/x.json"] = &fstest.MapFile{Data: []byte("{}\n")}
+	m["go-interview/week-1/slices/01-intro/.vscode/settings.json"] = &fstest.MapFile{Data: []byte("{}\n")}
+	c, err := Parse(m, "go-interview")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.Slug != "go-interview" {
+		t.Fatalf("slug = %q", c.Slug)
+	}
+}
+
 func TestParserParseEntityFromDisk(t *testing.T) {
 	p := NewParser(validCourse())
 

@@ -189,6 +189,105 @@ export interface VersionResponse {
   status: UpdateStatus;
 }
 
+export interface GitAuthStatus {
+  configured: boolean;
+  username: string;
+  token_masked: string;
+  credential_helper?: string[];
+}
+
+export interface GitAuthTestResp {
+  ok: boolean;
+  login?: string;
+  error?: string;
+}
+
+export interface GitImportResp {
+  slug: string;
+  branch: string;
+  commit: string;
+}
+
+export interface GitImportBatchItem {
+  url: string;
+  ok: boolean;
+  slug?: string;
+  branch?: string;
+  commit?: string;
+  error?: string;
+}
+
+export interface GitImportBatchResp {
+  results: GitImportBatchItem[];
+}
+
+export interface CourseSourceDTO {
+  repo: string;
+  branch: string;
+  commit: string;
+  imported_at: string;
+}
+
+export interface GitBranchesResp {
+  branches: string[];
+  current: string;
+  source: CourseSourceDTO | null;
+}
+
+export interface GitStatusResp {
+  branch: string;
+  commit: string;
+  dirty: boolean;
+}
+
+export interface SyncTriggers {
+  on_progress: boolean;
+  interval_min: number;
+  on_startup_pull: boolean;
+}
+
+export interface SyncConfigResp {
+  remote_url: string;
+  branch: string;
+  triggers: SyncTriggers;
+  last_sync?: string;
+  enabled: boolean;
+  exclude?: string[];
+}
+
+export interface PatchSyncConfigReq {
+  remote_url?: string;
+  branch?: string;
+  triggers?: SyncTriggers;
+  enabled?: boolean;
+  exclude?: string[];
+}
+
+export interface SyncStatusResp {
+  configured: boolean;
+  enabled: boolean;
+  syncing: boolean;
+  last_sync: string;
+  branch: string;
+  commit: string;
+  pending_imports: string[];
+}
+
+export interface SyncHistoryItem {
+  commit: string;
+  author: string;
+  subject: string;
+  time: string;
+}
+
+export interface SyncCommitFilesResp {
+  files: string[];
+}
+
+export interface SyncRestoreImportsResp {
+  restored: string[];
+}
+
 
 
 

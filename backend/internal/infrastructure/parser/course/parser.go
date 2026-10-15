@@ -43,6 +43,9 @@ func (p *Parser) ParseCourse(root string) (*domain.Course, error) {
 	if err := validateCourse(c); err != nil {
 		errs = append(errs, err)
 	}
+	if err := validateSlug(manifest, path.Base(root), c.Slug); err != nil {
+		errs = append(errs, err)
+	}
 	errs = append(errs, validateNoOrphanDirs(p.fsys, root, manifest, c.TrackSlugs)...)
 
 	for _, ts := range c.TrackSlugs {

@@ -16,8 +16,9 @@ type progressRepository interface {
 }
 
 type ProgressService struct {
-	repo   progressRepository
-	logger *zap.Logger
+	repo     progressRepository
+	logger   *zap.Logger
+	onChange func() // fired after a successful mutation (sync trigger)
 }
 
 func NewProgressService(repo progressRepository, logger *zap.Logger) *ProgressService {
@@ -25,6 +26,12 @@ func NewProgressService(repo progressRepository, logger *zap.Logger) *ProgressSe
 		repo:   repo,
 		logger: logger,
 	}
+}
+
+// SetOnChange registers a callback fired after each successful progress
+// mutation. The sync engine uses it to debounce-push to the cloud vault.
+func (s *ProgressService) SetOnChange(f func()) {
+	s.onChange = f
 }
 
 func (s *ProgressService) Load(ctx context.Context, courseDir, courseSlug string) (*domain.Progress, error) {
@@ -54,6 +61,9 @@ func (s *ProgressService) MarkDone(ctx context.Context, courseDir, courseSlug, t
 		)
 
 		return fmt.Errorf("mark task done: %w", err)
+	}
+	if s.onChange != nil {
+		s.onChange()
 	}
 
 	return nil
@@ -85,6 +95,9 @@ func (s *ProgressService) MarkUndone(ctx context.Context, courseDir, courseSlug,
 		)
 
 		return fmt.Errorf("mark task undone: %w", err)
+	}
+	if s.onChange != nil {
+		s.onChange()
 	}
 
 	return nil

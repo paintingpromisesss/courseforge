@@ -18,9 +18,11 @@ import (
 	"github.com/paintingpromisesss/courseforge/internal/application/service"
 	"github.com/paintingpromisesss/courseforge/internal/config"
 
+	"github.com/paintingpromisesss/courseforge/internal/infrastructure/git"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/parser/course"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/runner"
+	csync "github.com/paintingpromisesss/courseforge/internal/infrastructure/sync"
 	"github.com/paintingpromisesss/courseforge/internal/mcp"
 	"github.com/paintingpromisesss/courseforge/internal/tray"
 	"github.com/paintingpromisesss/courseforge/internal/updater"
@@ -33,6 +35,10 @@ func Run(cfg *config.Config) error {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("create dir %s: %w", dir, err)
 		}
+	}
+
+	if err := repo.MigrateProgress(cfg.CoursesDir, cfg.DataDir); err != nil {
+		log.Printf("warning: progress migration: %v", err)
 	}
 
 	logger := logger.New()
@@ -68,7 +74,7 @@ func Run(cfg *config.Config) error {
 		_ = r.StopPostgres()
 	}()
 
-	pr := repo.NewFileProgressRepository(cfg.CoursesDir)
+	pr := repo.NewFileProgressRepository(cfg.DataDir)
 
 	ps := service.NewProgressService(pr, logger)
 
@@ -88,6 +94,18 @@ func Run(cfg *config.Config) error {
 	}
 
 	mcpRepo := repo.NewMCPConfigRepository(cfg.DataDir)
+
+	gitAuthRepo := repo.NewGitAuthRepository(cfg.DataDir)
+	gitSvc := git.NewService()
+	if a, err := gitAuthRepo.Load(context.Background()); err == nil && a != nil {
+		gitSvc.SetToken(a.Token)
+	} else if err != nil {
+		log.Printf("warning: load git auth: %v", err)
+	}
+	sourcesRepo := repo.NewCourseSourcesRepository(cfg.DataDir)
+	syncCfgRepo := repo.NewSyncConfigRepository(cfg.DataDir)
+	syncEngine := csync.NewEngine(gitSvc, syncCfgRepo, sourcesRepo, cfg.CoursesDir, cfg.DataDir)
+	syncEngine.SetSubmissions(sr)
 
 	mcpProvider, err := mcp.NewCourseForgeProvider(cfg.CoursesDir, cfg.DataDir, pr, sr, r)
 	if err != nil {
@@ -120,7 +138,25 @@ func Run(cfg *config.Config) error {
 		_, _ = upd.Check(ctx, false)
 	}()
 
-	h := handlers.New(cfg.CoursesDir, cfg.DataDir, courses, catalogs, r, ps, ss, aiService, mcpRepo, mcpServer, upd)
+	h := handlers.New(cfg.CoursesDir, cfg.DataDir, courses, catalogs, r, ps, ss, aiService, mcpRepo, gitAuthRepo, gitSvc, sourcesRepo, mcpServer, upd)
+	h.SetSyncEngine(syncEngine)
+
+	// Sync triggers: on-progress debounce, interval ticker, startup pull.
+	ps.SetOnChange(syncEngine.NotifyProgress)
+	syncCtx, syncCancel := context.WithCancel(context.Background())
+	defer syncCancel()
+	if syncCfg, err := syncCfgRepo.Load(context.Background()); err == nil && syncCfg != nil {
+		syncEngine.SetTriggers(syncCfg)
+		syncEngine.Start(syncCtx)
+		if syncCfg.Enabled && syncCfg.Triggers.OnStartupPull {
+			go func() {
+				if err := syncEngine.Pull(context.Background()); err != nil {
+					log.Printf("sync: startup pull: %v", err)
+				}
+			}()
+		}
+	}
+	defer syncEngine.Stop()
 
 	router, err := api.NewRouter(h, api.RouterOptions{FrontendDir: cfg.FrontendDir, CoursesDir: cfg.CoursesDir, DataDir: cfg.DataDir})
 	if err != nil {

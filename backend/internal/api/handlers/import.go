@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -243,7 +245,18 @@ func (h *Handler) deleteCourse(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "failed to delete course files")
 		return
 	}
+	h.forgetSource(r.Context(), c.Dir)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// forgetSource drops the git-source record for a deleted course/catalog dir.
+func (h *Handler) forgetSource(ctx context.Context, dir string) {
+	if h.sources == nil {
+		return
+	}
+	if err := h.sources.Delete(ctx, dir); err != nil {
+		log.Printf("warning: delete course source %q: %v", dir, err)
+	}
 }
 
 func containsString(s []string, v string) bool {
@@ -331,6 +344,7 @@ func (h *Handler) deleteCatalog(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "failed to delete catalog files")
 		return
 	}
+	h.forgetSource(r.Context(), cat.Dir)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -352,7 +366,10 @@ func (h *Handler) removeCourseLocked(slug string) error {
 		_ = h.writeCatalogManifest(catSlug)
 	}
 	if !strings.Contains(c.Dir, "/") {
-		return os.RemoveAll(filepath.Join(h.coursesDir, c.Dir))
+		if err := os.RemoveAll(filepath.Join(h.coursesDir, c.Dir)); err != nil {
+			return err
+		}
+		h.forgetSource(context.Background(), c.Dir)
 	}
 	return nil
 }
