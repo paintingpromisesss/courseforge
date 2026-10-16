@@ -1,11 +1,10 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 
 import { api } from '../api/client';
-import { Tabs } from '../components/ui/Tabs';
 import { Markdown, VideoEmbed } from '../components/ui/Markdown';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Badge } from '../components/ui/Badge';
@@ -17,6 +16,7 @@ import { CodeMirrorEditor } from '../components/ui/CodeMirrorEditor';
 import { LangSelect } from '../components/ui/LangSelect';
 import { parseTestOutput, type ParsedResults } from '../lib/parseTests';
 import { useTheme } from '../context/ThemeContext';
+import { useDock } from '../layout/DockContext';
 import type { Submission } from '../api/types';
 
 
@@ -574,6 +574,10 @@ export function TaskPage() {
   }>();
   const qc = useQueryClient();
   const { theme } = useTheme();
+  const location = useLocation();
+  // Переключатель «Теория/Задача/Видео/Посылки/Решение» живёт в DockContext —
+  // им же управляет action bar, поэтому состояние страницы поднимается туда.
+  const { centerTab: leftTab, setCenterTab: setLeftTab, state: dockState } = useDock();
 
   const { data: course } = useQuery({
     queryKey: ['course', courseSlug],
@@ -598,7 +602,6 @@ export function TaskPage() {
   const [lang, setLang] = useState<string>('');
   const [code, setCode] = useState<string>('');
   const codeRef = useRef<string>('');
-  const [leftTab, setLeftTab] = useState<LeftTab | null>(null);
   const prevUnitSlug = useRef<string | undefined>(undefined);
   const prevTaskSlug = useRef<string | undefined>(undefined);
   const prevUnitForScroll = useRef<string | undefined>(undefined);
@@ -747,20 +750,27 @@ export function TaskPage() {
     prevTaskSlug.current = taskSlug;
 
     if (isNewUnit) {
-      // First load or navigated to a different unit (different group)
-      setLeftTab(unit.has_theory && !theoryDone ? 'theory' : 'statement');
+      // First load or navigated to a different unit (different group).
+      // «Переход с нижней панели» передаёт желаемый вид через location.state.
+      const wanted = (location.state as { taskView?: LeftTab } | null)?.taskView;
+      const valid = wanted === 'theory' || wanted === 'statement' || wanted === 'submissions' || wanted === 'solution'
+        || (wanted === 'video' && hasTaskVideo);
+      if (valid && wanted) {
+        setLeftTab(wanted);
+      } else {
+        setLeftTab(unit.has_theory && !theoryDone ? 'theory' : 'statement');
+      }
     } else if (isNewTask) {
       // Switched tasks within the SAME unit/group:
       // 1. If theory is open, keep it untouched ("если открыта теория - она никуда не девается")
       // 2. Do NOT jump/auto-switch to theory ("автовыбор задачи не должен соскакивать на теорию")
-      setLeftTab((currentTab) => {
-        if (currentTab === 'theory') return 'theory';
-        if (currentTab === 'statement') return 'statement';
-        if (currentTab === 'video' && hasTaskVideo) return 'video';
-        return 'statement';
-      });
+      if (leftTab === 'theory' || (leftTab === 'video' && hasTaskVideo)) {
+        // текущий вид сохраняется
+      } else {
+        setLeftTab('statement');
+      }
     }
-  }, [unitSlug, taskSlug, unit, progress, theoryDone, hasTaskVideo]);
+  }, [unitSlug, taskSlug, unit, progress, theoryDone, hasTaskVideo, location.state, leftTab, setLeftTab]);
 
   const activeTab = leftTab ?? 'statement';
 
@@ -839,21 +849,16 @@ export function TaskPage() {
     }
   };
 
-  const leftTabs = [
-    ...(unit?.has_theory ? [{ id: 'theory', label: 'Теория' }] : []),
-    { id: 'statement', label: task?.title ?? 'Задача' },
-    ...(hasTaskVideo ? [{ id: 'video', label: 'Видео-разбор' }] : []),
-    { id: 'submissions', label: 'Посылки' },
-    { id: 'solution', label: <span className="flex items-center gap-1">Решение {!solutionUnlocked && '🔒'}</span> },
-  ] as { id: string; label: React.ReactNode }[];
-
-  const handleTabChange = (id: string) => {
-    if (id === 'solution' && !solutionUnlocked) {
+  // Клик по🔒 «Решение» из action bar тоже проходит сюда — диалог показываем
+  // и откатываемся на условие, пока решение не разблокировано. Реакция на
+  // пользовательское событие, разворачивается ровно один раз (guard ниже).
+  useEffect(() => {
+    if (leftTab === 'solution' && !solutionUnlocked) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowSolutionDialog(true);
-    } else {
-      setLeftTab(id as LeftTab);
+      setLeftTab('statement');
     }
-  };
+  }, [leftTab, solutionUnlocked, setLeftTab]);
 
   const MIN_CODE_WIDTH = 360;
 
@@ -943,11 +948,38 @@ export function TaskPage() {
     document.addEventListener('mouseup', onUp);
   }, [aiDocked, aiWidth]);
 
+  const aiOnLeft = dockState.position.ai === 'left';
+
   return (
     <div className="flex flex-col h-full">
       <div ref={splitRef} className="flex flex-1 overflow-hidden">
+        {/* docked AI слева: колонка прижимается к левой кромке, слот же
+            принадлежит ей — дерево/git на этой стороне закрыты (инвариант DockContext) */}
+        {aiOnLeft && (
+          <AIAssist
+            taskSlug={taskSlug!}
+            unitSlug={unitSlug!}
+            taskTitle={task?.title}
+            taskDescription={statement}
+            language={lang}
+            currentCode={getCurrentCode}
+            templateCode={template}
+            testsCode={testCode}
+            solutionCode={solution}
+            testOutput={
+              results
+                ? `Тесты (${results.parsed.passed}/${results.parsed.total} пройдено, время ${results.durationMs}ms${results.timedOut ? ', ТАЙМАУТ' : ''}):\n` +
+                  results.parsed.tests
+                    .map((t) => `- [${t.passed ? 'PASS' : 'FAIL'}] ${t.name}${t.detail ? `:\n  ${t.detail.replace(/\n/g, '\n  ')}` : ''}`)
+                    .join('\n')
+                : undefined
+            }
+            onDockChange={handleAiDockChange}
+            maxDockedWidth={getMaxAiWidth}
+            dockSide="left"
+          />
+        )}
         <div style={{ width: `${leftPct}%` }} className="flex flex-col overflow-hidden shrink-0">
-          <Tabs tabs={leftTabs} active={activeTab} onChange={handleTabChange} />
           <div ref={scrollPanelRef} className={clsx('flex-1 overflow-y-auto', (activeTab === 'submissions' || activeTab === 'solution') ? 'p-0' : 'p-4')}>
             {activeTab === 'theory' && (() => {
               const BASE = import.meta.env.VITE_API_URL ?? '/api';
@@ -1117,30 +1149,31 @@ export function TaskPage() {
           </AnimatePresence>
         </div>
 
-        {/* AI Assistant: Docked column or Floating/Closed portal */}
-        <AIAssist
-          taskSlug={taskSlug!}
-          unitSlug={unitSlug!}
-          taskTitle={task?.title}
-          taskDescription={statement}
-          language={lang}
-          currentCode={getCurrentCode}
-          templateCode={template}
-          testsCode={testCode}
-          solutionCode={solution}
-          testOutput={
-            results
-              ? `Тесты (${results.parsed.passed}/${results.parsed.total} пройдено, время ${results.durationMs}ms${results.timedOut ? ', ТАЙМАУТ' : ''}):\n` +
-                results.parsed.tests
-                  .map((t) => `- [${t.passed ? 'PASS' : 'FAIL'}] ${t.name}${t.detail ? `:\n  ${t.detail.replace(/\n/g, '\n  ')}` : ''}`)
-                  .join('\n')
-              : undefined
-          }
-          onDockChange={handleAiDockChange}
-          maxDockedWidth={getMaxAiWidth}
-          resultsOpen={!!results}
-          resultsCollapsed={resultsCollapsed}
-        />
+        {/* AI Assistant: docked column (right of the code pane) or Floating portal */}
+        {!aiOnLeft && (
+          <AIAssist
+            taskSlug={taskSlug!}
+            unitSlug={unitSlug!}
+            taskTitle={task?.title}
+            taskDescription={statement}
+            language={lang}
+            currentCode={getCurrentCode}
+            templateCode={template}
+            testsCode={testCode}
+            solutionCode={solution}
+            testOutput={
+              results
+                ? `Тесты (${results.parsed.passed}/${results.parsed.total} пройдено, время ${results.durationMs}ms${results.timedOut ? ', ТАЙМАУТ' : ''}):\n` +
+                  results.parsed.tests
+                    .map((t) => `- [${t.passed ? 'PASS' : 'FAIL'}] ${t.name}${t.detail ? `:\n  ${t.detail.replace(/\n/g, '\n  ')}` : ''}`)
+                    .join('\n')
+                : undefined
+            }
+            onDockChange={handleAiDockChange}
+            maxDockedWidth={getMaxAiWidth}
+            dockSide="right"
+          />
+        )}
       </div>
 
       <ConfirmDialog

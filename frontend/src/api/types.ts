@@ -240,6 +240,31 @@ export interface GitStatusResp {
   dirty: boolean;
 }
 
+export interface GitCommitItem {
+  hash: string;
+  subject: string;
+  author: string;
+  time: string; // RFC3339
+}
+
+export interface GitLogResp {
+  commits: GitCommitItem[];
+}
+
+export interface GitCommitFilesResp {
+  files: string[];
+}
+
+export interface GitDiffFile {
+  path: string;              // repo-relative, forward slashes
+  status: 'M' | 'D' | 'A' | 'R';
+  hunks: string[];           // unified-diff hunks starting with @@ (empty for A)
+}
+
+export interface GitDiffResp {
+  files: GitDiffFile[];
+}
+
 export interface SyncTriggers {
   on_progress: boolean;
   interval_min: number;

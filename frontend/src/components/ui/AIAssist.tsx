@@ -773,8 +773,7 @@ export const AIAssist = memo(function AIAssist({
   testOutput,
   onDockChange,
   maxDockedWidth,
-  resultsOpen,
-  resultsCollapsed,
+  dockSide = 'right',
 }: {
   taskSlug: string;
   unitSlug: string;
@@ -788,8 +787,8 @@ export const AIAssist = memo(function AIAssist({
   testOutput?: string;
   onDockChange?: (docked: boolean, width: number) => void;
   maxDockedWidth?: number | (() => number);
-  resultsOpen?: boolean;
-  resultsCollapsed?: boolean;
+  /** сторона, к которой прижимается docked-колонка (из DockContext) */
+  dockSide?: 'left' | 'right';
 }) {
   const storageKey = `cf_ai_chat_${taskSlug || 'global'}`;
 
@@ -808,7 +807,9 @@ export const AIAssist = memo(function AIAssist({
     return 'closed';
   });
 
-  const [lastActiveMode, setLastActiveMode] = useState<'docked' | 'floating'>(() => {
+  // последний активный режим дублируется в cf_ai_last_mode — его читает
+  // DockContext (toggle с action bar), локально значение не нужно
+  const [, setLastActiveMode] = useState<'docked' | 'floating'>(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('cf_ai_last_mode');
@@ -832,7 +833,22 @@ export const AIAssist = memo(function AIAssist({
       } catch {
         /* ignore */
       }
+      // Единый канал синхронизации: action bar (и DockContext) слушает это
+      // событие и отражает режим кнопкой AI.
+      window.dispatchEvent(new CustomEvent<AIMode>('cf_ai_mode_changed', { detail: newMode }));
     }
+  }, []);
+
+  // Режим мог измениться извне (action bar, ПКМ-меню) — синхронизируемся.
+  useEffect(() => {
+    const onModeChanged = (e: Event) => {
+      const detail = (e as CustomEvent<AIMode>).detail;
+      if (detail === 'docked' || detail === 'floating' || detail === 'closed') {
+        setAIModeState((prev) => (prev === detail ? prev : detail));
+      }
+    };
+    window.addEventListener('cf_ai_mode_changed', onModeChanged);
+    return () => window.removeEventListener('cf_ai_mode_changed', onModeChanged);
   }, []);
 
 
@@ -1118,7 +1134,9 @@ export const AIAssist = memo(function AIAssist({
 
   return (
     <>
-      {/* 1. DOCKED MODE: Inline flex column in workspace with slide in/out */}
+      {/* 1. DOCKED MODE: Inline flex column in workspace with slide in/out.
+          dockSide задаёт, к какой кромкеWorkspace колонка прижата — ручка
+          resize всегда на внутреннем крае. */}
       <AnimatePresence initial={false}>
         {aiMode === 'docked' && (
           <motion.div
@@ -1133,6 +1151,21 @@ export const AIAssist = memo(function AIAssist({
             }
             className="shrink-0 h-full flex flex-row overflow-hidden relative"
           >
+            {/* Docked Column */}
+            <div
+              style={{ width: `${dockedWidth}px` }}
+              className={clsx(
+                'shrink-0 h-full flex flex-col bg-bg-1 overflow-hidden',
+                dockSide === 'right' ? 'border-l border-bdr' : 'border-r border-bdr',
+              )}
+            >
+              <AIChatPanel
+                mode="docked"
+                onModeChange={setAIMode}
+                {...panelProps}
+              />
+            </div>
+
             {/* Draggable Splitter Handle */}
             <div
               {...splitterProps}
@@ -1142,19 +1175,7 @@ export const AIAssist = memo(function AIAssist({
               )}
               title="Потяните для изменения ширины (двойной клик — сброс)"
             >
-              <div className="absolute inset-y-0 -left-1 w-3 z-30 cursor-col-resize" />
-            </div>
-
-            {/* Docked Column */}
-            <div
-              style={{ width: `${dockedWidth}px` }}
-              className="shrink-0 h-full flex flex-col bg-bg-1 border-l border-bdr overflow-hidden"
-            >
-              <AIChatPanel
-                mode="docked"
-                onModeChange={setAIMode}
-                {...panelProps}
-              />
+              <div className="absolute inset-y-0 -right-1 w-3 z-30 cursor-col-resize" />
             </div>
           </motion.div>
         )}
@@ -1245,40 +1266,7 @@ export const AIAssist = memo(function AIAssist({
           document.body
         )}
 
-      {/* 3. CLOSED MODE: Bottom-right launcher toggle button with spring exit/enter */}
-      {typeof document !== 'undefined' &&
-        createPortal(
-          <AnimatePresence>
-            {aiMode === 'closed' && (
-              <motion.div
-                key="closed-ai-launcher"
-                style={{
-                  bottom: !resultsOpen ? '24px' : resultsCollapsed ? '62px' : '290px',
-                }}
-                className="fixed right-6 z-30 pointer-events-auto transition-[bottom] duration-200"
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0, opacity: 0 }}
-                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setAIMode(lastActiveMode || 'docked')}
-                  className="w-12 h-12 rounded-full bg-brand hover:bg-brand-hover text-white shadow-lg shadow-brand/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer"
-                  title="Открыть AI-ассистент"
-                >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z" />
-                    <path d="M16 14H8a4 4 0 0 0-4 4v2h16v-2a4 4 0 0 0-4-4z" />
-                    <line x1="9" y1="10" x2="9.01" strokeWidth="2" />
-                    <line x1="15" y1="10" x2="15.01" strokeWidth="2" />
-                  </svg>
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>,
-          document.body
-        )}
+      {/* 3. CLOSED MODE: панель скрыта — вход через кнопку AI в action bar. */}
     </>
   );
 });
