@@ -253,10 +253,12 @@ export function ActionBar({ centerTabs }: { centerTabs: CenterTabsConfig | null 
           items={
             menu.kind === 'ai'
               ? [
-                  { id: 'left', label: 'Закрепить слева', checked: state.position.ai === 'left' && aiMode === 'docked' },
-                  { id: 'right', label: 'Закрепить справа', checked: state.position.ai === 'right' && aiMode === 'docked' },
+                  // как у дерева/гита: галочка — позиция закрепления, она видна
+                  // и когда панель скрыта; плавающему(window открыт) — своя
+                  { id: 'left', label: 'Закрепить слева', checked: state.position.ai === 'left' && aiMode !== 'floating' },
+                  { id: 'right', label: 'Закрепить справа', checked: state.position.ai === 'right' && aiMode !== 'floating' },
                   { id: '-sep', label: '' },
-                  { id: 'float', label: 'Плавающее окно', checked: aiMode === 'floating' },
+                  { id: 'float', label: 'Плавающее окно', checked: aiMode === 'floating' || state.position.ai === 'float' },
                 ]
               : [
                   { id: 'left', label: 'Закрепить слева', checked: state.position[menu.kind as DockPanel] === 'left' },
