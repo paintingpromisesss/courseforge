@@ -178,8 +178,8 @@ export function ActionBar({ centerTabs }: { centerTabs: CenterTabsConfig | null 
       segments.push({ id: 'theory', label: 'Теория' });
     }
     segments.push({ id: 'statement', label: 'Задача' });
-    if (centerTabs.hasTaskVideo) segments.push({ id: 'video', label: 'Видео' });
     segments.push({ id: 'submissions', label: 'Посылки' });
+    if (centerTabs.hasTaskVideo) segments.push({ id: 'video', label: 'Видео' });
     segments.push({ id: 'solution', label: 'Решение' });
   } else if (onTheoryRoute) {
     activeSeg = 'theory';

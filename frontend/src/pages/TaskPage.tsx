@@ -788,16 +788,65 @@ export function TaskPage() {
     }
   }, [courseSlug, unitSlug, theoryDone, qc]);
 
-  useLayoutEffect(() => {
-    const isNewUnit = prevUnitForScroll.current !== unitSlug;
-    prevUnitForScroll.current = unitSlug;
+  // Память прокрутки: позволяет щёлкать Теория ⇄ Задача и возвращаться к месту,
+  // где остановился. Сброс — только при смене юнита (контент другой целиком)
+  // и для привязанных к задаче видов при смене задачи.
+  const scrollMemory = useRef<Partial<Record<LeftTab, number>>>({});
+  const prevTaskForScrollRef = useRef<string | undefined>(undefined);
+  // актуальный таб для scroll-listener: эффект перерегистрации срабатывает
+  // позже layout-восстановления, замыкание на activeTab было бы устаревшим
+  const activeTabRef = useRef(activeTab);
 
-    // Reset scroll when switching units or when viewing task statement/tabs,
-    // but keep scroll untouched if staying on theory within the same unit!
-    if (isNewUnit || activeTab !== 'theory') {
-      if (scrollPanelRef.current) scrollPanelRef.current.scrollTop = 0;
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  // без массива зависимостей: listener всегда должен жить на актуальном
+  // контейнере и писать скролл в память актуального таба (см. activeTabRef)
+  useEffect(() => {
+    const el = scrollPanelRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      scrollMemory.current[activeTabRef.current] = el.scrollTop;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  });
+
+  useLayoutEffect(() => {
+    const el = scrollPanelRef.current;
+    if (!el) return;
+    const isNewUnit = prevUnitForScroll.current !== unitSlug;
+    const isNewTask = prevTaskForScrollRef.current !== taskSlug;
+    prevUnitForScroll.current = unitSlug;
+    prevTaskForScrollRef.current = taskSlug;
+
+    if (isNewUnit) {
+      scrollMemory.current = {};
+      el.scrollTop = 0;
+    } else if (isNewTask) {
+      // контент привязан к задаче — прежний скролл к нему неприменим;
+      // скролл теории (юнит-уровень) сохраняется
+      delete scrollMemory.current.statement;
+      delete scrollMemory.current.video;
+      delete scrollMemory.current.submissions;
+      delete scrollMemory.current.solution;
+      el.scrollTop = scrollMemory.current[activeTab] ?? 0;
+    } else {
+      el.scrollTop = scrollMemory.current[activeTab] ?? 0;
     }
   }, [taskSlug, unitSlug, activeTab]);
+
+  // страховка: markdown/подсветка дорисовываются после layout-восстановления,
+  // и позиция могла сброситься — возвращаем последний запомненный скролл
+  useEffect(() => {
+    const el = scrollPanelRef.current;
+    if (!el) return;
+    const saved = scrollMemory.current[activeTab];
+    if (saved !== undefined && el.scrollTop !== saved) {
+      el.scrollTop = saved;
+    }
+  }, [activeTab]);
 
   const handleCodeChange = useCallback((val: string) => {
     codeRef.current = val;
@@ -1050,8 +1099,14 @@ export function TaskPage() {
                 </motion.div>
               );
             })()}
-            {activeTab === 'video' && hasTaskVideo && (
-              <VideoEmbed href={taskVideoURL} sources={task?.video_sources} />
+            {/* Видео-разбор: держим плеер смонтированным, пока у задачи есть
+                видео, и просто прячем вне вкладки «Видео». <video> остаётся
+                в DOM — картинка-в-картинке и воспроизведение переживают
+                переключение табов (кнопка открепления в плеере). */}
+            {hasTaskVideo && (
+              <div className={clsx(activeTab !== 'video' && 'hidden')}>
+                <VideoEmbed href={taskVideoURL} sources={task?.video_sources} />
+              </div>
             )}
             {activeTab === 'submissions' && (
               <SubmissionsList
