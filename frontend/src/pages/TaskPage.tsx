@@ -793,6 +793,9 @@ export function TaskPage() {
   // и для привязанных к задаче видов при смене задачи.
   const scrollMemory = useRef<Partial<Record<LeftTab, number>>>({});
   const prevTaskForScrollRef = useRef<string | undefined>(undefined);
+  // предыдущий активный вид — для возврата при отмене диалога «Решение»
+  const prevTabRef = useRef<LeftTab>(activeTab);
+  const solutionReturnTabRef = useRef<LeftTab>('statement');
   // актуальный таб для scroll-listener: эффект перерегистрации срабатывает
   // позже layout-восстановления, замыкание на activeTab было бы устаревшим
   const activeTabRef = useRef(activeTab);
@@ -816,10 +819,17 @@ export function TaskPage() {
   useLayoutEffect(() => {
     const el = scrollPanelRef.current;
     if (!el) return;
+    const prevTab = prevTabRef.current; // вид ДО этого перехода (layout — раньше watcher'а)
+    prevTabRef.current = activeTab;
     const isNewUnit = prevUnitForScroll.current !== unitSlug;
     const isNewTask = prevTaskForScrollRef.current !== taskSlug;
     prevUnitForScroll.current = unitSlug;
     prevTaskForScrollRef.current = taskSlug;
+
+    // уходим на «Решение» — запоминаем, откуда пришли (для отмены диалога)
+    if (activeTab === 'solution') {
+      solutionReturnTabRef.current = prevTab;
+    }
 
     if (isNewUnit) {
       scrollMemory.current = {};
@@ -898,16 +908,23 @@ export function TaskPage() {
     }
   };
 
-  // Клик по🔒 «Решение» из action bar тоже проходит сюда — диалог показываем
-  // и откатываемся на условие, пока решение не разблокировано. Реакция на
-  // пользовательское событие, разворачивается ровно один раз (guard ниже).
+  // Клик по🔒 «Решение» из action bar тоже проходит сюда: сразу показываем
+  // вкладку решения под диалогом; при отмене возвращаем таб, который был
+  // выбран до клика (его запомнил scroll-layout-эффект при переходе).
   useEffect(() => {
-    if (leftTab === 'solution' && !solutionUnlocked) {
+    if (leftTab === 'solution' && !solutionUnlocked && !showSolutionDialog) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowSolutionDialog(true);
-      setLeftTab('statement');
     }
-  }, [leftTab, solutionUnlocked, setLeftTab]);
+  }, [leftTab, solutionUnlocked, showSolutionDialog]);
+
+  // ушли с «Решения» при открытом диалоге — диалог закрывается тихо
+  useEffect(() => {
+    if (leftTab !== 'solution' && showSolutionDialog) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setShowSolutionDialog(false);
+    }
+  }, [leftTab, showSolutionDialog]);
 
   const MIN_CODE_WIDTH = 360;
 
@@ -1241,7 +1258,11 @@ export function TaskPage() {
           setLeftTab('solution');
           setShowSolutionDialog(false);
         }}
-        onCancel={() => setShowSolutionDialog(false)}
+        onCancel={() => {
+          setShowSolutionDialog(false);
+          // отмену трактуем как «верни, где был» — до клика по🔒 «Решение»
+          setLeftTab(solutionReturnTabRef.current);
+        }}
       />
     </div>
   );
