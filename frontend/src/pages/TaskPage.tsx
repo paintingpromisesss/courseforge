@@ -6,7 +6,6 @@ import clsx from 'clsx';
 
 import { api } from '../api/client';
 import { Markdown, VideoEmbed } from '../components/ui/Markdown';
-import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Badge } from '../components/ui/Badge';
 import { DifficultyBadge } from '../components/ui/DifficultyBadge';
 import { TagBadge } from '../components/ui/TagBadge';
@@ -605,7 +604,6 @@ export function TaskPage() {
   const prevUnitSlug = useRef<string | undefined>(undefined);
   const prevTaskSlug = useRef<string | undefined>(undefined);
   const prevUnitForScroll = useRef<string | undefined>(undefined);
-  const [showSolutionDialog, setShowSolutionDialog] = useState(false);
   // manual peek before solving; reset per task so the lock is unique per task
   const [solutionRevealed, setSolutionRevealed] = useState(false);
   const [running, setRunning] = useState(false);
@@ -793,9 +791,6 @@ export function TaskPage() {
   // и для привязанных к задаче видов при смене задачи.
   const scrollMemory = useRef<Partial<Record<LeftTab, number>>>({});
   const prevTaskForScrollRef = useRef<string | undefined>(undefined);
-  // предыдущий активный вид — для возврата при отмене диалога «Решение»
-  const prevTabRef = useRef<LeftTab>(activeTab);
-  const solutionReturnTabRef = useRef<LeftTab>('statement');
   // актуальный таб для scroll-listener: эффект перерегистрации срабатывает
   // позже layout-восстановления, замыкание на activeTab было бы устаревшим
   const activeTabRef = useRef(activeTab);
@@ -819,17 +814,10 @@ export function TaskPage() {
   useLayoutEffect(() => {
     const el = scrollPanelRef.current;
     if (!el) return;
-    const prevTab = prevTabRef.current; // вид ДО этого перехода (layout — раньше watcher'а)
-    prevTabRef.current = activeTab;
     const isNewUnit = prevUnitForScroll.current !== unitSlug;
     const isNewTask = prevTaskForScrollRef.current !== taskSlug;
     prevUnitForScroll.current = unitSlug;
     prevTaskForScrollRef.current = taskSlug;
-
-    // уходим на «Решение» — запоминаем, откуда пришли (для отмены диалога)
-    if (activeTab === 'solution') {
-      solutionReturnTabRef.current = prevTab;
-    }
 
     if (isNewUnit) {
       scrollMemory.current = {};
@@ -907,24 +895,6 @@ export function TaskPage() {
       setRunning(false);
     }
   };
-
-  // Клик по🔒 «Решение» из action bar тоже проходит сюда: сразу показываем
-  // вкладку решения под диалогом; при отмене возвращаем таб, который был
-  // выбран до клика (его запомнил scroll-layout-эффект при переходе).
-  useEffect(() => {
-    if (leftTab === 'solution' && !solutionUnlocked && !showSolutionDialog) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setShowSolutionDialog(true);
-    }
-  }, [leftTab, solutionUnlocked, showSolutionDialog]);
-
-  // ушли с «Решения» при открытом диалоге — диалог закрывается тихо
-  useEffect(() => {
-    if (leftTab !== 'solution' && showSolutionDialog) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setShowSolutionDialog(false);
-    }
-  }, [leftTab, showSolutionDialog]);
 
   const MIN_CODE_WIDTH = 360;
 
@@ -1045,7 +1015,7 @@ export function TaskPage() {
             dockSide="left"
           />
         )}
-        <div style={{ width: `${leftPct}%` }} className="flex flex-col overflow-hidden shrink-0">
+        <div style={{ width: `${leftPct}%` }} className="relative flex flex-col overflow-hidden shrink-0">
           <div ref={scrollPanelRef} className={clsx('flex-1 overflow-y-auto', (activeTab === 'submissions' || activeTab === 'solution') ? 'p-0' : 'p-4')}>
             {activeTab === 'theory' && (() => {
               const BASE = import.meta.env.VITE_API_URL ?? '/api';
@@ -1136,18 +1106,46 @@ export function TaskPage() {
                 }}
               />
             )}
-            {activeTab === 'solution' && solutionUnlocked && (
-              solution
-                ? <SolutionView
-                    solution={solution}
-                    lang={lang}
-                    onLoadCode={(c) => {
-                      codeRef.current = c;
-                      setCode(c);
-                      if (taskSlug && lang) saveCode(taskSlug, lang, c);
-                    }}
-                  />
-                : <div className="p-4 text-tx-3 text-sm">Загрузка...</div>
+            {activeTab === 'solution' && (
+              solution ? (
+                <>
+                  {/* реальный код — сразу в DOM; до разблокировки накрыт
+                      размытием с замком (без всплывающего диалога) */}
+                  <div className={clsx('transition-[filter,opacity] duration-200', !solutionUnlocked && 'pointer-events-none select-none blur-sm')}>
+                    <SolutionView
+                      solution={solution}
+                      lang={lang}
+                      onLoadCode={(c) => {
+                        codeRef.current = c;
+                        setCode(c);
+                        if (taskSlug && lang) saveCode(taskSlug, lang, c);
+                      }}
+                    />
+                  </div>
+                  {!solutionUnlocked && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-bg-1/60 backdrop-blur-sm">
+                      <div className="max-w-xs text-center space-y-3 select-none">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mx-auto text-tx-3">
+                          <rect x="3" y="11" width="18" height="11" rx="2" />
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                        <p className="text-sm text-tx-2">
+                          Решение скрыто до самостоятельной попытки.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setSolutionRevealed(true)}
+                          className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-white text-sm font-medium transition-colors cursor-pointer"
+                        >
+                          Показать решение
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="p-4 text-tx-3 text-sm">Загрузка...</div>
+              )
             )}
           </div>
         </div>
@@ -1247,23 +1245,6 @@ export function TaskPage() {
           />
         )}
       </div>
-
-      <ConfirmDialog
-        open={showSolutionDialog}
-        title="Показать эталонное решение?"
-        message="Просмотр решения до самостоятельного решения задачи снижает его ценность."
-        confirmLabel="Показать"
-        onConfirm={() => {
-          setSolutionRevealed(true);
-          setLeftTab('solution');
-          setShowSolutionDialog(false);
-        }}
-        onCancel={() => {
-          setShowSolutionDialog(false);
-          // отмену трактуем как «верни, где был» — до клика по🔒 «Решение»
-          setLeftTab(solutionReturnTabRef.current);
-        }}
-      />
     </div>
   );
 }
