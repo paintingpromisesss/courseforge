@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -242,6 +243,132 @@ func TestPushOverwritesRemoteSnapshot(t *testing.T) {
 	}
 	if syncCommits < 2 {
 		t.Fatalf("expected 2+ sync commits, got %d in %+v", syncCommits, log)
+	}
+}
+
+func TestSyncTreeIncremental(t *testing.T) {
+	base := t.TempDir()
+	src := filepath.Join(base, "src")
+	dst := filepath.Join(base, "dst")
+
+	// initial: a file, a nested dir with a file, and a local git repo
+	if err := os.MkdirAll(filepath.Join(src, "sub", ".git"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(src, "a.txt"), "one")
+	write(filepath.Join(src, "sub", "b.txt"), "two")
+	write(filepath.Join(src, "sub", ".git", "HEAD"), "ref: refs/heads/main")
+
+	if err := syncTree(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustRead(t, filepath.Join(dst, "a.txt")); got != "one" {
+		t.Fatalf("a.txt = %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "sub", ".git")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("nested .git must not be copied")
+	}
+	firstMtime := func() time.Time {
+		t.Helper()
+		fi, err := os.Stat(filepath.Join(dst, "a.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fi.ModTime()
+	}()
+	if firstMtime.IsZero() {
+		t.Fatal("no mtime")
+	}
+
+	// unchanged second pass: file untouched, mtime preserved
+	time.Sleep(10 * time.Millisecond)
+	if err := syncTree(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := os.Stat(filepath.Join(dst, "a.txt")); !fi.ModTime().Equal(firstMtime) {
+		t.Fatal("unchanged file was rewritten on second pass")
+	}
+
+	// change one file, add another, remove the changed one's neighbor
+	write(filepath.Join(src, "a.txt"), "one-changed")
+	write(filepath.Join(src, "c.txt"), "three")
+	if err := os.Remove(filepath.Join(src, "sub", "b.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncTree(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustRead(t, filepath.Join(dst, "a.txt")); got != "one-changed" {
+		t.Fatalf("a.txt = %q", got)
+	}
+	if got := mustRead(t, filepath.Join(dst, "c.txt")); got != "three" {
+		t.Fatalf("c.txt = %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "sub", "b.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("deleted file not removed from dst")
+	}
+	if _, err := os.Stat(filepath.Join(dst, "sub")); err != nil {
+		t.Fatalf("still-populated dir removed: %v", err)
+	}
+
+	// fully emptied source dir is cleared in dst
+	if err := os.RemoveAll(filepath.Join(src, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncTree(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "sub")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("emptied dir not removed from dst")
+	}
+}
+
+func TestPushRemovesDeletedCourseAndSubmissions(t *testing.T) {
+	gitAvailable(t)
+	cloud := makeCloud(t)
+	ctx := context.Background()
+	env := newTestEnv(t, cloud)
+
+	writeCourse(t, env.coursesDir, "c1", "one\n")
+	writeCourse(t, env.coursesDir, "c2", "two\n")
+	store := newMockSubStore()
+	store.subs["c1"] = []domain.Submission{{CourseSlug: "c1", TaskSlug: "t", Language: "go", Code: "package main"}}
+	store.subs["c2"] = []domain.Submission{{CourseSlug: "c2", TaskSlug: "t", Language: "go", Code: "package main"}}
+	env.engine.SetSubmissions(store)
+	if err := env.engine.Push(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// delete course c2 and its submissions, push again
+	if err := os.RemoveAll(filepath.Join(env.coursesDir, "c2")); err != nil {
+		t.Fatal(err)
+	}
+	delete(store.subs, "c2")
+	if err := env.engine.Push(ctx); err != nil {
+		t.Fatal(err)
+	}
+	files := strings.Join(cloudFiles(t, cloud), "\n")
+	if strings.Contains(files, "courses/c2") {
+		t.Fatalf("deleted course still in cloud:\n%s", files)
+	}
+	if strings.Contains(files, "submissions/c2.jsonl") {
+		t.Fatalf("deleted course submissions still in cloud:\n%s", files)
+	}
+	if !strings.Contains(files, "courses/c1/course.yaml") || !strings.Contains(files, "submissions/c1.jsonl") {
+		t.Fatalf("c1 lost from cloud:\n%s", files)
+	}
+	mirror := filepath.Join(env.dataDir, "sync", "repo")
+	if _, err := os.Stat(filepath.Join(mirror, "courses", "c2")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("deleted course still in mirror")
 	}
 }
 
