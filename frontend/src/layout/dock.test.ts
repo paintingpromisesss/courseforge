@@ -120,13 +120,13 @@ describe('persistence', () => {
     };
   });
 
-  it('initialDockState reads persisted sides and defaults to left', () => {
+  it('initialDockState reads persisted sides and opens the tree by default', () => {
     savePanelSide('git', 'right');
     const s = initialDockState();
     expect(s.position.tree).toBe('left');
     expect(s.position.git).toBe('right');
-    // slots always start empty — runtime-only (spec: «слоты — runtime-only»)
-    expect(s.left).toBeNull();
+    // при входе в курс содержание открыто по умолчанию
+    expect(s.left).toBe('tree');
     expect(s.right).toBeNull();
   });
 

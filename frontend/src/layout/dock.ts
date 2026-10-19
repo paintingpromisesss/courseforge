@@ -106,7 +106,9 @@ export function saveAIPosition(position: AIDockPosition): void {
   }
 }
 
-/** Initial state assembled from persisted positions with empty slots. */
+/** Начальное состояние: позиции берутся из сохранённых настроек,
+ *  слот содержания открыт по умолчанию — при входе в курс дерево
+ *  сразу видно (пользователь может закрыть его кнопкой). */
 export function initialDockState(): DockState {
   return {
     position: {
@@ -114,7 +116,7 @@ export function initialDockState(): DockState {
       git: loadPanelSide('git'),
       ai: loadAIPosition(),
     },
-    left: null,
+    left: 'tree',
     right: null,
   };
 }
