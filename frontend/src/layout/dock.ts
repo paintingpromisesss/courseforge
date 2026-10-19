@@ -106,17 +106,22 @@ export function saveAIPosition(position: AIDockPosition): void {
   }
 }
 
-/** Начальное состояние: позиции берутся из сохранённых настроек,
- *  слот содержания открыт по умолчанию — при входе в курс дерево
- *  сразу видно (пользователь может закрыть его кнопкой). */
+/** Начальное состояние: позиции — из сохранённых настроек, слоты — runtime.
+ *  Содержание авто-открывается на своей стороне, но правило простое:
+ *  с каждой стороны не более одного элемента. Если эту сторону уже занял
+ *  docked AI (cf_ai_mode === 'docked' и позиция AI именно здесь), дерево
+ *  не открываем вовсе («что-то уже открыто — не обязательно»). */
 export function initialDockState(): DockState {
-  return {
-    position: {
-      tree: loadPanelSide('tree'),
-      git: loadPanelSide('git'),
-      ai: loadAIPosition(),
-    },
-    left: 'tree',
-    right: null,
+  const position: DockState['position'] = {
+    tree: loadPanelSide('tree'),
+    git: loadPanelSide('git'),
+    ai: loadAIPosition(),
   };
+  const state: DockState = { position, left: null, right: null };
+  const aiDocked = loadAIMode() === 'docked';
+  const side = position.tree;
+  if (!(aiDocked && position.ai === side)) {
+    state[side] = 'tree';
+  }
+  return state;
 }

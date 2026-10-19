@@ -120,14 +120,40 @@ describe('persistence', () => {
     };
   });
 
-  it('initialDockState reads persisted sides and opens the tree by default', () => {
-    savePanelSide('git', 'right');
+  it('initialDockState opens the tree on its docked side by default', () => {
+    savePanelSide('tree', 'right');
+    savePanelSide('git', 'left');
     const s = initialDockState();
-    expect(s.position.tree).toBe('left');
-    expect(s.position.git).toBe('right');
-    // при входе в курс содержание открыто по умолчанию
+    expect(s.position.tree).toBe('right');
+    expect(s.right).toBe('tree'); // своя сторона свободна — открываем там
+    expect(s.left).toBeNull();
+  });
+
+  it('auto-open is skipped when a docked AI occupies the same side', () => {
+    savePanelSide('tree', 'left');
+    localStorage.setItem('cf:dock:ai', 'left');
+    localStorage.setItem('cf_ai_mode', 'docked');
+    const s = initialDockState();
+    // правило: с каждой стороны не более одного элемента
+    expect(s.left).toBeNull();
+    expect(s.right).toBeNull();
+  });
+
+  it('auto-open still happens when the docked AI is on the opposite side', () => {
+    savePanelSide('tree', 'left');
+    localStorage.setItem('cf:dock:ai', 'right');
+    localStorage.setItem('cf_ai_mode', 'docked');
+    const s = initialDockState();
     expect(s.left).toBe('tree');
     expect(s.right).toBeNull();
+  });
+
+  it('auto-open works in floating-AI mode', () => {
+    savePanelSide('tree', 'left');
+    localStorage.setItem('cf:dock:ai', 'float');
+    localStorage.setItem('cf_ai_mode', 'floating');
+    const s = initialDockState();
+    expect(s.left).toBe('tree');
   });
 
   it('initialDockState ignores corrupted values', () => {
