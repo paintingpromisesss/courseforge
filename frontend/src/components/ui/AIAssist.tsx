@@ -181,7 +181,7 @@ const ChatMessage = memo(function ChatMessage({
           ) : (
             <div className="flex flex-col gap-2">
               {thinking && (
-                <details className="rounded-xl bg-bg-3/60 border border-white/[0.08] overflow-hidden text-xs group">
+                <details className="rounded-xl bg-bg-3/60 border border-bdr-s overflow-hidden text-xs group">
                   <summary className="px-2.5 py-1.5 cursor-pointer select-none text-tx-3 hover:text-tx-2 font-medium flex items-center justify-between gap-1.5 bg-bg-3/40 hover:bg-bg-3 transition-colors list-none outline-none [&::-webkit-details-marker]:hidden">
                     <span className="inline-flex items-center gap-1.5">
                       {isStreaming && !content ? (
@@ -207,7 +207,7 @@ const ChatMessage = memo(function ChatMessage({
                       {thinking.length} симв.
                     </span>
                   </summary>
-                  <div className="p-2.5 text-tx-3 text-[11px] leading-relaxed border-t border-white/[0.06] max-h-52 overflow-y-auto whitespace-pre-wrap font-mono bg-black/20 select-text">
+                  <div className="p-2.5 text-tx-3 text-[11px] leading-relaxed border-t border-bdr-s max-h-52 overflow-y-auto whitespace-pre-wrap font-mono bg-black/20 select-text">
                     {thinking}
                   </div>
                 </details>
@@ -223,21 +223,21 @@ const ChatMessage = memo(function ChatMessage({
               ) : null}
 
               {isContextExhausted && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-200 flex flex-col gap-2 my-0.5">
+                <div className="p-3 bg-warn/10 border border-warn/30 rounded-xl text-xs text-warn flex flex-col gap-2 my-0.5">
                   <div className="flex items-start gap-2">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-amber-400 mt-0.5">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-warn mt-0.5">
                       <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
                       <line x1="12" y1="9" x2="12" y2="13" />
                       <line x1="12" y1="17" x2="12.01" y2="17" />
                     </svg>
                     <div className="flex flex-col gap-1">
-                      <span className="font-semibold text-amber-300">Контекст модели слишком мал</span>
+                      <span className="font-semibold text-warn">Контекст модели слишком мал</span>
                       <span className="text-tx-2 text-[11.5px] leading-relaxed">
                         У модели недостаточно контекстного окна (или лимит токенов полностью исчерпан на этапе рассуждений). Ответ не сформирован.
                       </span>
                     </div>
                   </div>
-                  <div className="pt-1 border-t border-amber-500/20">
+                  <div className="pt-1 border-t border-warn/20">
                     <span className="text-[11px] text-tx-3">
                       Решение: выберите другую модель с большим контекстом или отключите режим мышления (🧠)
                     </span>
@@ -1134,23 +1134,14 @@ export const AIAssist = memo(function AIAssist({
 
   return (
     <>
-      {/* 1. DOCKED MODE: Inline flex column in workspace with slide in/out.
-          dockSide задаёт, к какой кромкеWorkspace колонка прижата — ручка
+      {/* 1. DOCKED MODE: колонка без анимаций — появляется/исчезает сразу.
+          dockSide задаёт, к какой кромке workspace колонка прижата — ручка
           resize всегда на внутреннем крае. */}
-      <AnimatePresence initial={false}>
-        {aiMode === 'docked' && (
-          <motion.div
-            key="docked-ai-panel"
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: dockedWidth + 4, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={
-              isDraggingSplitter
-                ? { duration: 0 }
-                : { type: 'spring', stiffness: 350, damping: 35 }
-            }
-            className="shrink-0 h-full flex flex-row overflow-hidden relative"
-          >
+      {aiMode === 'docked' && (
+        <div
+          style={{ width: dockedWidth + 4 }}
+          className="shrink-0 h-full flex flex-row overflow-hidden relative"
+        >
             {/* Docked Column */}
             <div
               style={{ width: `${dockedWidth}px` }}
@@ -1177,9 +1168,8 @@ export const AIAssist = memo(function AIAssist({
             >
               <div className="absolute inset-y-0 -right-1 w-3 z-30 cursor-col-resize" />
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
 
       {/* 2. FLOATING MODE: Draggable popover hover chat with smooth scale/fade exit */}
       {typeof document !== 'undefined' &&
