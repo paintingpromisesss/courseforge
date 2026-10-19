@@ -38,11 +38,11 @@ function DockZone({ side, panel, children }: { side: 'left' | 'right'; panel: Do
       {...splitterProps}
       title="Потяните для изменения ширины (двойной клик — сброс)"
       className={clsx(
-        'w-px shrink-0 bg-bdr cursor-col-resize relative z-20 transition-colors hover:bg-brand/60',
+        'w-1 shrink-0 bg-bdr cursor-col-resize relative z-20 transition-colors hover:bg-brand/60',
         isDragging && 'bg-brand shadow-[0_0_8px_rgba(124,58,237,0.5)]',
       )}
     >
-      <div className={clsx('absolute inset-y-0 w-1.5 z-30', side === 'left' ? 'right-0' : 'left-0')} />
+      <div className={clsx('absolute inset-y-0 w-2.5 z-30', side === 'left' ? 'right-0' : 'left-0')} />
     </div>
   );
 

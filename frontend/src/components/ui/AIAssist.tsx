@@ -867,7 +867,7 @@ export const AIAssist = memo(function AIAssist({
     initialWidth: DEFAULT_AI_WIDTH,
     minWidth: MIN_AI_WIDTH,
     maxWidth: getMaxWidth,
-    direction: 'left',
+    direction: dockSide === 'left' ? 'right' : 'left',
     storageKey: 'cf_ai_width',
   });
 
@@ -1142,6 +1142,22 @@ export const AIAssist = memo(function AIAssist({
           style={{ width: dockedWidth + 4 }}
           className="shrink-0 h-full flex flex-row overflow-hidden relative"
         >
+            {/* Resize-ручка: на внутреннем крае дока (для правого дока — слева
+                от колонки, для левого — справа). Направление хука
+                согласовано с краем, иначе drag инвертирован. */}
+            {dockSide === 'right' && (
+              <div
+                {...splitterProps}
+                className={clsx(
+                  'w-1 shrink-0 bg-bdr hover:bg-brand cursor-col-resize transition-colors relative select-none',
+                  isDraggingSplitter && 'bg-brand shadow-[0_0_8px_rgba(124,58,237,0.5)]'
+                )}
+                title="Потяните для изменения ширины (двойной клик — сброс)"
+              >
+                <div className="absolute inset-y-0 -left-1 w-3 z-30 cursor-col-resize" />
+              </div>
+            )}
+
             {/* Docked Column */}
             <div
               style={{ width: `${dockedWidth}px` }}
@@ -1157,17 +1173,18 @@ export const AIAssist = memo(function AIAssist({
               />
             </div>
 
-            {/* Draggable Splitter Handle */}
-            <div
-              {...splitterProps}
-              className={clsx(
-                'w-1 shrink-0 bg-bdr hover:bg-brand cursor-col-resize transition-colors relative select-none',
-                isDraggingSplitter && 'bg-brand shadow-[0_0_8px_rgba(124,58,237,0.5)]'
-              )}
-              title="Потяните для изменения ширины (двойной клик — сброс)"
-            >
-              <div className="absolute inset-y-0 -right-1 w-3 z-30 cursor-col-resize" />
-            </div>
+            {dockSide === 'left' && (
+              <div
+                {...splitterProps}
+                className={clsx(
+                  'w-1 shrink-0 bg-bdr hover:bg-brand cursor-col-resize transition-colors relative select-none',
+                  isDraggingSplitter && 'bg-brand shadow-[0_0_8px_rgba(124,58,237,0.5)]'
+                )}
+                title="Потяните для изменения ширины (двойной клик — сброс)"
+              >
+                <div className="absolute inset-y-0 -right-1 w-3 z-30 cursor-col-resize" />
+              </div>
+            )}
         </div>
       )}
 
