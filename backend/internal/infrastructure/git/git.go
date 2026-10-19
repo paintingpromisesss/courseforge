@@ -319,6 +319,18 @@ func (s *Service) Dirty(ctx context.Context, dir string) (bool, error) {
 	return s.dirtyLocked(ctx, dir)
 }
 
+// IsClean reports whether the working tree matches HEAD (the same criteria
+// Dirty uses, phrased with the caller's intent: nothing to commit).
+func (s *Service) IsClean(ctx context.Context, dir string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out, err := s.runCmd(ctx, dir, s.timeout, "status", "--porcelain")
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) == "", nil
+}
+
 func (s *Service) dirtyLocked(ctx context.Context, dir string) (bool, error) {
 	out, err := s.runCmd(ctx, dir, s.timeout, "status", "--porcelain")
 	if err != nil {

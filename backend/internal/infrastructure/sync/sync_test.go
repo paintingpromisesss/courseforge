@@ -245,6 +245,109 @@ func TestPushOverwritesRemoteSnapshot(t *testing.T) {
 	}
 }
 
+func TestPushNoOpEarlyExit(t *testing.T) {
+	gitAvailable(t)
+	cloud := makeCloud(t)
+	ctx := context.Background()
+	env := newTestEnv(t, cloud)
+	mirror := filepath.Join(env.dataDir, "sync", "repo")
+
+	writeCourse(t, env.coursesDir, "c1", "version: one\n")
+	if err := env.engine.Push(ctx); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ := env.cfgRepo.Load(ctx)
+	firstSync := cfg.LastSync
+	if firstSync == "" {
+		t.Fatal("LastSync not recorded after first push")
+	}
+	head, err := env.engine.git.HeadCommit(ctx, mirror)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// second push with unchanged courses: early exit, no new commit / push
+	time.Sleep(10 * time.Millisecond) // RFC3339 has second precision
+	if err := env.engine.Push(ctx); err != nil {
+		t.Fatalf("no-op push: %v", err)
+	}
+	head2, err := env.engine.git.HeadCommit(ctx, mirror)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if head2 != head {
+		t.Fatalf("no-op push created commit: %s -> %s", head, head2)
+	}
+	log, err := env.engine.git.Log(ctx, mirror, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	syncCommits := 0
+	for _, c := range log {
+		if strings.HasPrefix(c.Subject, "sync:") {
+			syncCommits++
+		}
+	}
+	if syncCommits != 1 {
+		t.Fatalf("expected exactly 1 sync commit, got %d", syncCommits)
+	}
+	cfg, _ = env.cfgRepo.Load(ctx)
+	if cfg.LastSync == firstSync {
+		t.Fatal("LastSync not updated after no-op push")
+	}
+
+	// a real change still commits and pushes on top
+	writeCourse(t, env.coursesDir, "c1", "version: two\n")
+	if err := env.engine.Push(ctx); err != nil {
+		t.Fatal(err)
+	}
+	head3, err := env.engine.git.HeadCommit(ctx, mirror)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if head3 == head {
+		t.Fatal("change did not create a commit")
+	}
+	if got := cloudFile(t, cloud, "courses/c1/course.yaml"); got != "version: two\n" {
+		t.Fatalf("cloud content = %q", got)
+	}
+}
+
+func TestPushNoOpWithOnlyExcludedChange(t *testing.T) {
+	gitAvailable(t)
+	cloud := makeCloud(t)
+	ctx := context.Background()
+	env := newTestEnv(t, cloud)
+	mirror := filepath.Join(env.dataDir, "sync", "repo")
+
+	writeCourse(t, env.coursesDir, "normal", "a\n")
+	cfg, _ := env.cfgRepo.Load(ctx)
+	cfg.Exclude = []string{"excluded"}
+	if err := env.cfgRepo.Save(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.engine.Push(ctx); err != nil {
+		t.Fatal(err)
+	}
+	head, err := env.engine.git.HeadCommit(ctx, mirror)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// change inside the excluded dir: snapshot unchanged, push stays a no-op
+	writeCourse(t, env.coursesDir, "excluded", "b\n")
+	if err := env.engine.Push(ctx); err != nil {
+		t.Fatal(err)
+	}
+	head2, err := env.engine.git.HeadCommit(ctx, mirror)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if head2 != head {
+		t.Fatalf("excluded-dir change created commit: %s -> %s", head, head2)
+	}
+}
+
 func TestPushSkipsExcludedAndImported(t *testing.T) {
 	gitAvailable(t)
 	cloud := makeCloud(t)

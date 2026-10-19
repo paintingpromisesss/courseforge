@@ -288,6 +288,16 @@ func (e *Engine) Push(ctx context.Context) error {
 		if err := e.snapshot(ctx, cfg); err != nil {
 			return err
 		}
+		// Snapshot идентичен HEAD (курсы не менялись с прошлого пуши) —
+		// фиксировать нечего; фиксируем факт синхронизации и возвращаемся.
+		clean, err := e.git.IsClean(ctx, e.mirrorDir)
+		if err != nil {
+			return fmt.Errorf("check mirror state: %w", err)
+		}
+		if clean {
+			cfg.LastSync = time.Now().UTC().Format(time.RFC3339)
+			return e.cfgRepo.Save(ctx, cfg)
+		}
 		msg := fmt.Sprintf("sync: %s %s", hostname, time.Now().UTC().Format(time.RFC3339))
 		if err := e.git.CommitAll(ctx, e.mirrorDir, msg); err != nil {
 			return fmt.Errorf("commit snapshot: %w", err)
