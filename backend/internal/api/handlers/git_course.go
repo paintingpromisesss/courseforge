@@ -378,6 +378,62 @@ func (h *Handler) getGitDiff(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, dto.GitDiffResp{Files: out})
 }
 
+// @Summary Content of one course file at a git ref
+// @Description Returns the raw file content. ref=HEAD (default) reads the
+// @Description committed version; an empty ref reads the working-tree file —
+// @Description the two make up the «было — стало» split diff view.
+// @Tags git
+// @Produce text/plain
+// @Param courseSlug path string true "Course or catalog slug"
+// @Param ref query string false "Git ref (HEAD by default); empty = working tree"
+// @Param path query string true "Repo-relative file path"
+// @Success 200 {string} string
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 503 {object} map[string]string
+// @Router /courses/{courseSlug}/git/file [get]
+func (h *Handler) getGitFile(w http.ResponseWriter, r *http.Request) {
+	if h.gitUnavailable(w) {
+		return
+	}
+	_, dir, _, ok := h.gitCourseTarget(r)
+	if !ok {
+		h.writeError(w, http.StatusNotFound, "course is not managed by git")
+		return
+	}
+	path := r.URL.Query().Get("path")
+	ref := strings.TrimSpace(r.URL.Query().Get("ref"))
+	// handler-level pre-check maps mistakes to 400; FileContent re-validates
+	// as defense in depth
+	if strings.TrimSpace(path) == "" || strings.HasPrefix(path, "/") || strings.Contains(path, "\\") {
+		h.writeError(w, http.StatusBadRequest, "path must be a repo-relative path with forward slashes")
+		return
+	}
+	for _, part := range strings.Split(path, "/") {
+		if part == ".." {
+			h.writeError(w, http.StatusBadRequest, "path must not traverse outside the repository")
+			return
+		}
+	}
+	content, err := h.gitSvc.FileContent(r.Context(), dir, ref, path)
+	if err != nil {
+		var ge *git.Error
+		switch {
+		case errors.As(err, &ge):
+			// git couldn't resolve ref:path (missing file, unknown ref) → 404
+			h.writeError(w, http.StatusNotFound, "file not found: "+ge.Stderr)
+		case errors.Is(err, os.ErrNotExist):
+			h.writeError(w, http.StatusNotFound, "file not found: "+err.Error())
+		default:
+			h.writeError(w, http.StatusBadRequest, "failed to read file: "+err.Error())
+		}
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(content)
+}
+
 // @Summary Bind an existing local course to a GitHub repository
 // @Description Clones the repository and moves its .git into the existing course
 // @Description directory; course files are never modified. The repo's manifest

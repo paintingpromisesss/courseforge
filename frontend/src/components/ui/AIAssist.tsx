@@ -181,7 +181,7 @@ const ChatMessage = memo(function ChatMessage({
           ) : (
             <div className="flex flex-col gap-2">
               {thinking && (
-                <details className="rounded-xl bg-bg-3/60 border border-white/[0.08] overflow-hidden text-xs group">
+                <details className="rounded-xl bg-bg-3/60 border border-bdr-s overflow-hidden text-xs group">
                   <summary className="px-2.5 py-1.5 cursor-pointer select-none text-tx-3 hover:text-tx-2 font-medium flex items-center justify-between gap-1.5 bg-bg-3/40 hover:bg-bg-3 transition-colors list-none outline-none [&::-webkit-details-marker]:hidden">
                     <span className="inline-flex items-center gap-1.5">
                       {isStreaming && !content ? (
@@ -207,7 +207,7 @@ const ChatMessage = memo(function ChatMessage({
                       {thinking.length} симв.
                     </span>
                   </summary>
-                  <div className="p-2.5 text-tx-3 text-[11px] leading-relaxed border-t border-white/[0.06] max-h-52 overflow-y-auto whitespace-pre-wrap font-mono bg-black/20 select-text">
+                  <div className="p-2.5 text-tx-3 text-[11px] leading-relaxed border-t border-bdr-s max-h-52 overflow-y-auto whitespace-pre-wrap font-mono bg-black/20 select-text">
                     {thinking}
                   </div>
                 </details>
@@ -223,21 +223,21 @@ const ChatMessage = memo(function ChatMessage({
               ) : null}
 
               {isContextExhausted && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-200 flex flex-col gap-2 my-0.5">
+                <div className="p-3 bg-warn/10 border border-warn/30 rounded-xl text-xs text-warn flex flex-col gap-2 my-0.5">
                   <div className="flex items-start gap-2">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-amber-400 mt-0.5">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-warn mt-0.5">
                       <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
                       <line x1="12" y1="9" x2="12" y2="13" />
                       <line x1="12" y1="17" x2="12.01" y2="17" />
                     </svg>
                     <div className="flex flex-col gap-1">
-                      <span className="font-semibold text-amber-300">Контекст модели слишком мал</span>
+                      <span className="font-semibold text-warn">Контекст модели слишком мал</span>
                       <span className="text-tx-2 text-[11.5px] leading-relaxed">
                         У модели недостаточно контекстного окна (или лимит токенов полностью исчерпан на этапе рассуждений). Ответ не сформирован.
                       </span>
                     </div>
                   </div>
-                  <div className="pt-1 border-t border-amber-500/20">
+                  <div className="pt-1 border-t border-warn/20">
                     <span className="text-[11px] text-tx-3">
                       Решение: выберите другую модель с большим контекстом или отключите режим мышления (🧠)
                     </span>
@@ -773,8 +773,7 @@ export const AIAssist = memo(function AIAssist({
   testOutput,
   onDockChange,
   maxDockedWidth,
-  resultsOpen,
-  resultsCollapsed,
+  dockSide = 'right',
 }: {
   taskSlug: string;
   unitSlug: string;
@@ -788,8 +787,8 @@ export const AIAssist = memo(function AIAssist({
   testOutput?: string;
   onDockChange?: (docked: boolean, width: number) => void;
   maxDockedWidth?: number | (() => number);
-  resultsOpen?: boolean;
-  resultsCollapsed?: boolean;
+  /** сторона, к которой прижимается docked-колонка (из DockContext) */
+  dockSide?: 'left' | 'right';
 }) {
   const storageKey = `cf_ai_chat_${taskSlug || 'global'}`;
 
@@ -808,7 +807,9 @@ export const AIAssist = memo(function AIAssist({
     return 'closed';
   });
 
-  const [lastActiveMode, setLastActiveMode] = useState<'docked' | 'floating'>(() => {
+  // последний активный режим дублируется в cf_ai_last_mode — его читает
+  // DockContext (toggle с action bar), локально значение не нужно
+  const [, setLastActiveMode] = useState<'docked' | 'floating'>(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('cf_ai_last_mode');
@@ -832,7 +833,22 @@ export const AIAssist = memo(function AIAssist({
       } catch {
         /* ignore */
       }
+      // Единый канал синхронизации: action bar (и DockContext) слушает это
+      // событие и отражает режим кнопкой AI.
+      window.dispatchEvent(new CustomEvent<AIMode>('cf_ai_mode_changed', { detail: newMode }));
     }
+  }, []);
+
+  // Режим мог измениться извне (action bar, ПКМ-меню) — синхронизируемся.
+  useEffect(() => {
+    const onModeChanged = (e: Event) => {
+      const detail = (e as CustomEvent<AIMode>).detail;
+      if (detail === 'docked' || detail === 'floating' || detail === 'closed') {
+        setAIModeState((prev) => (prev === detail ? prev : detail));
+      }
+    };
+    window.addEventListener('cf_ai_mode_changed', onModeChanged);
+    return () => window.removeEventListener('cf_ai_mode_changed', onModeChanged);
   }, []);
 
 
@@ -851,7 +867,7 @@ export const AIAssist = memo(function AIAssist({
     initialWidth: DEFAULT_AI_WIDTH,
     minWidth: MIN_AI_WIDTH,
     maxWidth: getMaxWidth,
-    direction: 'left',
+    direction: dockSide === 'left' ? 'right' : 'left',
     storageKey: 'cf_ai_width',
   });
 
@@ -1118,37 +1134,37 @@ export const AIAssist = memo(function AIAssist({
 
   return (
     <>
-      {/* 1. DOCKED MODE: Inline flex column in workspace with slide in/out */}
-      <AnimatePresence initial={false}>
-        {aiMode === 'docked' && (
-          <motion.div
-            key="docked-ai-panel"
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: dockedWidth + 4, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={
-              isDraggingSplitter
-                ? { duration: 0 }
-                : { type: 'spring', stiffness: 350, damping: 35 }
-            }
-            className="shrink-0 h-full flex flex-row overflow-hidden relative"
-          >
-            {/* Draggable Splitter Handle */}
-            <div
-              {...splitterProps}
-              className={clsx(
-                'w-1 shrink-0 bg-bdr hover:bg-brand cursor-col-resize transition-colors relative select-none',
-                isDraggingSplitter && 'bg-brand shadow-[0_0_8px_rgba(124,58,237,0.5)]'
-              )}
-              title="Потяните для изменения ширины (двойной клик — сброс)"
-            >
-              <div className="absolute inset-y-0 -left-1 w-3 z-30 cursor-col-resize" />
-            </div>
+      {/* 1. DOCKED MODE: колонка без анимаций — появляется/исчезает сразу.
+          dockSide задаёт, к какой кромке workspace колонка прижата — ручка
+          resize всегда на внутреннем крае. */}
+      {aiMode === 'docked' && (
+        <div
+          style={{ width: dockedWidth + 4 }}
+          className="shrink-0 h-full flex flex-row overflow-hidden relative"
+        >
+            {/* Resize-ручка: на внутреннем крае дока (для правого дока — слева
+                от колонки, для левого — справа). Направление хука
+                согласовано с краем, иначе drag инвертирован. */}
+            {dockSide === 'right' && (
+              <div
+                {...splitterProps}
+                className={clsx(
+                  'w-1 shrink-0 bg-bdr hover:bg-brand cursor-col-resize transition-colors relative select-none',
+                  isDraggingSplitter && 'bg-brand shadow-[0_0_8px_rgba(124,58,237,0.5)]'
+                )}
+                title="Потяните для изменения ширины (двойной клик — сброс)"
+              >
+                <div className="absolute inset-y-0 -left-1 w-3 z-30 cursor-col-resize" />
+              </div>
+            )}
 
             {/* Docked Column */}
             <div
               style={{ width: `${dockedWidth}px` }}
-              className="shrink-0 h-full flex flex-col bg-bg-1 border-l border-bdr overflow-hidden"
+              className={clsx(
+                'shrink-0 h-full flex flex-col bg-bg-1 overflow-hidden',
+                dockSide === 'right' ? 'border-l border-bdr' : 'border-r border-bdr',
+              )}
             >
               <AIChatPanel
                 mode="docked"
@@ -1156,9 +1172,21 @@ export const AIAssist = memo(function AIAssist({
                 {...panelProps}
               />
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
+            {dockSide === 'left' && (
+              <div
+                {...splitterProps}
+                className={clsx(
+                  'w-1 shrink-0 bg-bdr hover:bg-brand cursor-col-resize transition-colors relative select-none',
+                  isDraggingSplitter && 'bg-brand shadow-[0_0_8px_rgba(124,58,237,0.5)]'
+                )}
+                title="Потяните для изменения ширины (двойной клик — сброс)"
+              >
+                <div className="absolute inset-y-0 -right-1 w-3 z-30 cursor-col-resize" />
+              </div>
+            )}
+        </div>
+      )}
 
       {/* 2. FLOATING MODE: Draggable popover hover chat with smooth scale/fade exit */}
       {typeof document !== 'undefined' &&
@@ -1245,40 +1273,7 @@ export const AIAssist = memo(function AIAssist({
           document.body
         )}
 
-      {/* 3. CLOSED MODE: Bottom-right launcher toggle button with spring exit/enter */}
-      {typeof document !== 'undefined' &&
-        createPortal(
-          <AnimatePresence>
-            {aiMode === 'closed' && (
-              <motion.div
-                key="closed-ai-launcher"
-                style={{
-                  bottom: !resultsOpen ? '24px' : resultsCollapsed ? '62px' : '290px',
-                }}
-                className="fixed right-6 z-30 pointer-events-auto transition-[bottom] duration-200"
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0, opacity: 0 }}
-                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setAIMode(lastActiveMode || 'docked')}
-                  className="w-12 h-12 rounded-full bg-brand hover:bg-brand-hover text-white shadow-lg shadow-brand/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer"
-                  title="Открыть AI-ассистент"
-                >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z" />
-                    <path d="M16 14H8a4 4 0 0 0-4 4v2h16v-2a4 4 0 0 0-4-4z" />
-                    <line x1="9" y1="10" x2="9.01" strokeWidth="2" />
-                    <line x1="15" y1="10" x2="15.01" strokeWidth="2" />
-                  </svg>
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>,
-          document.body
-        )}
+      {/* 3. CLOSED MODE: панель скрыта — вход через кнопку AI в action bar. */}
     </>
   );
 });

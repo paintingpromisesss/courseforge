@@ -26,6 +26,7 @@ func doGitReq(t *testing.T, h *Handler, method, path, body string) *httptest.Res
 	r.Get("/courses/{courseSlug}/git/log", h.getGitLog)
 	r.Get("/courses/{courseSlug}/git/log/{commit}", h.getGitCommitFiles)
 	r.Get("/courses/{courseSlug}/git/diff", h.getGitDiff)
+	r.Get("/courses/{courseSlug}/git/file", h.getGitFile)
 
 	var rd *strings.Reader
 	if body == "" {
@@ -423,6 +424,80 @@ func TestGitEndpointsRejectNonGitCourse(t *testing.T) {
 		t.Fatalf("no-source checkout status = %d, want 404", w.Code)
 	}
 }
+
+func TestGitFileContent(t *testing.T) {
+	h, _ := setupImportedCourse(t)
+
+	// courseDir хранит импортированную копию курса (см. writeCourseRepoFiles)
+	courseDir := filepath.Join(h.coursesDir, "go-interview")
+	committedYAML := "schema_version: 1\nslug: go-interview\ntitle: Go\nlanguage: ru\ntracks:\n  - week-1\n"
+
+	// 1. ref=HEAD and empty ref both return the committed content of a clean tree
+	w := doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/file?ref=HEAD&path=course.yaml", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("HEAD content status = %d: %s", w.Code, w.Body)
+	}
+	if body := w.Body.String(); body != committedYAML {
+		t.Fatalf("HEAD content = %q, want committed yaml", body)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.Contains(ct, "text/plain") {
+		t.Fatalf("content type = %q", ct)
+	}
+	w = doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/file?path=course.yaml", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("worktree content status = %d: %s", w.Code, w.Body)
+	}
+
+	// 2. a dirty working tree is exactly the «было — стало» pair
+	localYAML := courseYAML("Go Interview — patched", "go-interview")
+	if err := os.WriteFile(filepath.Join(courseDir, "course.yaml"), []byte(localYAML), 0644); err != nil {
+		t.Fatal(err)
+	}
+	w = doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/file?path=course.yaml&ref=HEAD", "")
+	if w.Code != http.StatusOK || w.Body.String() != committedYAML {
+		t.Fatalf("dirty HEAD side = %d %q", w.Code, w.Body)
+	}
+	w = doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/file?path=course.yaml", "")
+	if w.Code != http.StatusOK || w.Body.String() != localYAML {
+		t.Fatalf("dirty worktree side = %d %q", w.Code, w.Body)
+	}
+
+	// 3. path traversal / absolute paths / dash-refs are rejected with 400
+	w = doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/file?path=..%2F..%2Fsecret.txt", "")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("traversal status = %d, want 400: %s", w.Code, w.Body)
+	}
+	w = doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/file?path=%2Fetc%2Fhosts", "")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("absolute path status = %d, want 400", w.Code)
+	}
+	w = doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/file?path=course.yaml&ref=--output%3D%2Ftmp%2Fx", "")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("dash ref status = %d, want 400", w.Code)
+	}
+
+	// 4. missing path -> 404; missing file in worktree -> 404
+	w = doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/file?path=nope%2Fmissing.yaml&ref=HEAD", "")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("missing HEAD file status = %d, want 404", w.Code)
+	}
+	w = doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/file?path=ghost.yaml", "")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("missing worktree file status = %d, want 404", w.Code)
+	}
+
+	// 5. a committed non-manifest file reads fine too (commit in the course copy)
+	if err := os.WriteFile(filepath.Join(courseDir, "notes.txt"), []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, courseDir, "add", "-A")
+	gitRun(t, courseDir, "commit", "-m", "notes")
+	w = doGitReq(t, h, http.MethodGet, "/courses/go-interview/git/file?path=notes.txt&ref=HEAD", "")
+	if w.Code != http.StatusOK || w.Body.String() != "hello" {
+		t.Fatalf("note file = %d %q", w.Code, w.Body)
+	}
+}
+
 
 // doAttachReq routes an attach request; body carries all inputs.
 func doAttachReq(t *testing.T, h *Handler, body string) *httptest.ResponseRecorder {

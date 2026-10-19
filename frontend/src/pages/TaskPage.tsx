@@ -1,13 +1,11 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 
 import { api } from '../api/client';
-import { Tabs } from '../components/ui/Tabs';
 import { Markdown, VideoEmbed } from '../components/ui/Markdown';
-import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Badge } from '../components/ui/Badge';
 import { DifficultyBadge } from '../components/ui/DifficultyBadge';
 import { TagBadge } from '../components/ui/TagBadge';
@@ -17,6 +15,7 @@ import { CodeMirrorEditor } from '../components/ui/CodeMirrorEditor';
 import { LangSelect } from '../components/ui/LangSelect';
 import { parseTestOutput, type ParsedResults } from '../lib/parseTests';
 import { useTheme } from '../context/ThemeContext';
+import { useDock } from '../layout/DockContext';
 import type { Submission } from '../api/types';
 
 
@@ -574,6 +573,10 @@ export function TaskPage() {
   }>();
   const qc = useQueryClient();
   const { theme } = useTheme();
+  const location = useLocation();
+  // Переключатель «Теория/Задача/Видео/Посылки/Решение» живёт в DockContext —
+  // им же управляет action bar, поэтому состояние страницы поднимается туда.
+  const { centerTab: leftTab, setCenterTab: setLeftTab, state: dockState } = useDock();
 
   const { data: course } = useQuery({
     queryKey: ['course', courseSlug],
@@ -598,11 +601,9 @@ export function TaskPage() {
   const [lang, setLang] = useState<string>('');
   const [code, setCode] = useState<string>('');
   const codeRef = useRef<string>('');
-  const [leftTab, setLeftTab] = useState<LeftTab | null>(null);
   const prevUnitSlug = useRef<string | undefined>(undefined);
   const prevTaskSlug = useRef<string | undefined>(undefined);
   const prevUnitForScroll = useRef<string | undefined>(undefined);
-  const [showSolutionDialog, setShowSolutionDialog] = useState(false);
   // manual peek before solving; reset per task so the lock is unique per task
   const [solutionRevealed, setSolutionRevealed] = useState(false);
   const [running, setRunning] = useState(false);
@@ -747,20 +748,27 @@ export function TaskPage() {
     prevTaskSlug.current = taskSlug;
 
     if (isNewUnit) {
-      // First load or navigated to a different unit (different group)
-      setLeftTab(unit.has_theory && !theoryDone ? 'theory' : 'statement');
+      // First load or navigated to a different unit (different group).
+      // «Переход с нижней панели» передаёт желаемый вид через location.state.
+      const wanted = (location.state as { taskView?: LeftTab } | null)?.taskView;
+      const valid = wanted === 'theory' || wanted === 'statement' || wanted === 'submissions' || wanted === 'solution'
+        || (wanted === 'video' && hasTaskVideo);
+      if (valid && wanted) {
+        setLeftTab(wanted);
+      } else {
+        setLeftTab(unit.has_theory && !theoryDone ? 'theory' : 'statement');
+      }
     } else if (isNewTask) {
       // Switched tasks within the SAME unit/group:
       // 1. If theory is open, keep it untouched ("если открыта теория - она никуда не девается")
       // 2. Do NOT jump/auto-switch to theory ("автовыбор задачи не должен соскакивать на теорию")
-      setLeftTab((currentTab) => {
-        if (currentTab === 'theory') return 'theory';
-        if (currentTab === 'statement') return 'statement';
-        if (currentTab === 'video' && hasTaskVideo) return 'video';
-        return 'statement';
-      });
+      if (leftTab === 'theory' || (leftTab === 'video' && hasTaskVideo)) {
+        // текущий вид сохраняется
+      } else {
+        setLeftTab('statement');
+      }
     }
-  }, [unitSlug, taskSlug, unit, progress, theoryDone, hasTaskVideo]);
+  }, [unitSlug, taskSlug, unit, progress, theoryDone, hasTaskVideo, location.state, leftTab, setLeftTab]);
 
   const activeTab = leftTab ?? 'statement';
 
@@ -778,16 +786,65 @@ export function TaskPage() {
     }
   }, [courseSlug, unitSlug, theoryDone, qc]);
 
-  useLayoutEffect(() => {
-    const isNewUnit = prevUnitForScroll.current !== unitSlug;
-    prevUnitForScroll.current = unitSlug;
+  // Память прокрутки: позволяет щёлкать Теория ⇄ Задача и возвращаться к месту,
+  // где остановился. Сброс — только при смене юнита (контент другой целиком)
+  // и для привязанных к задаче видов при смене задачи.
+  const scrollMemory = useRef<Partial<Record<LeftTab, number>>>({});
+  const prevTaskForScrollRef = useRef<string | undefined>(undefined);
+  // актуальный таб для scroll-listener: эффект перерегистрации срабатывает
+  // позже layout-восстановления, замыкание на activeTab было бы устаревшим
+  const activeTabRef = useRef(activeTab);
 
-    // Reset scroll when switching units or when viewing task statement/tabs,
-    // but keep scroll untouched if staying on theory within the same unit!
-    if (isNewUnit || activeTab !== 'theory') {
-      if (scrollPanelRef.current) scrollPanelRef.current.scrollTop = 0;
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  // без массива зависимостей: listener всегда должен жить на актуальном
+  // контейнере и писать скролл в память актуального таба (см. activeTabRef)
+  useEffect(() => {
+    const el = scrollPanelRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      scrollMemory.current[activeTabRef.current] = el.scrollTop;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  });
+
+  useLayoutEffect(() => {
+    const el = scrollPanelRef.current;
+    if (!el) return;
+    const isNewUnit = prevUnitForScroll.current !== unitSlug;
+    const isNewTask = prevTaskForScrollRef.current !== taskSlug;
+    prevUnitForScroll.current = unitSlug;
+    prevTaskForScrollRef.current = taskSlug;
+
+    if (isNewUnit) {
+      scrollMemory.current = {};
+      el.scrollTop = 0;
+    } else if (isNewTask) {
+      // контент привязан к задаче — прежний скролл к нему неприменим;
+      // скролл теории (юнит-уровень) сохраняется
+      delete scrollMemory.current.statement;
+      delete scrollMemory.current.video;
+      delete scrollMemory.current.submissions;
+      delete scrollMemory.current.solution;
+      el.scrollTop = scrollMemory.current[activeTab] ?? 0;
+    } else {
+      el.scrollTop = scrollMemory.current[activeTab] ?? 0;
     }
   }, [taskSlug, unitSlug, activeTab]);
+
+  // страховка: markdown/подсветка дорисовываются после layout-восстановления,
+  // и позиция могла сброситься — возвращаем последний запомненный скролл
+  useEffect(() => {
+    const el = scrollPanelRef.current;
+    if (!el) return;
+    const saved = scrollMemory.current[activeTab];
+    if (saved !== undefined && el.scrollTop !== saved) {
+      el.scrollTop = saved;
+    }
+  }, [activeTab]);
 
   const handleCodeChange = useCallback((val: string) => {
     codeRef.current = val;
@@ -836,22 +893,6 @@ export function TaskPage() {
       qc.invalidateQueries({ queryKey: ['submissions', courseSlug, taskSlug] });
     } finally {
       setRunning(false);
-    }
-  };
-
-  const leftTabs = [
-    ...(unit?.has_theory ? [{ id: 'theory', label: 'Теория' }] : []),
-    { id: 'statement', label: task?.title ?? 'Задача' },
-    ...(hasTaskVideo ? [{ id: 'video', label: 'Видео-разбор' }] : []),
-    { id: 'submissions', label: 'Посылки' },
-    { id: 'solution', label: <span className="flex items-center gap-1">Решение {!solutionUnlocked && '🔒'}</span> },
-  ] as { id: string; label: React.ReactNode }[];
-
-  const handleTabChange = (id: string) => {
-    if (id === 'solution' && !solutionUnlocked) {
-      setShowSolutionDialog(true);
-    } else {
-      setLeftTab(id as LeftTab);
     }
   };
 
@@ -943,11 +984,38 @@ export function TaskPage() {
     document.addEventListener('mouseup', onUp);
   }, [aiDocked, aiWidth]);
 
+  const aiOnLeft = dockState.position.ai === 'left';
+
   return (
     <div className="flex flex-col h-full">
       <div ref={splitRef} className="flex flex-1 overflow-hidden">
-        <div style={{ width: `${leftPct}%` }} className="flex flex-col overflow-hidden shrink-0">
-          <Tabs tabs={leftTabs} active={activeTab} onChange={handleTabChange} />
+        {/* docked AI слева: колонка прижимается к левой кромке, слот же
+            принадлежит ей — дерево/git на этой стороне закрыты (инвариант DockContext) */}
+        {aiOnLeft && (
+          <AIAssist
+            taskSlug={taskSlug!}
+            unitSlug={unitSlug!}
+            taskTitle={task?.title}
+            taskDescription={statement}
+            language={lang}
+            currentCode={getCurrentCode}
+            templateCode={template}
+            testsCode={testCode}
+            solutionCode={solution}
+            testOutput={
+              results
+                ? `Тесты (${results.parsed.passed}/${results.parsed.total} пройдено, время ${results.durationMs}ms${results.timedOut ? ', ТАЙМАУТ' : ''}):\n` +
+                  results.parsed.tests
+                    .map((t) => `- [${t.passed ? 'PASS' : 'FAIL'}] ${t.name}${t.detail ? `:\n  ${t.detail.replace(/\n/g, '\n  ')}` : ''}`)
+                    .join('\n')
+                : undefined
+            }
+            onDockChange={handleAiDockChange}
+            maxDockedWidth={getMaxAiWidth}
+            dockSide="left"
+          />
+        )}
+        <div style={{ width: `${leftPct}%` }} className="relative flex flex-col overflow-hidden shrink-0">
           <div ref={scrollPanelRef} className={clsx('flex-1 overflow-y-auto', (activeTab === 'submissions' || activeTab === 'solution') ? 'p-0' : 'p-4')}>
             {activeTab === 'theory' && (() => {
               const BASE = import.meta.env.VITE_API_URL ?? '/api';
@@ -1018,8 +1086,14 @@ export function TaskPage() {
                 </motion.div>
               );
             })()}
-            {activeTab === 'video' && hasTaskVideo && (
-              <VideoEmbed href={taskVideoURL} sources={task?.video_sources} />
+            {/* Видео-разбор: держим плеер смонтированным, пока у задачи есть
+                видео, и просто прячем вне вкладки «Видео». <video> остаётся
+                в DOM — картинка-в-картинке и воспроизведение переживают
+                переключение табов (кнопка открепления в плеере). */}
+            {hasTaskVideo && (
+              <div className={clsx(activeTab !== 'video' && 'hidden')}>
+                <VideoEmbed href={taskVideoURL} sources={task?.video_sources} />
+              </div>
             )}
             {activeTab === 'submissions' && (
               <SubmissionsList
@@ -1032,18 +1106,46 @@ export function TaskPage() {
                 }}
               />
             )}
-            {activeTab === 'solution' && solutionUnlocked && (
-              solution
-                ? <SolutionView
-                    solution={solution}
-                    lang={lang}
-                    onLoadCode={(c) => {
-                      codeRef.current = c;
-                      setCode(c);
-                      if (taskSlug && lang) saveCode(taskSlug, lang, c);
-                    }}
-                  />
-                : <div className="p-4 text-tx-3 text-sm">Загрузка...</div>
+            {activeTab === 'solution' && (
+              solution ? (
+                <>
+                  {/* реальный код — сразу в DOM; до разблокировки накрыт
+                      размытием с замком (без всплывающего диалога) */}
+                  <div className={clsx('transition-[filter,opacity] duration-200', !solutionUnlocked && 'pointer-events-none select-none blur-sm')}>
+                    <SolutionView
+                      solution={solution}
+                      lang={lang}
+                      onLoadCode={(c) => {
+                        codeRef.current = c;
+                        setCode(c);
+                        if (taskSlug && lang) saveCode(taskSlug, lang, c);
+                      }}
+                    />
+                  </div>
+                  {!solutionUnlocked && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-bg-1/60 backdrop-blur-sm">
+                      <div className="max-w-xs text-center space-y-3 select-none">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mx-auto text-tx-3">
+                          <rect x="3" y="11" width="18" height="11" rx="2" />
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                        <p className="text-sm text-tx-2">
+                          Решение скрыто до самостоятельной попытки.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setSolutionRevealed(true)}
+                          className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-white text-sm font-medium transition-colors cursor-pointer"
+                        >
+                          Показать решение
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="p-4 text-tx-3 text-sm">Загрузка...</div>
+              )
             )}
           </div>
         </div>
@@ -1117,44 +1219,32 @@ export function TaskPage() {
           </AnimatePresence>
         </div>
 
-        {/* AI Assistant: Docked column or Floating/Closed portal */}
-        <AIAssist
-          taskSlug={taskSlug!}
-          unitSlug={unitSlug!}
-          taskTitle={task?.title}
-          taskDescription={statement}
-          language={lang}
-          currentCode={getCurrentCode}
-          templateCode={template}
-          testsCode={testCode}
-          solutionCode={solution}
-          testOutput={
-            results
-              ? `Тесты (${results.parsed.passed}/${results.parsed.total} пройдено, время ${results.durationMs}ms${results.timedOut ? ', ТАЙМАУТ' : ''}):\n` +
-                results.parsed.tests
-                  .map((t) => `- [${t.passed ? 'PASS' : 'FAIL'}] ${t.name}${t.detail ? `:\n  ${t.detail.replace(/\n/g, '\n  ')}` : ''}`)
-                  .join('\n')
-              : undefined
-          }
-          onDockChange={handleAiDockChange}
-          maxDockedWidth={getMaxAiWidth}
-          resultsOpen={!!results}
-          resultsCollapsed={resultsCollapsed}
-        />
+        {/* AI Assistant: docked column (right of the code pane) or Floating portal */}
+        {!aiOnLeft && (
+          <AIAssist
+            taskSlug={taskSlug!}
+            unitSlug={unitSlug!}
+            taskTitle={task?.title}
+            taskDescription={statement}
+            language={lang}
+            currentCode={getCurrentCode}
+            templateCode={template}
+            testsCode={testCode}
+            solutionCode={solution}
+            testOutput={
+              results
+                ? `Тесты (${results.parsed.passed}/${results.parsed.total} пройдено, время ${results.durationMs}ms${results.timedOut ? ', ТАЙМАУТ' : ''}):\n` +
+                  results.parsed.tests
+                    .map((t) => `- [${t.passed ? 'PASS' : 'FAIL'}] ${t.name}${t.detail ? `:\n  ${t.detail.replace(/\n/g, '\n  ')}` : ''}`)
+                    .join('\n')
+                : undefined
+            }
+            onDockChange={handleAiDockChange}
+            maxDockedWidth={getMaxAiWidth}
+            dockSide="right"
+          />
+        )}
       </div>
-
-      <ConfirmDialog
-        open={showSolutionDialog}
-        title="Показать эталонное решение?"
-        message="Просмотр решения до самостоятельного решения задачи снижает его ценность."
-        confirmLabel="Показать"
-        onConfirm={() => {
-          setSolutionRevealed(true);
-          setLeftTab('solution');
-          setShowSolutionDialog(false);
-        }}
-        onCancel={() => setShowSolutionDialog(false)}
-      />
     </div>
   );
 }

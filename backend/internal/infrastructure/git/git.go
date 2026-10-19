@@ -57,6 +57,23 @@ type Commit struct {
 	Subject string
 }
 
+// validateRepoPath rejects absolute paths, Windows separators/drives and ".."
+// segments so an untrusted path can never leave the repository directory.
+func validateRepoPath(path string) error {
+	if path == "" {
+		return errors.New("empty path")
+	}
+	if strings.HasPrefix(path, "/") || strings.Contains(path, "\\") || strings.Contains(path, ":") {
+		return errors.New("path must be repo-relative with forward slashes")
+	}
+	for _, part := range strings.Split(path, "/") {
+		if part == ".." {
+			return errors.New("path must not traverse outside the repository")
+		}
+	}
+	return nil
+}
+
 // Service serializes git invocations. Every public method holds mu for the
 // whole command sequence, so multi-step operations (checkout = fetch + reset +
 // checkout) are atomic with respect to other calls on the same Service.
@@ -519,6 +536,31 @@ func splitHunks(diff string) []string {
 	}
 	flush()
 	return hunks
+}
+
+// FileContent returns the content of a repo-relative path. With ref set
+// (e.g. "HEAD" or a commit hash) the version from that commit is read via
+// `git show ref:path`; with an empty ref the working-tree file is read from
+// disk. The pair powers the «было — стало» split diff in the UI.
+func (s *Service) FileContent(ctx context.Context, dir, ref, path string) ([]byte, error) {
+	if err := validateRepoPath(path); err != nil {
+		return nil, err
+	}
+	if ref == "" {
+		return os.ReadFile(filepath.Join(dir, filepath.FromSlash(path)))
+	}
+	// ref may be "HEAD", a hex hash or a branch name: dash-guard + the usual
+	// range/option characters are rejected the same way as branch names.
+	if strings.HasPrefix(ref, "-") || strings.ContainsAny(ref, ": ^~[\\") || strings.Contains(ref, "..") {
+		return nil, errors.New("invalid ref")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out, err := s.runCmd(ctx, dir, s.timeout, "show", ref+":"+path)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(out), nil
 }
 
 // Push pushes branch to origin. Never forces.

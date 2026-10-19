@@ -1,4 +1,4 @@
-import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission, AIConfig, AIMessage, AIModelItem, MCPConfig, MCPStatusResponse, MCPActiveTask, VersionResponse, VersionCheckResult, UpdateStatus, GitAuthStatus, GitAuthTestResp, GitImportResp, GitImportBatchResp, GitBranchesResp, GitStatusResp, SyncConfigResp, PatchSyncConfigReq, SyncStatusResp, SyncHistoryItem, SyncCommitFilesResp, SyncRestoreImportsResp } from './types';
+import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission, AIConfig, AIMessage, AIModelItem, MCPConfig, MCPStatusResponse, MCPActiveTask, VersionResponse, VersionCheckResult, UpdateStatus, GitAuthStatus, GitAuthTestResp, GitImportResp, GitImportBatchResp, GitBranchesResp, GitStatusResp, GitLogResp, GitCommitFilesResp, GitDiffResp, SyncConfigResp, PatchSyncConfigReq, SyncStatusResp, SyncHistoryItem, SyncCommitFilesResp, SyncRestoreImportsResp } from './types';
 
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api';
@@ -219,6 +219,12 @@ export const api = {
   gitCheckout: (slug: string, branch: string, force = false) => post<GitImportResp>(`/courses/${slug}/git/checkout`, { branch, force }),
   gitPull: (slug: string, mode?: 'merge' | 'force') => post<GitImportResp>(`/courses/${slug}/git/pull`, mode ? { mode } : {}),
   gitStatus: (slug: string) => get<GitStatusResp>(`/courses/${slug}/git/status`),
+  gitLog: (slug: string, limit = 30) => get<GitLogResp>(`/courses/${slug}/git/log?limit=${limit}`),
+  gitCommitFiles: (slug: string, commit: string) => get<GitCommitFilesResp>(`/courses/${slug}/git/log/${commit}`),
+  gitDiff: (slug: string) => get<GitDiffResp>(`/courses/${slug}/git/diff`),
+  // ref: git ref to read from (HEAD by default); empty ref = working tree file
+  gitFile: (slug: string, path: string, ref?: string) =>
+    getText(`/courses/${slug}/git/file?path=${encodeURIComponent(path)}${ref ? `&ref=${encodeURIComponent(ref)}` : ''}`),
 
   syncConfig: () => get<SyncConfigResp>('/sync/config'),
   syncSaveConfig: (body: PatchSyncConfigReq) => patch<SyncConfigResp>('/sync/config', body),
