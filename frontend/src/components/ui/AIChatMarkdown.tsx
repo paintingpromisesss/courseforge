@@ -80,9 +80,9 @@ function CodeBlock({ children }: { children: ReactNode }) {
   }, [rawCode]);
 
   return (
-    <div className="my-2.5 overflow-hidden rounded-xl border border-bdr/80 bg-[#121215] shadow-md">
+    <div className="my-2.5 overflow-hidden rounded-xl border border-bdr bg-bg-3">
       {/* Code Header Toolbar */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.08] bg-bg-3/70 text-[11px] font-mono text-tx-3 select-none">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-bdr-s bg-bg-3/70 text-[11px] font-mono text-tx-3 select-none">
         <span className="font-semibold text-tx-2 text-[11.5px]">{langLabel(lang)}</span>
         <button
           type="button"

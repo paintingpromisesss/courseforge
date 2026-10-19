@@ -143,7 +143,7 @@ export function MCPSettingsSection() {
 
   if (isError || !status) {
     return (
-      <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+      <div className="p-4 rounded-xl bg-err/10 border border-err/30 text-err text-xs">
         Не удалось загрузить параметры MCP. Убедитесь, что бэкенд запущен.
       </div>
     );
@@ -257,14 +257,14 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
                 className={clsx(
                   'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium tracking-wide uppercase',
                   enabled
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/30',
+                    ? 'bg-ok/10 text-ok border border-ok/30'
+                    : 'bg-warn/10 text-warn border border-warn/30',
                 )}
               >
                 <span
                   className={clsx(
                     'w-1.5 h-1.5 rounded-full',
-                    enabled ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400',
+                    enabled ? 'bg-ok animate-pulse' : 'bg-warn',
                   )}
                 />
                 {enabled ? 'Активен' : 'Отключен'}
@@ -284,12 +284,12 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
             onChange={(e) => handleToggleEnabled(e.target.checked)}
             className="sr-only peer"
           />
-          <div className="w-11 h-6 bg-bg-3 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand" />
+          <div className="w-11 h-6 bg-bg-3 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-black/10 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand" />
         </label>
       </div>
 
       {/* ── 2. Signature Action Card: Copy AI Agent Setup Prompt ────────── */}
-      <div className="p-5 rounded-2xl bg-gradient-to-br from-brand/10 via-bg-2 to-bg-2 border border-brand/30 shadow-sm relative overflow-hidden group">
+      <div className="p-5 rounded-2xl bg-bg-2 border border-brand/30 relative overflow-hidden group">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-2">
@@ -315,7 +315,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
             className={clsx(
               'shrink-0 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-xs whitespace-nowrap transition-colors shadow-sm cursor-pointer select-none',
               promptCopied
-                ? 'bg-emerald-600 text-white shadow-emerald-900/30'
+                ? 'bg-ok text-white'
                 : 'bg-brand hover:bg-brand/90 text-white shadow-brand/20',
             )}
           >
@@ -371,7 +371,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
             </p>
           </div>
           {isSaved && (
-            <span className="text-xs text-emerald-400 font-medium flex items-center gap-1">
+            <span className="text-xs text-ok font-medium flex items-center gap-1">
               <CheckIcon /> Сохранено
             </span>
           )}
@@ -447,7 +447,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
                 <label className="text-tx-3 text-xs block">
                   Директория курсов
                   {coursesDir.trim() && (
-                    <span className="ml-1.5 text-[10px] text-amber-400/80 font-normal">
+                    <span className="ml-1.5 text-[10px] text-warn/80 font-normal">
                       (переопределено)
                     </span>
                   )}
@@ -475,7 +475,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
                 <label className="text-tx-3 text-xs block">
                   Директория данных
                   {dataDir.trim() && (
-                    <span className="ml-1.5 text-[10px] text-amber-400/80 font-normal">
+                    <span className="ml-1.5 text-[10px] text-warn/80 font-normal">
                       (переопределено)
                     </span>
                   )}
@@ -530,7 +530,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
         {transport === 'stdio' ? (
           <div className="space-y-2">
             {currentStatus.available === false && (
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-start gap-2">
+              <div className="p-3 rounded-xl bg-warn/10 border border-warn/20 text-xs text-warn flex items-start gap-2">
                 <span className="shrink-0 mt-0.5 text-sm">⚠️</span>
                 <div>
                   <span className="font-semibold block mb-0.5">Бинарник не найден на диске</span>
@@ -550,7 +550,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
                 className="shrink-0 flex items-center justify-center gap-1 px-3 py-1 rounded-lg bg-bg-2 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer select-none whitespace-nowrap"
               >
                 <span className="grid">
-                  <span className={clsx('col-start-1 row-start-1 whitespace-nowrap text-emerald-400 font-medium', !cmdCopied && 'invisible')}>
+                  <span className={clsx('col-start-1 row-start-1 whitespace-nowrap text-ok font-medium', !cmdCopied && 'invisible')}>
                     Скопировано
                   </span>
                   <span className={clsx('col-start-1 row-start-1 whitespace-nowrap', cmdCopied && 'invisible')}>
@@ -575,7 +575,7 @@ function MCPSettingsForm({ initialStatus }: { initialStatus: MCPStatusResponse }
                 className="shrink-0 flex items-center justify-center gap-1 px-3 py-1 rounded-lg bg-bg-2 hover:bg-bg-1 border border-bdr text-xs text-tx-2 hover:text-tx-1 transition-colors cursor-pointer select-none whitespace-nowrap"
               >
                 <span className="grid">
-                  <span className={clsx('col-start-1 row-start-1 whitespace-nowrap text-emerald-400 font-medium', !sseCopied && 'invisible')}>
+                  <span className={clsx('col-start-1 row-start-1 whitespace-nowrap text-ok font-medium', !sseCopied && 'invisible')}>
                     Скопировано
                   </span>
                   <span className={clsx('col-start-1 row-start-1 whitespace-nowrap', sseCopied && 'invisible')}>

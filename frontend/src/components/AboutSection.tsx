@@ -193,7 +193,7 @@ export function AboutSection() {
   return (
     <div className="space-y-6 max-w-3xl">
       {/* ── Brand Hero Header ────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl border border-bdr bg-gradient-to-br from-bg-2/80 via-bg-1 to-bg-2/40 p-6 shadow-sm">
+      <div className="relative overflow-hidden rounded-2xl border border-bdr bg-bg-2 p-6">
         <div className="absolute -right-6 -bottom-6 w-36 h-36 rounded-full bg-brand/10 blur-2xl pointer-events-none" />
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">

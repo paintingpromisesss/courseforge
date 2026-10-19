@@ -1075,7 +1075,7 @@ export function AISettingsSection() {
           type="button"
           onClick={handleSave}
           disabled={isSaving || !model || availableModels.length === 0}
-          className="px-6 py-2.5 bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-brand/20 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+          className="px-6 py-2.5 bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium rounded-lg transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
         >
           {isSaving ? (
             <>

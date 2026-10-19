@@ -121,7 +121,7 @@ export function GitHubSettingsSection() {
             type="button"
             disabled={!token.trim() || saveMut.isPending}
             onClick={() => saveMut.mutate({ token: token.trim(), username: username.trim() || undefined })}
-            className="px-5 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-brand/20 active:scale-[0.98] cursor-pointer"
+            className="px-5 py-2 bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium rounded-lg transition-all active:scale-95 cursor-pointer"
           >
             {saveMut.isPending ? 'Сохранение...' : 'Сохранить'}
           </button>

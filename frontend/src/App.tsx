@@ -109,8 +109,8 @@ function AppLayout() {
               className={clsx(
                 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-all border cursor-pointer select-none',
                 mcpStatus.enabled
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
-                  : 'bg-bg-3/80 border-bdr text-tx-3 hover:text-tx-2 hover:border-bdr-hover',
+                  ? 'bg-ok/10 border-ok/30 text-ok hover:bg-ok/20'
+                  : 'bg-bg-3/80 border-bdr text-tx-3 hover:text-tx-2 hover:border-bdr-e',
               )}
               title={
                 mcpStatus.enabled
@@ -121,7 +121,7 @@ function AppLayout() {
               <span
                 className={clsx(
                   'w-1.5 h-1.5 rounded-full shrink-0',
-                  mcpStatus.enabled ? 'bg-emerald-400 animate-pulse' : 'bg-tx-3',
+                  mcpStatus.enabled ? 'bg-ok animate-pulse' : 'bg-tx-3',
                 )}
               />
               <span>{mcpStatus.enabled ? 'MCP' : 'MCP выкл'}</span>
