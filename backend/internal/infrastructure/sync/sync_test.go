@@ -384,8 +384,7 @@ func TestPushNoOpEarlyExit(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg, _ := env.cfgRepo.Load(ctx)
-	firstSync := cfg.LastSync
-	if firstSync == "" {
+	if cfg.LastSync == "" {
 		t.Fatal("LastSync not recorded after first push")
 	}
 	head, err := env.engine.git.HeadCommit(ctx, mirror)
@@ -393,8 +392,17 @@ func TestPushNoOpEarlyExit(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// LastSync is RFC3339 (second precision), so a no-op right after the first
+	// push may legitimately produce the same timestamp. Plant an old value so
+	// the update is observable regardless of where the clock second boundary
+	// falls instead of racing it with a sleep.
+	const staleLastSync = "2000-01-01T00:00:00Z"
+	cfg.LastSync = staleLastSync
+	if err := env.cfgRepo.Save(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+
 	// second push with unchanged courses: early exit, no new commit / push
-	time.Sleep(10 * time.Millisecond) // RFC3339 has second precision
 	if err := env.engine.Push(ctx); err != nil {
 		t.Fatalf("no-op push: %v", err)
 	}
@@ -419,7 +427,7 @@ func TestPushNoOpEarlyExit(t *testing.T) {
 		t.Fatalf("expected exactly 1 sync commit, got %d", syncCommits)
 	}
 	cfg, _ = env.cfgRepo.Load(ctx)
-	if cfg.LastSync == firstSync {
+	if cfg.LastSync == staleLastSync || cfg.LastSync == "" {
 		t.Fatal("LastSync not updated after no-op push")
 	}
 
