@@ -281,23 +281,6 @@ func (s *Service) CheckoutBranch(ctx context.Context, dir, branch string, force 
 	return err
 }
 
-// AlignBranch hard-aligns dir onto origin/branch without fetching: the caller
-// is expected to have fetched immediately before (avoids the double network
-// round-trip of CheckoutBranch).
-func (s *Service) AlignBranch(ctx context.Context, dir, branch string) error {
-	if err := validateBranch(branch); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_, _ = s.runCmd(ctx, dir, s.timeout, "clean", "-fd")
-	if _, err := s.runCmd(ctx, dir, s.timeout, "reset", "--hard"); err != nil {
-		return err
-	}
-	_, err := s.runCmd(ctx, dir, s.timeout, "checkout", "-B", branch, "origin/"+branch)
-	return err
-}
-
 // PullFF fetches and fast-forwards the current branch. A diverged branch is an
 // error (never a merge commit, never a force).
 func (s *Service) PullFF(ctx context.Context, dir string) error {
@@ -336,18 +319,6 @@ func (s *Service) Dirty(ctx context.Context, dir string) (bool, error) {
 	return s.dirtyLocked(ctx, dir)
 }
 
-// IsClean reports whether the working tree matches HEAD (the same criteria
-// Dirty uses, phrased with the caller's intent: nothing to commit).
-func (s *Service) IsClean(ctx context.Context, dir string) (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out, err := s.runCmd(ctx, dir, s.timeout, "status", "--porcelain")
-	if err != nil {
-		return false, err
-	}
-	return strings.TrimSpace(out) == "", nil
-}
-
 func (s *Service) dirtyLocked(ctx context.Context, dir string) (bool, error) {
 	out, err := s.runCmd(ctx, dir, s.timeout, "status", "--porcelain")
 	if err != nil {
@@ -376,21 +347,19 @@ func (s *Service) Init(ctx context.Context, dir, remoteURL, branch string) error
 	return err
 }
 
-// CommitAll stages everything and commits; a clean tree is a no-op, not an
-// error. Status runs before staging so a clean tree skips `add -A` — on large
-// trees staging is the dominant cost of every no-op sync.
+// CommitAll stages everything and commits; a clean tree is a no-op, not an error.
 func (s *Service) CommitAll(ctx context.Context, dir, message string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, err := s.runCmd(ctx, dir, s.timeout, "add", "-A"); err != nil {
+		return err
+	}
 	status, err := s.runCmd(ctx, dir, s.timeout, "status", "--porcelain")
 	if err != nil {
 		return err
 	}
 	if strings.TrimSpace(status) == "" {
 		return nil // nothing to commit
-	}
-	if _, err := s.runCmd(ctx, dir, s.timeout, "add", "-A"); err != nil {
-		return err
 	}
 	_, err = s.runCmd(ctx, dir, s.timeout, "commit", "-m", message)
 	return err

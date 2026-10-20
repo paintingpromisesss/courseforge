@@ -288,16 +288,6 @@ func (e *Engine) Push(ctx context.Context) error {
 		if err := e.snapshot(ctx, cfg); err != nil {
 			return err
 		}
-		// Snapshot идентичен HEAD (курсы не менялись с прошлого пуши) —
-		// фиксировать нечего; фиксируем факт синхронизации и возвращаемся.
-		clean, err := e.git.IsClean(ctx, e.mirrorDir)
-		if err != nil {
-			return fmt.Errorf("check mirror state: %w", err)
-		}
-		if clean {
-			cfg.LastSync = time.Now().UTC().Format(time.RFC3339)
-			return e.cfgRepo.Save(ctx, cfg)
-		}
 		msg := fmt.Sprintf("sync: %s %s", hostname, time.Now().UTC().Format(time.RFC3339))
 		if err := e.git.CommitAll(ctx, e.mirrorDir, msg); err != nil {
 			return fmt.Errorf("commit snapshot: %w", err)
@@ -312,35 +302,19 @@ func (e *Engine) Push(ctx context.Context) error {
 	return fmt.Errorf("remote changed, retry later: %w", lastErr)
 }
 
-// snapshot aligns the mirror to origin and synchronizes the local state into
-// it incrementally: only created/changed files are copied, ones gone from the
-// sources are removed. The mirror's git index stays warm (stat-ing previously
-// identical paths is cheap), so status/add/commit cost stays proportional to
-// the change, not the total tree size.
+// snapshot aligns the mirror to origin and copies the local state into it.
 func (e *Engine) snapshot(ctx context.Context, cfg *repo.SyncConfig) error {
 	// A brand-new empty remote has nothing to fetch; tolerate failure here —
 	// RemoteBranches below decides whether an align is possible at all.
 	_ = e.git.Fetch(ctx, e.mirrorDir)
 	branches, err := e.git.RemoteBranches(ctx, e.mirrorDir)
 	if err == nil && containsStr(branches, cfg.Branch) {
-		if err := e.git.AlignBranch(ctx, e.mirrorDir, cfg.Branch); err != nil {
+		if err := e.git.CheckoutBranch(ctx, e.mirrorDir, cfg.Branch, true); err != nil {
 			return fmt.Errorf("align mirror to origin: %w", err)
 		}
 	}
-
-	// Top-level entries not produced by the snapshot (user droppings, older
-	// layouts) are removed; the managed ones are synced below.
-	managed := map[string]bool{".git": true, "courses": true, "progress": true, "submissions": true, "sources.json": true}
-	entries, err := os.ReadDir(e.mirrorDir)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := wipeExceptGit(e.mirrorDir); err != nil {
 		return err
-	}
-	for _, en := range entries {
-		if !managed[en.Name()] {
-			if err := os.RemoveAll(filepath.Join(e.mirrorDir, en.Name())); err != nil {
-				return err
-			}
-		}
 	}
 
 	sources, err := e.sources.All(ctx)
@@ -352,16 +326,11 @@ func (e *Engine) snapshot(ctx context.Context, cfg *repo.SyncConfig) error {
 		excluded[x] = true
 	}
 
-	mirrorCourses := filepath.Join(e.mirrorDir, "courses")
-	if err := os.MkdirAll(mirrorCourses, 0755); err != nil {
-		return err
-	}
-	cEntries, err := os.ReadDir(e.coursesDir)
+	entries, err := os.ReadDir(e.coursesDir)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	synced := make(map[string]bool, len(cEntries))
-	for _, en := range cEntries {
+	for _, en := range entries {
 		if !en.IsDir() {
 			continue
 		}
@@ -370,32 +339,16 @@ func (e *Engine) snapshot(ctx context.Context, cfg *repo.SyncConfig) error {
 		if excluded[name] || isImported(sources, name) {
 			continue
 		}
-		synced[name] = true
-		if err := syncTree(filepath.Join(e.coursesDir, name), filepath.Join(mirrorCourses, name)); err != nil {
-			return fmt.Errorf("sync course %s: %w", name, err)
-		}
-	}
-	// Courses deleted (or newly excluded/imported) locally leave the snapshot.
-	mEntries, err := os.ReadDir(mirrorCourses)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	for _, en := range mEntries {
-		if !synced[en.Name()] {
-			if err := os.RemoveAll(filepath.Join(mirrorCourses, en.Name())); err != nil {
-				return err
-			}
+		if err := copyTree(filepath.Join(e.coursesDir, name), filepath.Join(e.mirrorDir, "courses", name)); err != nil {
+			return fmt.Errorf("copy course %s: %w", name, err)
 		}
 	}
 
 	progressDir := filepath.Join(e.dataDir, "progress")
-	mirrorProgress := filepath.Join(e.mirrorDir, "progress")
 	if _, err := os.Stat(progressDir); err == nil {
-		if err := syncTree(progressDir, mirrorProgress); err != nil {
-			return fmt.Errorf("sync progress: %w", err)
+		if err := copyTree(progressDir, filepath.Join(e.mirrorDir, "progress")); err != nil {
+			return fmt.Errorf("copy progress: %w", err)
 		}
-	} else if err := os.RemoveAll(mirrorProgress); err != nil {
-		return err
 	}
 
 	if e.subs != nil {
@@ -403,12 +356,11 @@ func (e *Engine) snapshot(ctx context.Context, cfg *repo.SyncConfig) error {
 		if err != nil {
 			return fmt.Errorf("export submissions: %w", err)
 		}
-		subsDir := filepath.Join(e.mirrorDir, "submissions")
 		if len(subsByCourse) > 0 {
+			subsDir := filepath.Join(e.mirrorDir, "submissions")
 			if err := os.MkdirAll(subsDir, 0755); err != nil {
 				return err
 			}
-			written := make(map[string]bool, len(subsByCourse))
 			for courseSlug, courseSubs := range subsByCourse {
 				if excluded[courseSlug] || isImported(sources, courseSlug) {
 					continue
@@ -425,26 +377,10 @@ func (e *Engine) snapshot(ctx context.Context, cfg *repo.SyncConfig) error {
 					buf.Write(data)
 					buf.WriteByte('\n')
 				}
-				name := courseSlug + ".jsonl"
-				if err := os.WriteFile(filepath.Join(subsDir, name), buf.Bytes(), 0644); err != nil {
+				if err := os.WriteFile(filepath.Join(subsDir, courseSlug+".jsonl"), buf.Bytes(), 0644); err != nil {
 					return fmt.Errorf("write submissions for %s: %w", courseSlug, err)
 				}
-				written[name] = true
 			}
-			// drop jsonl files of courses whose submissions were removed
-			sEntries, err := os.ReadDir(subsDir)
-			if err != nil {
-				return err
-			}
-			for _, en := range sEntries {
-				if !written[en.Name()] {
-					if err := os.RemoveAll(filepath.Join(subsDir, en.Name())); err != nil {
-						return err
-					}
-				}
-			}
-		} else if err := os.RemoveAll(subsDir); err != nil {
-			return err
 		}
 	}
 
@@ -476,7 +412,7 @@ func (e *Engine) Pull(ctx context.Context) error {
 	if err != nil || !containsStr(branches, cfg.Branch) {
 		return errors.New("cloud vault is empty — push first")
 	}
-	if err := e.git.AlignBranch(ctx, e.mirrorDir, cfg.Branch); err != nil {
+	if err := e.git.CheckoutBranch(ctx, e.mirrorDir, cfg.Branch, true); err != nil {
 		return fmt.Errorf("align mirror to origin: %w", err)
 	}
 	if err := e.applyMirror(ctx, cfg); err != nil {
@@ -697,63 +633,21 @@ func containsStr(list []string, v string) bool {
 	return false
 }
 
-// syncTree makes dst mirror src: copies files that are new or changed (size
-// or mtime differs), preserves mtime on copies so unchanged files are skipped
-// by the next stat-only pass, and removes entries absent from src. Nested
-// .git directories are never copied (same rule as copyTree).
-func syncTree(src, dst string) error {
-	srcEntries, err := os.ReadDir(src)
+// wipeExceptGit removes every top-level entry of dir except .git.
+func wipeExceptGit(dir string) error {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		return err
 	}
-	if err := os.MkdirAll(dst, 0755); err != nil {
-		return err
-	}
-	srcNames := make(map[string]bool, len(srcEntries))
-	for _, en := range srcEntries {
-		name := en.Name()
-		if en.IsDir() && name == ".git" {
+	for _, en := range entries {
+		if en.Name() == ".git" {
 			continue
 		}
-		srcNames[name] = true
-		s, d := filepath.Join(src, name), filepath.Join(dst, name)
-		if en.IsDir() {
-			if err := syncTree(s, d); err != nil {
-				return err
-			}
-			continue
-		}
-		si, err := en.Info()
-		if err != nil {
+		if err := os.RemoveAll(filepath.Join(dir, en.Name())); err != nil {
 			return err
-		}
-		if di, err := os.Stat(d); err == nil &&
-			di.Size() == si.Size() && di.ModTime().Equal(si.ModTime()) {
-			continue // unchanged: git status stays a cheap stat-only pass
-		}
-		data, err := os.ReadFile(s)
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(d, data, si.Mode().Perm()); err != nil {
-			return err
-		}
-		if err := os.Chtimes(d, si.ModTime(), si.ModTime()); err != nil {
-			return err
-		}
-	}
-	dstEntries, err := os.ReadDir(dst)
-	if err != nil {
-		return err
-	}
-	for _, en := range dstEntries {
-		if !srcNames[en.Name()] {
-			if err := os.RemoveAll(filepath.Join(dst, en.Name())); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
