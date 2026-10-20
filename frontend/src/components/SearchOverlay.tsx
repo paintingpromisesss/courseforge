@@ -133,14 +133,26 @@ export function SearchBar() {
   }, [aiBusy]);
 
   const runAISearch = useCallback(
-    (q: string) => {
-      if (!catalog) return;
+    async (q: string) => {
+      // catalog may still be loading when the user toggles AI quickly — fetch on demand
+      let cat = catalog;
+      if (!cat) {
+        try {
+          const r = await api.searchCatalog();
+          cat = r.tasks;
+          setCatalog(r.tasks);
+        } catch {
+          setAiNotice('AI недоступен, показан обычный поиск');
+          setAiHits([]);
+          return;
+        }
+      }
       setAiBusy(true);
       setAiNotice('');
       abortRef.current?.abort();
       const ac = new AbortController();
       abortRef.current = ac;
-      const summaryLines = catalog
+      const summaryLines = cat
         .slice(0, 500)
         .map((t) => `- ${t.course}/${t.task} | ${t.title}${t.tags?.length ? ` | tags: ${t.tags.join(', ')}` : ''}`);
       const systemPrompt =
@@ -161,7 +173,7 @@ export function SearchBar() {
         if (ac.signal.aborted) return;
         try {
           const parsed = parseAIAnswer(acc);
-          const byKey = new Map<string, SearchCatalogEntry>(catalog.map((t) => [`${t.course}/${t.task}`, t] as const));
+          const byKey = new Map<string, SearchCatalogEntry>(cat.map((t) => [`${t.course}/${t.task}`, t] as const));
           const hits: AIHit[] = parsed
             .map((p) => ({ entry: byKey.get(p.task), score: p.score, reason: p.reason }))
             .filter((h): h is AIHit => !!h.entry)
@@ -283,7 +295,7 @@ export function SearchBar() {
           className={clsx(
             'flex items-center gap-2 w-full max-w-3xl h-8 px-3 rounded-lg border transition-colors',
             focused
-              ? 'bg-bg-1 border-brand/40 shadow-sm'
+              ? 'bg-bg-1 border-brand/30'
               : 'bg-bg-3/60 border-bdr-s hover:border-bdr',
           )}
         >
@@ -299,7 +311,7 @@ export function SearchBar() {
             onBlur={() => setFocused(false)}
             onKeyDown={onInputKeyDown}
             placeholder="Поиск задач: слова, теги или вопрос…"
-            className="flex-1 min-w-0 bg-transparent outline-none text-[15px] text-tx-1 placeholder:text-tx-3/80"
+            className="flex-1 min-w-0 bg-transparent outline-none text-[15px] text-tx-1 placeholder:text-tx-3/80 focus-visible:ring-0 focus-visible:outline-none"
             role="combobox"
             aria-expanded={open}
             aria-controls="search-results-list"
@@ -310,12 +322,15 @@ export function SearchBar() {
               onMouseDown={(e) => e.preventDefault()} // keep input focus
               onClick={toggleAiMode}
               className={clsx(
-                'shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border transition-colors cursor-pointer',
-                aiMode ? 'bg-brand/15 text-brand border-brand/35' : 'bg-bg-3 text-tx-3 border-bdr-s hover:text-tx-2',
+                'shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer select-none',
+                aiMode
+                  ? 'text-brand'
+                  : 'text-tx-3 hover:text-tx-2',
               )}
               title="Умный поиск (AI подбирает релевантные задачи по смыслу запроса)"
             >
-              ✦ Умный
+              <span className={clsx('text-[13px]', aiMode && 'text-brand')}>✦</span>
+              Умный
             </button>
           )}
           {!aiEnabled && (
