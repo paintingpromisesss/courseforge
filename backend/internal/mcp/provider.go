@@ -14,6 +14,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+		"github.com/paintingpromisesss/courseforge/internal/application/service"
 	"github.com/paintingpromisesss/courseforge/internal/domain"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/parser/course"
 	"github.com/paintingpromisesss/courseforge/internal/infrastructure/repo"
@@ -122,6 +123,7 @@ type UpdateTaskMetadataRequest struct {
 // Provider defines operations needed by the MCP server tools and resources.
 type Provider interface {
 	ListCourses(ctx context.Context) ([]CourseSummary, error)
+	SearchTasks(ctx context.Context, query, course string, limit int) ([]service.SearchResult, error)
 	GetTaskDetails(ctx context.Context, courseSlug, taskSlug string) (*TaskDetails, error)
 	GetTaskStatement(ctx context.Context, courseSlug, taskSlug string) (string, error)
 	GetTaskTemplate(ctx context.Context, courseSlug, taskSlug, language string) (filename, code string, err error)
@@ -231,6 +233,40 @@ func (p *CourseForgeProvider) ListCourses(ctx context.Context) ([]CourseSummary,
 	})
 
 	return res, nil
+}
+
+func (p *CourseForgeProvider) SearchTasks(ctx context.Context, query, courseFilter string, limit int) ([]service.SearchResult, error) {
+	p.mu.RLock()
+	tasks := service.FlattenSearchTasks(p.courses)
+	coursesDir, topCourses := p.coursesDir, p.courses
+	p.mu.RUnlock()
+
+	if courseFilter != "" {
+		if _, ok := topCourses[courseFilter]; !ok {
+			return nil, fmt.Errorf("course not found: %s", courseFilter)
+		}
+		filtered := make([]service.SearchTask, 0, len(tasks))
+		for _, t := range tasks {
+			if t.Course == courseFilter {
+				filtered = append(filtered, t)
+			}
+		}
+		tasks = filtered
+	}
+
+	contentOf := func(t service.SearchTask) (string, bool) {
+		if t.Statement == "" {
+			return "", false
+		}
+		path := filepath.Join(coursesDir, t.CourseDir, t.Track, t.Topic, t.Unit, t.Task, t.Statement)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", false
+		}
+		return string(data), true
+	}
+
+	return service.SearchTasks(tasks, query, limit, contentOf), nil
 }
 
 func (p *CourseForgeProvider) findTask(courseSlug, taskSlug string) (*domain.Course, *domain.Track, *domain.Topic, *domain.Unit, *domain.Task, error) {

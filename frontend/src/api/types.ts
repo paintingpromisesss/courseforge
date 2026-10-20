@@ -17,6 +17,30 @@ export interface CatalogItem {
   courses: CourseItem[];
 }
 
+export interface SearchTaskResult {
+  course: string;
+  track: string;
+  topic: string;
+  unit: string;
+  task: string;
+  title: string;
+  tags?: string[];
+  difficulty?: number;
+  rank: 'title-word' | 'tag' | 'title' | 'content';
+  snippet?: string;
+}
+
+export interface SearchCatalogEntry {
+  course: string;
+  track: string;
+  topic: string;
+  unit: string;
+  task: string;
+  title: string;
+  tags?: string[];
+  difficulty?: number;
+}
+
 export interface VideoSource {
   src: string;
   size?: number;

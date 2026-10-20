@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, Link, useOutlet, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,6 +13,7 @@ import { TaskPage } from './pages/TaskPage';
 import { TheoryPage } from './pages/TheoryPage';
 import { SettingsPanel } from './components/SettingsPanel';
 import { UpdateToast } from './components/UpdateToast';
+import { SearchOverlay } from './components/SearchOverlay';
 
 export function GearIcon() {
   return (
@@ -72,6 +74,25 @@ function AppLayout() {
   const outlet = useOutlet();
   const routeKey = courseSlug ? `course:${courseSlug}` : catalogSlug ? `catalog:${catalogSlug}` : 'home';
 
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchSeq, setSearchSeq] = useState(0);
+  const openSearch = useCallback(() => {
+    setSearchSeq((s) => s + 1);
+    setSearchOpen(true);
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+        setSearchSeq((s) => s + 1);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  const closeSearch = useCallback(() => setSearchOpen(false), []);
+
   const crumbs: { label: string; to: string }[] = [];
   if (catalog) crumbs.push({ label: catalog.title, to: `/catalogs/${catalog.slug}` });
   if (course) {
@@ -102,6 +123,17 @@ function AppLayout() {
         })}
 
         <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={openSearch}
+            className="text-tx-3 hover:text-tx-1 transition-colors p-1 rounded hover:bg-bg-4 cursor-pointer"
+            title="Поиск задач (Ctrl+K)"
+            aria-label="Поиск задач"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.5" y2="16.5" />
+            </svg>
+          </button>
           {mcpStatus && (
             <button
               type="button"
@@ -149,6 +181,7 @@ function AppLayout() {
       </div>
       <SettingsPanel open={isSettingsOpen} onClose={closeSettings} />
       <UpdateToast />
+      <SearchOverlay key={searchSeq} open={searchOpen} onClose={closeSearch} />
     </div>
   );
 }
