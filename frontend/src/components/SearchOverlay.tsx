@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
 import clsx from 'clsx';
 import { api } from '../api/client';
 import type { SearchCatalogEntry, SearchTaskResult } from '../api/types';
-import { TagBadge } from './ui/TagBadge';
-import { DifficultyBadge } from './ui/DifficultyBadge';
+import { getDifficultyConfig } from './ui/DifficultyBadge';
 
 const DEBOUNCE_MS = 250;
 
@@ -48,7 +46,7 @@ function Highlighted({ text, tokens }: { text: string; tokens: string[] }) {
     <>
       {highlight(text, tokens).map((p, i) =>
         p.hit ? (
-          <mark key={i} className="bg-warn/30 text-inherit rounded-sm px-0.5">{p.s}</mark>
+          <mark key={i} className="bg-transparent text-inherit underline decoration-brand decoration-2 underline-offset-2">{p.s}</mark>
         ) : (
           <span key={i}>{p.s}</span>
         ),
@@ -59,6 +57,7 @@ function Highlighted({ text, tokens }: { text: string; tokens: string[] }) {
 
 /** Parses the AI model's streamed answer into (task, score, reason) triples. */
 function parseAIAnswer(text: string): { task: string; score: number; reason: string }[] {
+  text = text.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '').replace(/<!--\s*CF_[\s\S]*?(?:-->|$)/g, '');
   const start = text.indexOf('[');
   const end = text.lastIndexOf(']');
   if (start < 0 || end <= start) throw new Error('no json array');
@@ -74,16 +73,14 @@ function parseAIAnswer(text: string): { task: string; score: number; reason: str
 
 interface AIHit { entry: SearchCatalogEntry; score: number; reason: string }
 
-/**
- * Header-integrated search: a wide input lives right in the top bar; typing
- * dims the page below the header and reveals a full-width results list.
- */
 export function SearchBar() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(false);
   const [results, setResults] = useState<SearchTaskResult[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [catalogError, setCatalogError] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [aiMode, setAiMode] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
@@ -92,6 +89,7 @@ export function SearchBar() {
   const [catalog, setCatalog] = useState<SearchCatalogEntry[] | null>(null);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -118,7 +116,7 @@ export function SearchBar() {
   useEffect(() => {
     if (!focused) return;
     api.aiConfig().then((c) => setAiEnabled(!!c.enabled)).catch(() => setAiEnabled(false));
-    api.searchCatalog().then((r) => setCatalog(r.tasks)).catch(() => setCatalog(null));
+    api.searchCatalog().then((r) => { setCatalog(r.tasks); setCatalogError(false); }).catch(() => setCatalogError(true));
     return () => abortRef.current?.abort();
   }, [focused]);
 
@@ -133,7 +131,9 @@ export function SearchBar() {
   }, [aiBusy]);
 
   const runAISearch = useCallback(
-    async (q: string) => {
+    async (q: string, ac: AbortController) => {
+      setAiBusy(true);
+      setAiNotice('');
       // catalog may still be loading when the user toggles AI quickly — fetch on demand
       let cat = catalog;
       if (!cat) {
@@ -142,16 +142,14 @@ export function SearchBar() {
           cat = r.tasks;
           setCatalog(r.tasks);
         } catch {
+          if (ac.signal.aborted) return;
+          setAiBusy(false);
           setAiNotice('AI недоступен, показан обычный поиск');
-          setAiHits([]);
+          setAiHits(null);
           return;
         }
       }
-      setAiBusy(true);
-      setAiNotice('');
-      abortRef.current?.abort();
-      const ac = new AbortController();
-      abortRef.current = ac;
+      if (ac.signal.aborted) return;
       const summaryLines = cat
         .slice(0, 500)
         .map((t) => `- ${t.course}/${t.task} | ${t.title}${t.tags?.length ? ` | tags: ${t.tags.join(', ')}` : ''}`);
@@ -160,18 +158,21 @@ export function SearchBar() {
         'Верни строго JSON-массив (без markdown) вида [{"task": "<курс>/<слаг>", "score": 0..1, "reason": "короткое пояснение"}] ' +
         'для не более чем 10 самых релевантных задач. Ничего кроме JSON не выводи.';
       let acc = '';
+      let streamFailed = false;
       api.aiChatStream(
         [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `Список задач:\n${summaryLines.join('\n')}\n\nЗапрос: ${q}` },
         ],
         (chunk) => { acc += chunk; },
-        () => setAiNotice('AI недоступен, показан обычный поиск'),
+        () => { streamFailed = true; },
         ac.signal,
+        false,
       ).then(() => {
-        setAiBusy(false);
         if (ac.signal.aborted) return;
+        setAiBusy(false);
         try {
+          if (streamFailed) throw new Error('AI search failed');
           const parsed = parseAIAnswer(acc);
           const byKey = new Map<string, SearchCatalogEntry>(cat.map((t) => [`${t.course}/${t.task}`, t] as const));
           const hits: AIHit[] = parsed
@@ -182,8 +183,13 @@ export function SearchBar() {
           setAiHits(hits);
         } catch {
           setAiNotice('AI недоступен, показан обычный поиск');
-          setAiHits([]);
+          setAiHits(null);
         }
+      }).catch(() => {
+        if (ac.signal.aborted) return;
+        setAiBusy(false);
+        setAiNotice('AI недоступен, показан обычный поиск');
+        setAiHits(null);
       });
     },
     [catalog],
@@ -193,25 +199,23 @@ export function SearchBar() {
   useEffect(() => {
     if (!focused || tokens.length === 0) return;
     const ac = new AbortController();
+    abortRef.current = ac;
     const timer = setTimeout(() => {
       setLoading(true);
-      if (aiMode) {
-        // AI mode: keep ordinary results proximate for the fallback banner
-        api.searchTasks(query.trim(), { limit: 50 })
-          .then((r) => { if (!ac.signal.aborted) setResults(r.results); })
-          .catch(() => { if (!ac.signal.aborted) setResults([]); })
-          .finally(() => { if (!ac.signal.aborted) setLoading(false); });
-        runAISearch(query.trim());
-      } else {
-        api.searchTasks(query.trim(), { limit: 50 })
-          .then((r) => {
-            if (ac.signal.aborted) return;
-            setResults(r.results);
-            setAiNotice('');
-          })
-          .catch(() => { if (!ac.signal.aborted) setResults([]); })
-          .finally(() => { if (!ac.signal.aborted) setLoading(false); });
-      }
+      setSearchError('');
+      api.searchTasks(query.trim(), { limit: 50 })
+        .then((r) => {
+          if (ac.signal.aborted) return;
+          setResults(r.results);
+          if (!aiMode) setAiNotice('');
+        })
+        .catch(() => {
+          if (ac.signal.aborted) return;
+          setResults([]);
+          setSearchError('Не удалось выполнить поиск. Измените запрос, чтобы повторить.');
+        })
+        .finally(() => { if (!ac.signal.aborted) setLoading(false); });
+      if (aiMode) runAISearch(query.trim(), ac);
     }, DEBOUNCE_MS);
     return () => {
       ac.abort();
@@ -245,7 +249,11 @@ export function SearchBar() {
   }, [catalog, tokens.length]);
 
   const close = useCallback(() => {
-    inputRef.current?.blur();
+    setFocused(false);
+    const focusedElement = document.activeElement;
+    if (focusedElement instanceof HTMLElement && searchRef.current?.contains(focusedElement)) {
+      focusedElement.blur();
+    }
   }, []);
 
   const goTo = useCallback(
@@ -259,11 +267,8 @@ export function SearchBar() {
   const onInputKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault();
-      if (query) {
-        setQuery('');
-      } else {
-        close();
-      }
+      e.stopPropagation();
+      close();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       setActive((a) => Math.min(Math.min(a + 1, flatEntries.length - 1), Math.max(flatEntries.length - 1, 0)));
@@ -272,6 +277,7 @@ export function SearchBar() {
       setActive((a) => Math.max(Math.min(a - 1, flatEntries.length - 1), 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      if (loading || aiBusy || tokens.length === 0) return;
       const entry = flatEntries[activeIdx];
       if (entry) goTo(entry.path);
     }
@@ -284,134 +290,147 @@ export function SearchBar() {
   }, [activeIdx]);
 
   const hasQuery = tokens.length > 0;
-  const showAIList = aiMode && !aiBusy && !!aiHits;
+  const showAIList = aiMode && !aiBusy && aiHits !== null;
   const showEmptyHints = !hasQuery;
 
   return (
-    <>
-      {/* search input is part of the header's flex row */}
+    <div
+      ref={searchRef}
+      className="contents"
+      onFocus={() => setFocused(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') { e.preventDefault(); close(); }
+      }}
+    >
       <div className="flex-1 min-w-0 flex justify-center px-2">
         <div
           className={clsx(
-            'flex items-center gap-2 w-full max-w-3xl h-8 px-3 rounded-lg border transition-colors',
+            'flex items-center gap-2 w-full max-w-3xl h-8 px-3 rounded-md border',
             focused
-              ? 'bg-bg-1 border-brand/30'
+              ? 'max-sm:fixed max-sm:inset-x-3 max-sm:top-0 max-sm:z-50 max-sm:w-auto max-sm:h-11 bg-bg-1 border-brand'
               : 'bg-bg-3/60 border-bdr-s hover:border-bdr',
           )}
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-tx-3 shrink-0">
+          <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-tx-2 shrink-0">
             <circle cx="11" cy="11" r="7" />
             <line x1="21" y1="21" x2="16.5" y2="16.5" />
           </svg>
           <input
             ref={inputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActive(0);
+              setLoading(true);
+              setAiBusy(false);
+              setAiHits(null);
+              setAiNotice('');
+            }}
             onKeyDown={onInputKeyDown}
-            placeholder="Поиск задач: слова, теги или вопрос…"
-            className="flex-1 min-w-0 bg-transparent outline-none text-[15px] text-tx-1 placeholder:text-tx-3/80 focus-visible:ring-0 focus-visible:outline-none"
+            id="task-search-input"
+            aria-label="Поиск задач"
+            aria-autocomplete="list"
+            aria-activedescendant={hasQuery && !loading && !aiBusy && flatEntries.length ? `search-result-${activeIdx}` : undefined}
+            placeholder="Поиск задач"
+            className="flex-1 min-w-0 bg-transparent outline-none text-base sm:text-sm text-tx-1 placeholder:text-tx-2 focus-visible:ring-0 focus-visible:outline-none"
             role="combobox"
             aria-expanded={open}
             aria-controls="search-results-list"
           />
-          {aiEnabled && (
+          {query && (
             <button
               type="button"
-              onMouseDown={(e) => e.preventDefault()} // keep input focus
-              onClick={toggleAiMode}
-              className={clsx(
-                'shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer select-none',
-                aiMode
-                  ? 'text-brand'
-                  : 'text-tx-3 hover:text-tx-2',
-              )}
-              title="Умный поиск (AI подбирает релевантные задачи по смыслу запроса)"
+              aria-label="Очистить поиск"
+              onClick={() => { setQuery(''); setAiHits(null); setAiBusy(false); inputRef.current?.focus(); }}
+              className="shrink-0 size-11 grid place-items-center rounded text-tx-2 hover:bg-bg-4 active:bg-bg-5 cursor-pointer"
             >
-              <span className={clsx('text-[13px]', aiMode && 'text-brand')}>✦</span>
-              Умный
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m4 4 8 8M12 4l-8 8" /></svg>
             </button>
           )}
-          {!aiEnabled && (
-            <kbd className="shrink-0 hidden sm:inline text-[10px] text-tx-3 border border-bdr-s rounded px-1 py-0.5 bg-bg-2">
+          {!focused && (
+            <kbd className="shrink-0 hidden sm:inline text-[10px] text-tx-2 border border-bdr-s rounded px-1 py-0.5 bg-bg-2">
               Ctrl+K
             </kbd>
           )}
         </div>
       </div>
 
-      {/* dim + full-width results beam below the header */}
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            key="search-beam"
+      {open && (
+        <>
+          <div
             className="fixed inset-x-0 top-11 bottom-0 z-40 bg-black/40"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
             onMouseDown={(e) => {
               e.preventDefault();
               close();
             }}
           />
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            key="search-panel"
-            className="fixed inset-x-0 top-11 z-40 border-b border-bdr bg-bg-2 shadow-[0_12px_32px_rgba(0,0,0,0.25)]"
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.16 }}
+          <div
+            className="fixed inset-x-3 top-[52px] z-50 mx-auto flex max-h-[calc(100dvh-64px)] max-w-3xl flex-col overflow-hidden rounded-lg border border-bdr bg-bg-2 shadow-xl"
           >
-            <div ref={listRef} id="search-results-list" role="listbox" className="max-h-[60vh] overflow-y-auto">
+            <div className="flex shrink-0 items-center justify-between gap-3 px-4 sm:px-5 min-h-12 border-b border-bdr">
+              <label htmlFor="task-search-input" className="text-sm font-medium text-tx-1 cursor-pointer">Поиск задач</label>
+              <div className="flex items-center gap-3">
+                {aiEnabled && <button type="button" aria-pressed={aiMode} disabled={aiBusy} onClick={toggleAiMode} className="min-h-11 px-2 text-xs text-tx-2 rounded hover:bg-bg-4 active:bg-bg-5 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer">{aiMode ? 'AI-поиск включён' : 'Поиск с AI'}</button>}
+                <button type="button" aria-label="Закрыть поиск" onClick={close} className="min-h-11 px-2 text-xs text-tx-2 rounded hover:bg-bg-4 active:bg-bg-5 cursor-pointer">Закрыть</button>
+              </div>
+            </div>
+            {aiMode && <p className="shrink-0 px-4 sm:px-5 py-3 border-b border-bdr text-xs leading-5 text-tx-2">По смыслу названий и тегов.{catalog && catalog.length > 500 && ` В поиске первые 500 из ${catalog.length} задач.`}</p>}
+            <div ref={listRef} id="search-results-list" role={hasQuery ? 'listbox' : undefined} aria-label={hasQuery ? 'Найденные задачи' : undefined} aria-busy={hasQuery && (loading || aiBusy)} className="min-h-0 max-h-[min(65vh,calc(100dvh-180px))] overflow-y-auto overscroll-contain">
               {showEmptyHints && (
-                <div className="px-6 py-4">
-                  <div className="text-xs text-tx-3 mb-2.5">Начните печатать… или выберите горячий тег:</div>
-                  <div className="flex flex-wrap gap-1.5">
+                <div className="px-4 sm:px-5 py-6">
+                  <p className="text-sm text-tx-1">Найдите задачу по названию, тегу или условию.</p>
+                  <p className="text-xs leading-5 text-tx-2 mt-1">{aiMode ? 'Опишите тему или задайте вопрос своими словами.' : 'Все слова запроса должны встретиться в задаче.'}</p>
+                  {hotTags.length > 0 && <div className="text-xs text-tx-2 mt-5 mb-2">Частые теги</div>}
+                  <div className="flex flex-wrap gap-2">
                     {hotTags.map((tag) => (
-                      <TagBadge
+                      <button
                         key={tag}
-                        tag={tag}
-                        size="sm"
+                        type="button"
+                        className="min-h-11 px-3 rounded border border-bdr text-sm text-tx-1 hover:bg-bg-4 active:bg-bg-5 cursor-pointer"
                         onClick={() => {
                           setQuery(tag);
+                          setLoading(true);
+                          setActive(0);
                           inputRef.current?.focus();
                         }}
-                      />
+                      >{tag}</button>
                     ))}
-                    {!hotTags.length && <span className="text-xs text-tx-3">Каталог задач ещё не загружен</span>}
+                    {catalogError && <span className="text-xs text-tx-2 mt-4">Не удалось загрузить теги. Поиск по словам доступен.</span>}
+                    {!catalog && !catalogError && <span className="text-xs text-tx-2 mt-4">Загружаем теги…</span>}
+                    {catalog?.length === 0 && <span className="text-xs text-tx-2 mt-4">В библиотеке пока нет задач. Добавьте курс с задачами.</span>}
                   </div>
                 </div>
               )}
 
               {hasQuery && aiBusy && (
-                <div className="px-6 py-6 text-sm text-tx-3 animate-pulse">AI подбирает задачи…</div>
+                <div role="status" className="px-5 py-8 text-sm text-tx-2">AI подбирает задачи…</div>
               )}
 
               {hasQuery && !aiBusy && showAIList && (
                 <div className="py-1.5">
-                  <div className="px-6 pt-1.5 pb-1 text-[11px] uppercase tracking-wide text-tx-3">Нашёл AI</div>
+                  <div className="px-5 pt-2 pb-3 text-xs text-tx-2">Подобрано с AI</div>
                   {flatEntries.map((e, i) => (
                     <button
                       key={e.path}
                       type="button"
+                      id={`search-result-${i}`}
                       data-idx={i}
+                      role="option"
+                      aria-selected={i === activeIdx}
                       onMouseEnter={() => setActive(i)}
                       onMouseDown={(ev) => ev.preventDefault()}
                       onClick={() => goTo(e.path)}
                       className={clsx(
-                        'w-full text-left px-6 py-2.5 transition-colors cursor-pointer',
+                        'w-full text-left px-4 sm:px-5 py-3 border-t border-bdr-s cursor-pointer active:bg-bg-5',
                         i === activeIdx ? 'bg-bg-4' : 'hover:bg-bg-3/60',
                       )}
                     >
-                      <div className="text-sm text-tx-1 truncate">{e.title}</div>
-                      <div className="text-xs text-tx-3 truncate mt-0.5">{e.subtitle}</div>
-                      {e.reason && <div className="text-xs text-tx-2 truncate mt-0.5">{e.reason}</div>}
+                      <div className="text-[15px] font-medium leading-6 text-tx-1 break-words">{e.title}</div>
+                      <div className="text-xs text-tx-2 break-words mt-1">{e.subtitle}</div>
+                      {e.reason && <div className="text-sm leading-5 text-tx-2 break-words mt-2">{e.reason}</div>}
                     </button>
                   ))}
                 </div>
@@ -419,14 +438,17 @@ export function SearchBar() {
 
               {hasQuery && !aiBusy && !showAIList && (
                 <div className="py-1.5">
-                  {loading && <div className="px-6 py-1.5 text-xs text-tx-3">Поиск…</div>}
-                  {aiNotice && <div className="px-6 py-1.5 text-xs text-warn">{aiNotice}</div>}
+                  {loading && <div role="status" className="px-5 py-8 text-sm text-tx-2">Ищем задачи…</div>}
+                  {aiNotice && <div role="status" className="px-5 py-3 text-sm text-tx-2">{aiNotice}</div>}
+                  {!loading && searchError && <div role="alert" className="px-5 py-6 text-sm text-tx-1">{searchError}</div>}
+                  {!loading && !searchError && flatEntries.length > 0 && <div className="px-5 pt-2 pb-3 text-xs text-tx-2">{flatEntries.length === 50 ? 'Первые 50 результатов. Уточните запрос для более точного поиска.' : `Найдено: ${flatEntries.length}`}</div>}
                   {!loading && flatEntries.map((e, i) => {
                     const r = e.result!;
                     return (
                       <button
                         key={`${r.course}-${r.task}-${i}`}
                         type="button"
+                        id={`search-result-${i}`}
                         data-idx={i}
                         role="option"
                         aria-selected={i === activeIdx}
@@ -434,45 +456,31 @@ export function SearchBar() {
                         onMouseDown={(ev) => ev.preventDefault()}
                         onClick={() => goTo(e.path)}
                         className={clsx(
-                          'w-full text-left px-6 py-2.5 transition-colors cursor-pointer',
+                          'w-full text-left px-4 sm:px-5 py-3 border-t border-bdr-s cursor-pointer active:bg-bg-5',
                           i === activeIdx ? 'bg-bg-4' : 'hover:bg-bg-3/60',
                         )}
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="text-sm text-tx-1 truncate">
-                            <Highlighted text={r.title} tokens={tokens} />
-                          </span>
-                          <span className="ml-auto flex items-center gap-2 shrink-0">
-                            <span className="text-[11px] text-tx-3">{r.course} › {r.topic}</span>
-                            <DifficultyBadge difficulty={r.difficulty} size="sm" />
-                            {r.rank === 'tag' && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand/10 text-brand border border-brand/25">тег</span>
-                            )}
-                            {r.rank === 'content' && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-bg-3 text-tx-3 border border-bdr-s">условие</span>
-                            )}
-                          </span>
+                        <div className="text-[15px] leading-6 font-medium text-tx-1 break-words">
+                          <Highlighted text={r.title} tokens={tokens} />
                         </div>
+                        <div className="text-xs leading-5 text-tx-2 mt-1 break-words">{r.course} <span aria-hidden="true">/</span> {r.topic}{!!r.difficulty && ` · ${getDifficultyConfig(r.difficulty).label}`}</div>
                         {r.snippet && (
-                          <div className="text-xs text-tx-3 truncate mt-0.5">
+                          <div className="text-sm leading-5 text-tx-2 break-words mt-2 line-clamp-2">
                             <Highlighted text={r.snippet} tokens={tokens} />
                           </div>
                         )}
                         {r.tags && r.tags.length > 0 && (
-                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                            {r.tags.slice(0, 6).map((tag) => (
-                              <TagBadge key={tag} tag={tag} size="sm" />
-                            ))}
-                          </div>
+                          <div className="text-xs leading-5 text-tx-2 break-words mt-1">{r.tags.slice(0, 6).join(' · ')}</div>
                         )}
                       </button>
                     );
                   })}
-                  {!loading && hasQuery && flatEntries.length === 0 && (
-                    <div className="px-6 py-6 text-sm text-tx-3">
-                      Ничего не найдено по «{query.trim()}»
+                  {!loading && !searchError && hasQuery && flatEntries.length === 0 && (
+                    <div className="px-4 sm:px-5 py-8 break-words">
+                      <p className="text-base font-medium text-tx-1">Ничего не найдено по «{query.trim()}»</p>
+                      <p className="text-sm leading-6 text-tx-2 mt-2">Сократите запрос или попробуйте другое название темы.</p>
                       {aiEnabled && !aiMode && (
-                        <> — попробуйте <button type="button" onMouseDown={(ev) => ev.preventDefault()} onClick={toggleAiMode} className="text-brand hover:underline cursor-pointer">умный поиск ✦</button></>
+                        <button type="button" onClick={toggleAiMode} className="mt-3 min-h-11 px-3 border border-bdr rounded text-sm text-tx-1 hover:bg-bg-4 active:bg-bg-5 cursor-pointer">Попробовать поиск с AI</button>
                       )}
                     </div>
                   )}
@@ -480,15 +488,14 @@ export function SearchBar() {
               )}
             </div>
 
-            {/* footer hints */}
-            <div className="flex items-center gap-4 px-6 h-8 border-t border-bdr text-[11px] text-tx-3">
-              <span>↑↓ — навигация</span>
-              <span>Enter — перейти</span>
-              <span>Esc — закрыть</span>
+            <div className="hidden sm:flex shrink-0 items-center gap-5 px-5 h-10 border-t border-bdr text-xs text-tx-2">
+              <span><kbd>↑ ↓</kbd> выбрать</span>
+              <span><kbd>Enter</kbd> открыть</span>
+              <span className="ml-auto"><kbd>Esc</kbd> закрыть</span>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
