@@ -214,12 +214,12 @@ export function SearchBar() {
             aria-expanded={open}
             aria-controls="search-results-list"
           />
-          {query && (
+          {open && query && (
             <button
               type="button"
               aria-label="Очистить поиск"
               onClick={() => { setQuery(''); inputRef.current?.focus(); }}
-              className="shrink-0 size-11 grid place-items-center rounded text-tx-2 hover:bg-bg-4 active:bg-bg-5 cursor-pointer"
+              className="shrink-0 size-7 grid place-items-center rounded text-tx-2 hover:bg-bg-4 active:bg-bg-5 cursor-pointer"
             >
               <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m4 4 8 8M12 4l-8 8" /></svg>
             </button>
