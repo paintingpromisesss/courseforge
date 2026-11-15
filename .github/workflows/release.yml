@@ -65,14 +65,18 @@ jobs:
             bin: bin/courseforge.exe
             target: courseforge-windows-arm64.exe
             goarch: arm64
-          - os: macos-15-intel
+          - os: ubuntu-latest
             name: macos-amd64
             bin: bin/courseforge
             target: courseforge-macos-amd64
-          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+          - os: ubuntu-latest
             name: macos-arm64
             bin: bin/courseforge
             target: courseforge-macos-arm64
+            goos: darwin
+            goarch: arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -98,6 +102,10 @@ jobs:
       - name: Build (unix)
         if: matrix.os != 'windows-latest'
         shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.goos == 'darwin' && '0' || '' }}
         run: ./scripts/build.sh
 
       - name: Package
