@@ -1,0 +1,45 @@
+name: Artifact maintenance
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Dry-run first; archive-only never deletes anything'
+        type: choice
+        options: [dry-run, archive-only, apply]
+        default: dry-run
+
+permissions:
+  contents: read
+
+concurrency:
+  group: artifact-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Check retention safety rules
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+
+      - name: Preserve complete builds and prune old artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODE: ${{ github.event_name == 'workflow_run' && 'apply' || inputs.mode }}
+        run: python3 .github/scripts/maintain_artifacts.py --mode "$MODE" --report artifact-plan.json
