@@ -94,7 +94,7 @@ export function SearchBar() {
   }, [focused]);
 
   useEffect(() => {
-    if (!focused || tokens.length === 0) return;
+    if (tokens.length === 0) return;
     const ac = new AbortController();
     const timer = setTimeout(() => {
       setLoading(true);
@@ -115,7 +115,7 @@ export function SearchBar() {
       ac.abort();
       clearTimeout(timer);
     };
-  }, [query, focused, tokens.length]);
+  }, [query, tokens.length]);
 
   // clamp the selection to the current list instead of resetting it via effect
   const activeIdx = Math.min(active, Math.max((results?.length ?? 0) - 1, 0));
