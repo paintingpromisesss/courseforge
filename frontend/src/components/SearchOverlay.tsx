@@ -67,7 +67,6 @@ export function SearchBar() {
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
 
   const tokens = useMemo(
     () => query.trim().toLowerCase().split(/\s+/).filter(Boolean),
@@ -162,14 +161,8 @@ export function SearchBar() {
     }
   };
 
-  // keep the active row visible
-  useEffect(() => {
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${activeIdx}"]`);
-    el?.scrollIntoView({ block: 'nearest' });
-  }, [activeIdx]);
-
   const hasQuery = tokens.length > 0;
-  const showEmptyHints = !hasQuery;
+  const showEmptyHints = !hasQuery && (hotTags.length > 0 || catalogError || !catalog || catalog.length === 0);
 
   return (
     <div
@@ -241,6 +234,7 @@ export function SearchBar() {
           />
           <div
             className="fixed inset-x-3 top-[52px] z-50 flex max-h-[calc(100dvh-64px)] flex-col overflow-hidden rounded-lg border border-bdr bg-bg-2 shadow-xl sm:absolute sm:inset-x-0 sm:top-[calc(100%+14px)]"
+            onMouseDown={(e) => e.preventDefault()}
           >
             <div className="flex shrink-0 items-center justify-between gap-3 px-4 sm:px-5 min-h-12 border-b border-bdr">
               <label htmlFor="task-search-input" className="text-sm font-medium text-tx-1 cursor-pointer">Поиск задач</label>
@@ -248,12 +242,10 @@ export function SearchBar() {
                 <button type="button" aria-label="Закрыть поиск" onClick={close} className="min-h-11 px-2 text-xs text-tx-2 rounded hover:bg-bg-4 active:bg-bg-5 cursor-pointer">Закрыть</button>
               </div>
             </div>
-            <div ref={listRef} id="search-results-list" role={hasQuery ? 'listbox' : undefined} aria-label={hasQuery ? 'Найденные задачи' : undefined} aria-busy={hasQuery && loading} className="min-h-0 max-h-[min(65vh,calc(100dvh-180px))] overflow-y-auto overscroll-contain">
+            <div id="search-results-list" role={hasQuery ? 'listbox' : undefined} aria-label={hasQuery ? 'Найденные задачи' : undefined} aria-busy={hasQuery && loading} className="min-h-0 max-h-[min(65vh,calc(100dvh-180px))] overflow-y-auto overscroll-contain">
               {showEmptyHints && (
                 <div className="px-4 sm:px-5 py-6">
-                  <p className="text-sm text-tx-1">Найдите задачу по названию, тегу или условию.</p>
-                  <p className="text-xs leading-5 text-tx-2 mt-1">Все слова запроса должны встретиться в задаче.</p>
-                  {hotTags.length > 0 && <div className="text-xs text-tx-2 mt-5 mb-2">Частые теги</div>}
+                  {hotTags.length > 0 && <div className="text-xs text-tx-2 mb-2">Частые теги</div>}
                   <div className="flex flex-wrap gap-2">
                     {hotTags.map((tag) => (
                       <button
@@ -279,18 +271,15 @@ export function SearchBar() {
                 <div className="py-1.5">
                   {loading && <div role="status" className="px-5 py-8 text-sm text-tx-2">Ищем задачи…</div>}
                   {!loading && searchError && <div role="alert" className="px-5 py-6 text-sm text-tx-1">{searchError}</div>}
-                  {!loading && !searchError && !!results?.length && <div className="px-5 pt-2 pb-3 text-xs text-tx-2">{results.length === 50 ? 'Первые 50 результатов. Уточните запрос для более точного поиска.' : `Найдено: ${results.length}`}</div>}
                   {!loading && results?.map((r, i) => {
                     return (
                       <button
                         key={`${r.course}-${r.task}-${i}`}
                         type="button"
                         id={`search-result-${i}`}
-                        data-idx={i}
                         role="option"
                         aria-selected={i === activeIdx}
                         onMouseEnter={() => setActive(i)}
-                        onMouseDown={(ev) => ev.preventDefault()}
                         onClick={() => goTo(resultPath(r))}
                         className={clsx(
                           'w-full text-left px-4 sm:px-5 py-3 border-t border-bdr-s cursor-pointer active:bg-bg-5',
