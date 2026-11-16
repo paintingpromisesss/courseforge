@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Dry-run first; archive-only never deletes anything'
+        description: 'Review dry-run before applying cleanup'
         type: choice
-        options: [dry-run, archive-only, apply]
+        options: [dry-run, apply]
         default: dry-run
 
 permissions:
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: write
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,7 +38,7 @@ jobs:
       - name: Check retention safety rules
         run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
 
-      - name: Preserve complete builds and prune old artifacts
+      - name: Prune old artifacts
         env:
           GH_TOKEN: ${{ github.token }}
           MODE: ${{ github.event_name == 'workflow_run' && 'apply' || inputs.mode }}
