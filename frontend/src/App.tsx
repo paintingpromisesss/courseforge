@@ -12,6 +12,7 @@ import { TaskPage } from './pages/TaskPage';
 import { TheoryPage } from './pages/TheoryPage';
 import { SettingsPanel } from './components/SettingsPanel';
 import { UpdateToast } from './components/UpdateToast';
+import { SearchBar } from './components/SearchOverlay';
 
 export function GearIcon() {
   return (
@@ -81,25 +82,29 @@ function AppLayout() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-bg-1">
-      <header className="flex items-center gap-2 px-4 h-11 border-b border-bdr bg-bg-2 shrink-0">
-        <Logo />
-        {crumbs.map((c, i) => {
-          const last = i === crumbs.length - 1;
-          return (
-            <span key={c.to} className="flex items-center gap-2 min-w-0">
-              <span className="text-tx-3 shrink-0">›</span>
-              <Link
-                to={c.to}
-                className={clsx(
-                  'text-sm transition-colors truncate',
-                  last ? 'text-tx-1' : 'text-tx-3 hover:text-tx-1',
-                )}
-              >
-                {c.label}
-              </Link>
-            </span>
-          );
-        })}
+      <header className="flex sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] items-center gap-2 px-4 h-11 border-b border-bdr bg-bg-2 shrink-0">
+        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+          <Logo />
+          {crumbs.map((c, i) => {
+            const last = i === crumbs.length - 1;
+            return (
+              <span key={c.to} className="hidden sm:flex items-center gap-2 min-w-0">
+                <span className="text-tx-3 shrink-0">›</span>
+                <Link
+                  to={c.to}
+                  className={clsx(
+                    'text-sm transition-colors truncate',
+                    last ? 'text-tx-1' : 'text-tx-3 hover:text-tx-1',
+                  )}
+                >
+                  {c.label}
+                </Link>
+              </span>
+            );
+          })}
+        </div>
+
+        <SearchBar />
 
         <div className="ml-auto flex items-center gap-2">
           {mcpStatus && (

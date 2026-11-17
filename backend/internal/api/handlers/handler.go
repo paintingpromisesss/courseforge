@@ -37,6 +37,7 @@ type Handler struct {
 	fallbackSession mcp.SessionManager
 	updater         *updater.Updater
 	syncEngine      *csync.Engine
+	searchCache     *searchStatementCache
 }
 
 // SetSyncEngine injects the cloud-sync engine after construction (DI builds
@@ -90,6 +91,7 @@ func New(
 	return &Handler{
 		coursesDir:    coursesDir,
 		dataDir:       dataDir,
+		searchCache:   newSearchStatementCache(),
 		courses:       courses,
 		catalogs:      catalogs,
 		runner:        r,

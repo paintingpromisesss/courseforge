@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -218,6 +219,46 @@ func (s *Server) registerTools() {
 		),
 		s.handleDeleteNote,
 	)
+
+	// 19. search_tasks
+	s.mcpServer.AddTool(
+		mcp.NewTool("search_tasks",
+			mcp.WithDescription("Поиск задач по словам, тегам и контенту условий. Подстрока без учёта регистра, слова объединяются AND. Примеры: query=\"пул\", query=\"mutex timeout\", query=\"sync\""),
+			mcp.WithString("query", mcp.Required(), mcp.Description("Поисковый запрос: одно или несколько слов через пробел")),
+			mcp.WithString("course_slug", mcp.Description("Опциональный слаг курса для ограничения поиска (например: 'go-interview')")),
+			mcp.WithNumber("limit", mcp.Description("Максимальное количество результатов (по умолчанию 50)")),
+		),
+		s.handleSearchTasks,
+	)
+}
+
+func (s *Server) handleSearchTasks(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	provider, _ := s.getDeps()
+	if provider == nil {
+		return toolError("провайдер CourseForge не инициализирован"), nil
+	}
+
+	query, err := request.RequireString("query")
+	if err != nil {
+		return toolError("параметр query обязателен"), nil
+	}
+	query = strings.TrimSpace(query)
+	if len(query) < 2 {
+		return toolError("query должен содержать минимум 2 символа"), nil
+	}
+	course := request.GetString("course_slug", "")
+	limit := int(request.GetFloat("limit", 50))
+	if limit <= 0 {
+		limit = 50
+	}
+
+	results, err := provider.SearchTasks(ctx, query, course, limit)
+	if err != nil {
+		return toolError("ошибка поиска: %v", err), nil
+	}
+	return toolJSON(map[string]any{
+		"results": results,
+	})
 }
 
 func (s *Server) handleGetCurrentTask(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

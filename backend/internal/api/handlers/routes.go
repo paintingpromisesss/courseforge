@@ -7,6 +7,9 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/catalogs", h.listCatalogs)
 	r.Get("/courses/{courseSlug}", h.getCourse)
 
+	r.Get("/search/tasks", h.searchTasks)
+	r.Get("/search/catalog", h.searchCatalog)
+
 	r.Get("/courses/{courseSlug}/tracks/{trackSlug}/topics/{topicSlug}/units/{unitSlug}/theory", h.getTheory)
 	r.Get("/courses/{courseSlug}/tracks/{trackSlug}/topics/{topicSlug}/units/{unitSlug}/assets/{filename}", h.getUnitAsset)
 

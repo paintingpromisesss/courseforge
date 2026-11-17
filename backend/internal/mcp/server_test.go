@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+		"github.com/paintingpromisesss/courseforge/internal/application/service"
 	"github.com/paintingpromisesss/courseforge/internal/mcp"
 )
 
@@ -71,8 +72,11 @@ func newMockProvider() *mockProvider {
 	}
 }
 
-func (m *mockProvider) ListCourses(ctx context.Context) ([]mcp.CourseSummary, error) {
-	return m.courses, nil
+func (m *mockProvider) SearchTasks(ctx context.Context, query, course string, limit int) ([]service.SearchResult, error) {
+	return nil, nil
+}
+
+func (m *mockProvider) ListCourses(ctx context.Context) ([]mcp.CourseSummary, error) {	return m.courses, nil
 }
 
 func (m *mockProvider) GetTaskDetails(ctx context.Context, courseSlug, taskSlug string) (*mcp.TaskDetails, error) {

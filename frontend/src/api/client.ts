@@ -1,4 +1,4 @@
-import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission, AIConfig, AIMessage, AIModelItem, MCPConfig, MCPStatusResponse, MCPActiveTask, VersionResponse, VersionCheckResult, UpdateStatus, GitAuthStatus, GitAuthTestResp, GitImportResp, GitImportBatchResp, GitBranchesResp, GitStatusResp, GitLogResp, GitCommitFilesResp, GitDiffResp, SyncConfigResp, PatchSyncConfigReq, SyncStatusResp, SyncHistoryItem, SyncCommitFilesResp, SyncRestoreImportsResp } from './types';
+import type { CatalogItem, CourseItem, CourseDetail, CreateSubmissionReq, LangDriver, Progress, RunnerStatus, Submission, AIConfig, AIMessage, AIModelItem, MCPConfig, MCPStatusResponse, MCPActiveTask, VersionResponse, VersionCheckResult, UpdateStatus, GitAuthStatus, GitAuthTestResp, GitImportResp, GitImportBatchResp, GitBranchesResp, GitStatusResp, GitLogResp, GitCommitFilesResp, GitDiffResp, SyncConfigResp, PatchSyncConfigReq, SyncStatusResp, SyncHistoryItem, SyncCommitFilesResp, SyncRestoreImportsResp, SearchTaskResult, SearchCatalogEntry } from './types';
 
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api';
@@ -132,6 +132,13 @@ export const api = {
   listCourses: () => get<CourseItem[]>('/courses'),
   listCatalogs: () => get<CatalogItem[]>('/catalogs'),
   getCourse: (slug: string) => get<CourseDetail>(`/courses/${slug}`),
+  searchTasks: (q: string, opts?: { limit?: number; course?: string }) => {
+    const p = new URLSearchParams({ q });
+    if (opts?.limit) p.set('limit', String(opts.limit));
+    if (opts?.course) p.set('course', opts.course);
+    return get<{ results: SearchTaskResult[] }>(`/search/tasks?${p}`);
+  },
+  searchCatalog: () => get<{ tasks: SearchCatalogEntry[] }>('/search/catalog'),
   getProgress: (courseSlug: string) => get<Progress>(`/progress/${courseSlug}`),
   markDone: (courseSlug: string, taskSlug: string, done: boolean) =>
     put(`/progress/${courseSlug}/tasks/${taskSlug}`, { done }),
